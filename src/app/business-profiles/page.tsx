@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -58,6 +59,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 const PROFILE_STATUSES = ["ACTIVE", "INACTIVE"]; // Hardcoded
+const ALL_PROFILES_FILTER_VALUE = "__ALL_PROFILE_STATUSES__";
 
 export default function BusinessProfilesListPage() {
   const { toast } = useToast();
@@ -103,8 +105,8 @@ export default function BusinessProfilesListPage() {
     []
   );
 
-  const handleFilterChange = (status: string) => {
-    setFilterStatus(status);
+  const handleFilterChange = (selectedValue: string) => {
+    setFilterStatus(selectedValue === ALL_PROFILES_FILTER_VALUE ? "" : selectedValue);
     setCurrentPage(0);
   };
 
@@ -169,12 +171,12 @@ export default function BusinessProfilesListPage() {
                   onChange={(e) => handleSearchDebounced(e.target.value)}
                 />
               </div>
-              <Select value={filterStatus} onValueChange={handleFilterChange}>
+              <Select value={filterStatus || ALL_PROFILES_FILTER_VALUE} onValueChange={handleFilterChange}>
                 <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Statuses</SelectItem>
+                  <SelectItem value={ALL_PROFILES_FILTER_VALUE}>All Statuses</SelectItem>
                   {PROFILE_STATUSES.map((status) => (
                     <SelectItem key={status} value={status}>
                       {status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()}
@@ -304,3 +306,4 @@ export default function BusinessProfilesListPage() {
     </div>
   );
 }
+

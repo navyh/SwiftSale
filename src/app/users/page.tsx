@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -58,6 +59,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 const USER_TYPES = ["B2C", "B2B"]; // Hardcoded as per instruction
+const ALL_USERS_FILTER_VALUE = "__ALL_USER_TYPES__";
 
 export default function UsersListPage() {
   const { toast } = useToast();
@@ -103,8 +105,8 @@ export default function UsersListPage() {
     []
   );
 
-  const handleFilterChange = (type: string) => {
-    setFilterType(type);
+  const handleFilterChange = (selectedValue: string) => {
+    setFilterType(selectedValue === ALL_USERS_FILTER_VALUE ? "" : selectedValue);
     setCurrentPage(0); // Reset to first page on filter change
   };
 
@@ -171,12 +173,12 @@ export default function UsersListPage() {
                   onChange={(e) => handleSearchDebounced(e.target.value)}
                 />
               </div>
-              <Select value={filterType} onValueChange={handleFilterChange}>
+              <Select value={filterType || ALL_USERS_FILTER_VALUE} onValueChange={handleFilterChange}>
                 <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Filter by type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Types</SelectItem>
+                  <SelectItem value={ALL_USERS_FILTER_VALUE}>All Types</SelectItem>
                   {USER_TYPES.map((type) => (
                     <SelectItem key={type} value={type}>
                       {type}
