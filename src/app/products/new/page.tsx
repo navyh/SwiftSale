@@ -16,12 +16,18 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  fetchCategories, fetchBrands, fetchSuppliers, createProduct, fetchProductStatuses,
-  type Category, type Brand, type Supplier, type CreateProductRequest 
-} from "@/lib/apiClient";
+  createProduct,
+  type CreateProductRequest 
+} from "@/lib/apiClient"; // Removed meta fetch functions
 import { PackagePlus, ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
+
+// Define simple types for hardcoded data
+interface HardcodedMetaItem {
+  id: number;
+  name: string;
+}
 
 const productFormSchema = z.object({
   name: z.string().min(1, "Product name is required"),
@@ -46,18 +52,47 @@ const productFormSchema = z.object({
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
 
+// Hardcoded data
+const hardcodedCategories: HardcodedMetaItem[] = [
+  { id: 1, name: 'Electronics' },
+  { id: 2, name: 'Books' },
+  { id: 3, name: 'Clothing' },
+  { id: 4, name: 'Home Goods' },
+  { id: 5, name: 'Sports Equipment' },
+];
+
+const hardcodedBrands: HardcodedMetaItem[] = [
+  { id: 1, name: 'Generic Brand' },
+  { id: 2, name: 'Premium Brand' },
+  { id: 3, name: 'TechBrand' },
+  { id: 4, name: 'FashionBrand' },
+];
+
+const hardcodedSuppliers: HardcodedMetaItem[] = [
+  { id: 1, name: 'Main Supplier Inc.' },
+  { id: 2, name: 'Secondary Supplier Co.' },
+  { id: 3, name: 'Local Vendor LLC' },
+];
+
+const hardcodedProductStatuses: CreateProductRequest['status'][] = ['ACTIVE', 'DRAFT', 'ARCHIVED', 'OUT_OF_STOCK'];
+
+
 export default function CreateProductPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
   
-  const [categories, setCategories] = React.useState<Category[]>([]);
-  const [brands, setBrands] = React.useState<Brand[]>([]);
-  const [suppliers, setSuppliers] = React.useState<Supplier[]>([]);
-  const [productStatuses, setProductStatuses] = React.useState<string[]>([]);
-  const [isLoadingData, setIsLoadingData] = React.useState(true);
+  // Use hardcoded data
+  const [categories, setCategories] = React.useState<HardcodedMetaItem[]>(hardcodedCategories);
+  const [brands, setBrands] = React.useState<HardcodedMetaItem[]>(hardcodedBrands);
+  const [suppliers, setSuppliers] = React.useState<HardcodedMetaItem[]>(hardcodedSuppliers);
+  const [productStatuses, setProductStatuses] = React.useState<Array<CreateProductRequest['status']>>(hardcodedProductStatuses);
+  const [isLoadingData, setIsLoadingData] = React.useState(false); // Set to false as data is hardcoded
 
-  const initialStatus = searchParams.get('status') as CreateProductRequest['status'] || 'DRAFT';
+  const initialStatusQueryParam = searchParams.get('status') as CreateProductRequest['status'];
+  const validInitialStatus = initialStatusQueryParam && productStatuses.includes(initialStatusQueryParam) 
+    ? initialStatusQueryParam 
+    : (productStatuses.includes('DRAFT') ? 'DRAFT' : productStatuses[0]);
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productFormSchema),
@@ -68,13 +103,13 @@ export default function CreateProductPage() {
       barcode: "",
       quantity: 0,
       unitPrice: 0,
-      costPrice: undefined, // Important for optional nullable numbers
+      costPrice: undefined,
       categoryId: undefined,
       brandId: undefined,
       supplierId: undefined,
       imageUrlsInput: "",
       tagsInput: "",
-      status: productStatuses.includes(initialStatus!) ? initialStatus : 'DRAFT',
+      status: validInitialStatus,
       weight: undefined,
       dimensions: "",
       isFeatured: false,
@@ -84,43 +119,18 @@ export default function CreateProductPage() {
   });
 
   React.useEffect(() => {
-    async function loadInitialData() {
-      try {
-        setIsLoadingData(true);
-        const [categoriesData, brandsData, suppliersData, statusesData] = await Promise.all([
-          fetchCategories(),
-          fetchBrands(),
-          fetchSuppliers(),
-          fetchProductStatuses(),
-        ]);
-        setCategories(categoriesData);
-        setBrands(brandsData);
-        setSuppliers(suppliersData);
-        setProductStatuses(statusesData.filter(s => s)); // Filter out potential null/empty strings
-
-        // Set default status from query param if valid, otherwise DRAFT
-        const queryStatus = searchParams.get('status') as CreateProductRequest['status'];
-        if (queryStatus && statusesData.includes(queryStatus)) {
-          form.reset({ ...form.getValues(), status: queryStatus });
-        } else if (statusesData.includes('DRAFT')) {
-           form.reset({ ...form.getValues(), status: 'DRAFT' });
-        } else if (statusesData.length > 0) {
-           form.reset({ ...form.getValues(), status: statusesData[0] as CreateProductRequest['status'] });
-        }
-
-      } catch (error) {
-        console.error("Failed to load initial data", error);
-        toast({
-          title: "Error",
-          description: "Failed to load page data. Please try refreshing.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoadingData(false);
-      }
+    // Data is now hardcoded, so no async fetching needed here for these dropdowns.
+    // We still might want to reset form status based on query params.
+    const queryStatus = searchParams.get('status') as CreateProductRequest['status'];
+    if (queryStatus && productStatuses.includes(queryStatus)) {
+      form.reset({ ...form.getValues(), status: queryStatus });
+    } else if (productStatuses.includes('DRAFT')) {
+       form.reset({ ...form.getValues(), status: 'DRAFT' });
+    } else if (productStatuses.length > 0) {
+       form.reset({ ...form.getValues(), status: productStatuses[0] });
     }
-    loadInitialData();
-  }, [toast, form, searchParams]);
+    setIsLoadingData(false); // Ensure loading is set to false
+  }, [form, searchParams, productStatuses]); // productStatuses is now stable
 
   async function onSubmit(data: ProductFormValues) {
     try {
@@ -133,7 +143,7 @@ export default function CreateProductPage() {
         tags: data.tagsInput ? data.tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag) : null,
         costPrice: data.costPrice === undefined || data.costPrice === null ? null : Number(data.costPrice),
         weight: data.weight === undefined || data.weight === null ? null : Number(data.weight),
-        status: data.status || 'DRAFT', // Ensure status is never undefined
+        status: data.status || 'DRAFT', 
       };
       
       await createProduct(productPayload);
@@ -364,7 +374,7 @@ export default function CreateProductPage() {
                       </FormControl>
                       <SelectContent>
                         {productStatuses.map(status => (
-                           <SelectItem key={status} value={status}>{status.charAt(0) + status.slice(1).toLowerCase().replace(/_/g, ' ')}</SelectItem>
+                           <SelectItem key={status} value={status!}>{status!.charAt(0) + status!.slice(1).toLowerCase().replace(/_/g, ' ')}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -521,3 +531,4 @@ export default function CreateProductPage() {
     </div>
   );
 }
+
