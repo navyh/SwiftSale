@@ -12,12 +12,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { PlusCircle, Edit3, Trash2, Palette, Tag, Ruler, Scale, Settings as SettingsIcon, FolderTree, BellRing, UsersRound, ListChecks, CreditCard, FileText as InventoryIcon } from "lucide-react";
-import { 
+import {
   fetchProductBrands, createProductBrand, updateProductBrand, deleteProductBrand, type Brand,
   fetchProductCategoriesTree, createProductCategory, updateProductCategory, deleteProductCategory, type Category, type ProductCategoryNode,
   fetchProductUnits, createProductUnit, updateProductUnit, deleteProductUnit, type ProductUnit,
   fetchNotificationTemplates, createNotificationTemplate, updateNotificationTemplate, deleteNotificationTemplate, type NotificationTemplate,
-  fetchOrderStatuses, fetchPaymentTypes, fetchInventoryAdjustmentReasons, fetchUserRolesMeta, 
+  fetchOrderStatuses, fetchPaymentTypes, fetchInventoryAdjustmentReasons, fetchUserRolesMeta,
   type OrderStatus, type PaymentType, type InventoryAdjustmentReason, type UserRole,
   type MetaItem
 } from "@/lib/apiClient";
@@ -26,10 +26,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-type SettingCategoryKey = 
-  | 'productBrands' 
-  | 'productCategories' 
-  | 'productUnits' 
+type SettingCategoryKey =
+  | 'productBrands'
+  | 'productCategories'
+  | 'productUnits'
   | 'notificationTemplates'
   | 'orderStatuses'
   | 'paymentTypes'
@@ -50,10 +50,10 @@ const categoryIcons: Record<SettingCategoryKey, React.ElementType> = {
   productCategories: FolderTree,
   productUnits: Scale,
   notificationTemplates: BellRing,
-  orderStatuses: ListChecks, 
-  paymentTypes: CreditCard, 
-  inventoryAdjustmentReasons: InventoryIcon, 
-  userRolesMeta: UsersRound, 
+  orderStatuses: ListChecks,
+  paymentTypes: CreditCard,
+  inventoryAdjustmentReasons: InventoryIcon,
+  userRolesMeta: UsersRound,
 };
 
 const categoryDisplayNames: Record<SettingCategoryKey, string> = {
@@ -80,14 +80,14 @@ const flattenCategoriesForTable = (nodes: ProductCategoryNode[], parentName: str
 };
 
 
-const SettingSection = ({ 
-  title, 
+const SettingSection = ({
+  title,
   categoryKey,
   onEdit,
   forceRefreshKey,
   isEditable = true,
-}: { 
-  title: string; 
+}: {
+  title: string;
   categoryKey: SettingCategoryKey;
   onEdit: (item: SettingItemUnion | null, mode: 'add' | 'edit', key: SettingCategoryKey) => void;
   forceRefreshKey: number;
@@ -106,8 +106,8 @@ const SettingSection = ({
       let data;
       switch (categoryKey) {
         case 'productBrands': data = await fetchProductBrands(); break;
-        case 'productCategories': 
-          const treeData = await fetchProductCategoriesTree(); 
+        case 'productCategories':
+          const treeData = await fetchProductCategoriesTree();
           data = flattenCategoriesForTable(treeData);
           break;
         case 'productUnits': data = await fetchProductUnits(); break;
@@ -122,6 +122,7 @@ const SettingSection = ({
     } catch (err: any) {
       setError(err.message || `Failed to fetch ${title.toLowerCase()}.`);
       toast({ title: "Error", description: err.message || `Failed to fetch ${title.toLowerCase()}.`, variant: "destructive" });
+      setItems([]); // Ensure items is an empty array on error
     } finally {
       setIsLoading(false);
     }
@@ -166,7 +167,6 @@ const SettingSection = ({
 
   const getDescriptionOrEquivalent = (item: SettingItemUnion) => {
     if (categoryKey === 'notificationTemplates') return (item as NotificationTemplate).subject || 'N/A';
-    // For UserRole, description might be primary info along with permissions
     if (categoryKey === 'userRolesMeta') return (item as UserRole).description || 'N/A';
     return (item as MetaItem).description || 'N/A';
   };
@@ -201,8 +201,8 @@ const SettingSection = ({
                 <TableHead>Name</TableHead>
                 {renderAdditionalHeaders()}
                 <TableHead className="hidden md:table-cell">
-                    {categoryKey === 'notificationTemplates' ? 'Subject' : 
-                     categoryKey === 'userRolesMeta' ? 'Description' : 
+                    {categoryKey === 'notificationTemplates' ? 'Subject' :
+                     categoryKey === 'userRolesMeta' ? 'Description' :
                      'Description'}
                 </TableHead>
                 {isEditable && <TableHead className="text-right">Actions</TableHead>}
@@ -218,7 +218,7 @@ const SettingSection = ({
                   <TableCell className="hidden md:table-cell truncate max-w-xs">
                     {getDescriptionOrEquivalent(item)}
                   </TableCell>
-                  
+
                   {isEditable && (
                     <TableCell className="text-right space-x-1">
                       <Button variant="ghost" size="icon" className="hover:text-primary h-8 w-8" onClick={() => onEdit(item, 'edit', categoryKey)}>
@@ -263,14 +263,13 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const [dialogState, setDialogState] = React.useState<EditDialogState>({ isOpen: false, item: null, categoryKey: null, mode: 'add' });
   const [forceRefreshKey, setForceRefreshKey] = React.useState(0);
-  
+
   const [itemName, setItemName] = React.useState('');
   const [itemDescription, setItemDescription] = React.useState('');
   const [itemSubject, setItemSubject] = React.useState(''); // For Notification Templates
   const [itemBody, setItemBody] = React.useState('');       // For Notification Templates
   const [itemType, setItemType] = React.useState('');         // For Notification Templates
   const [itemParentId, setItemParentId] = React.useState<number | null>(null); // For Categories
-  const [itemPermissions, setItemPermissions] = React.useState(''); // For User Roles (Meta) - not editable in dialog yet
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
@@ -278,24 +277,22 @@ export default function SettingsPage() {
     setItemName(item?.name || '');
     const desc = (item as MetaItem)?.description || '';
     setItemDescription(desc);
-    
+
     const ntItem = item as NotificationTemplate | null;
     setItemSubject(ntItem?.subject || '');
     setItemBody(ntItem?.body || '');
     setItemType(ntItem?.type || '');
-    
+
     setItemParentId((item as Category)?.parentId || null);
 
-    // Permissions are display-only for userRolesMeta for now
-    // setItemPermissions((item as UserRole)?.permissions?.join(', ') || '');
 
     setDialogState({ isOpen: true, item, categoryKey, mode });
   };
 
   const handleDialogClose = () => {
     setDialogState({ isOpen: false, item: null, categoryKey: null, mode: 'add' });
-    setItemName(''); setItemDescription(''); 
-    setItemSubject(''); setItemBody(''); setItemType(''); setItemParentId(null); // setItemPermissions('');
+    setItemName(''); setItemDescription('');
+    setItemSubject(''); setItemBody(''); setItemType(''); setItemParentId(null);
   };
 
   const handleDialogSubmit = async () => {
@@ -310,25 +307,21 @@ export default function SettingsPage() {
 
     setIsSubmitting(true);
     let payload: any = { name: itemName.trim() };
-    
-    if (dialogState.categoryKey !== 'notificationTemplates') { // Most meta items have a description
+
+    if (dialogState.categoryKey && ['productBrands', 'productCategories', 'productUnits'].includes(dialogState.categoryKey)) {
       if (itemDescription.trim()) payload.description = itemDescription.trim();
     }
 
+
     if (dialogState.categoryKey === 'productCategories') {
-        if (itemDescription.trim()) payload.description = itemDescription.trim();
-        if (itemParentId) payload.parentId = itemParentId;
+        // if (itemDescription.trim()) payload.description = itemDescription.trim(); // Already handled above
+        if (itemParentId) payload.parentId = itemParentId; // This part is for future enhancement of parent selection
     }
 
     if (dialogState.categoryKey === 'notificationTemplates') {
       payload = { ...payload, subject: itemSubject.trim(), body: itemBody.trim(), type: itemType.trim() };
     }
 
-    // Note: UserRolesMeta are not editable via this dialog currently.
-    // if (dialogState.categoryKey === 'userRolesMeta') { 
-    //     if (itemDescription.trim()) payload.description = itemDescription.trim();
-    //     if (itemPermissions.trim()) payload.permissions = itemPermissions.split(',').map(p => p.trim()).filter(Boolean);
-    // }
 
     try {
       if (dialogState.mode === 'add') {
@@ -351,7 +344,7 @@ export default function SettingsPage() {
         }
         toast({ title: "Success", description: `${categoryDisplayNames[dialogState.categoryKey]} updated successfully.` });
       }
-      setForceRefreshKey(prev => prev + 1); 
+      setForceRefreshKey(prev => prev + 1);
       handleDialogClose();
     } catch (err: any) {
       toast({ title: "Error", description: err.message || `Failed to save ${categoryDisplayNames[dialogState.categoryKey!].toLowerCase()}.`, variant: "destructive" });
@@ -380,7 +373,7 @@ export default function SettingsPage() {
         <SettingSection title="Product Categories" categoryKey="productCategories" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
         <SettingSection title="Product Units" categoryKey="productUnits" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
         <SettingSection title="Notification Templates" categoryKey="notificationTemplates" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
-        
+
         <SettingSection title="Order Statuses" categoryKey="orderStatuses" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} isEditable={false} />
         <SettingSection title="Payment Types" categoryKey="paymentTypes" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} isEditable={false} />
         <SettingSection title="Inventory Adj. Reasons" categoryKey="inventoryAdjustmentReasons" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} isEditable={false} />
@@ -403,7 +396,7 @@ export default function SettingsPage() {
               <Label htmlFor="name" className="text-right">Name*</Label>
               <Input id="name" value={itemName} onChange={(e) => setItemName(e.target.value)} className="col-span-3" placeholder={`${dialogState.categoryKey ? categoryDisplayNames[dialogState.categoryKey] : ''} name`} />
             </div>
-            
+
             {dialogState.categoryKey && ['productBrands', 'productCategories', 'productUnits'].includes(dialogState.categoryKey) && (
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="description" className="text-right">Description</Label>
@@ -447,5 +440,3 @@ export default function SettingsPage() {
   );
 }
 
-
-    
