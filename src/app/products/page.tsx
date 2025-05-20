@@ -17,9 +17,18 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { PlusCircle, Search, Edit3, Trash2, Filter, Package } from "lucide-react";
-import { fetchProducts, deleteProduct, type Product, fetchProductCategoriesFlat, fetchProductBrands, type Category, type Brand } from "@/lib/apiClient";
+import { 
+  fetchProducts, 
+  deleteProduct, 
+  type Product, 
+  fetchProductCategoriesFlat, // Renamed for clarity if fetching flat list
+  fetchProductBrands,      // Renamed for consistency
+  type Category, 
+  type Brand 
+} from "@/lib/apiClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -46,17 +55,17 @@ export default function ProductsPage() {
     try {
       const [productsData, categoriesData, brandsData] = await Promise.all([
         fetchProducts(),
-        fetchProductCategoriesFlat(),
+        fetchProductCategoriesFlat(), // Use the flat list fetcher
         fetchProductBrands()
       ]);
-      setProducts(productsData);
+      setProducts(Array.isArray(productsData) ? productsData : []);
 
       const catMap: CategoriesMap = {};
-      categoriesData.forEach(cat => { catMap[cat.id] = cat.name; });
+      (Array.isArray(categoriesData) ? categoriesData : []).forEach(cat => { catMap[cat.id] = cat.name; });
       setCategoriesMap(catMap);
 
       const brMap: BrandsMap = {};
-      brandsData.forEach(brand => { brMap[brand.id] = brand.name; });
+      (Array.isArray(brandsData) ? brandsData : []).forEach(brand => { brMap[brand.id] = brand.name; });
       setBrandsMap(brMap);
 
     } catch (err: any) {
@@ -100,7 +109,7 @@ export default function ProductsPage() {
       case 'OUT_OF_STOCK': return "bg-red-100 text-red-700";
       case 'DRAFT': return "bg-yellow-100 text-yellow-700";
       case 'ARCHIVED': return "bg-gray-100 text-gray-700";
-      default: return "bg-blue-100 text-blue-700"; // For null or other statuses
+      default: return "bg-blue-100 text-blue-700";
     }
   };
   
@@ -116,7 +125,6 @@ export default function ProductsPage() {
   const getBrandName = (brandId?: number | null) => {
     return brandId && brandsMap[brandId] ? brandsMap[brandId] : "N/A";
   }
-
 
   return (
     <div className="space-y-6">
@@ -149,7 +157,7 @@ export default function ProductsPage() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <Button variant="outline" disabled> {/* Filters can be implemented later */}
+              <Button variant="outline" disabled>
                 <Filter className="mr-2 h-4 w-4" /> Filters
               </Button>
             </div>
@@ -160,12 +168,30 @@ export default function ProductsPage() {
           {error && <p className="text-destructive text-center">{error}</p>}
           <Table>
             <TableHeader>
-              <TableRow><TableHead className="w-[60px] md:w-[80px]">Image</TableHead><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Category</TableHead><TableHead className="hidden lg:table-cell">Brand</TableHead><TableHead>Price</TableHead><TableHead className="hidden sm:table-cell">Stock</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow>
+              <TableRow>
+                <TableHead className="w-[60px] md:w-[80px]">Image</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead className="hidden md:table-cell">Category</TableHead>
+                <TableHead className="hidden lg:table-cell">Brand</TableHead>
+                <TableHead>Price</TableHead>
+                <TableHead className="hidden sm:table-cell">Stock</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, index) => (
-                  <TableRow key={`skeleton-${index}`}><TableCell><Skeleton className="h-10 w-10 rounded-md" /></TableCell><TableCell><Skeleton className="h-4 w-3/4" /></TableCell><TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-1/2" /></TableCell><TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-1/2" /></TableCell><TableCell><Skeleton className="h-4 w-1/4" /></TableCell><TableCell className="hidden sm:table-cell"><Skeleton className="h-4 w-1/4" /></TableCell><TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell><TableCell className="text-right space-x-1"><Skeleton className="h-8 w-8 inline-block rounded" /><Skeleton className="h-8 w-8 inline-block rounded" /></TableCell></TableRow>
+                  <TableRow key={`skeleton-${index}`}>
+                    <TableCell><Skeleton className="h-10 w-10 rounded-md" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-3/4" /></TableCell>
+                    <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-1/2" /></TableCell>
+                    <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-1/2" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-1/4" /></TableCell>
+                    <TableCell className="hidden sm:table-cell"><Skeleton className="h-4 w-1/4" /></TableCell>
+                    <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+                    <TableCell className="text-right space-x-1"><Skeleton className="h-8 w-8 inline-block rounded" /><Skeleton className="h-8 w-8 inline-block rounded" /></TableCell>
+                  </TableRow>
                 ))
               ) : filteredProducts.length === 0 && !error ? (
                  <TableRow><TableCell colSpan={8} className="text-center py-10"><Package className="mx-auto h-12 w-12 text-muted-foreground mb-2"/><p className="text-muted-foreground">No products found.</p>{products.length > 0 && searchTerm && <p className="text-sm text-muted-foreground">Try adjusting your search term.</p>}</TableCell></TableRow>
@@ -194,7 +220,7 @@ export default function ProductsPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="icon" className="hover:text-primary" asChild>
-                        <Link href={`/products/${product.id}/edit`}> {/* TODO: Implement edit page */}
+                        <Link href={`/products/${product.id}/edit`}>
                           <Edit3 className="h-4 w-4" />
                           <span className="sr-only">Edit</span>
                         </Link>
@@ -240,8 +266,7 @@ export default function ProductsPage() {
         </CardHeader>
         <CardContent>
             <p className="text-sm text-muted-foreground">
-                Feature for inline product creation (e.g. in a modal during order entry) will be implemented here.
-                This allows users to quickly add a draft product with minimal details if it's not found during an order.
+                Feature for inline product creation will be implemented here.
             </p>
             <Link href="/products/new?status=DRAFT" passHref>
              <Button variant="secondary" className="mt-4">
@@ -253,4 +278,3 @@ export default function ProductsPage() {
     </div>
   );
 }
-

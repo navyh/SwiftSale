@@ -14,7 +14,6 @@ export interface Category {
   updatedAt?: string;
 }
 
-// For /meta/product/categories/tree
 export interface ProductCategoryNode {
   id: number;
   name: string;
@@ -44,7 +43,7 @@ export interface Supplier {
   updatedAt?: string;
 }
 
-export interface MetaItem { // Used for Sizes, Units, (and as base for others)
+export interface MetaItem {
   id: number;
   name: string;
   description?: string | null;
@@ -57,15 +56,11 @@ export interface MetaColorItem extends MetaItem {
 }
 
 export interface ProductUnit extends MetaItem {}
-
 export interface OrderStatus extends MetaItem {}
-
 export interface PaymentType extends MetaItem {}
-
 export interface InventoryAdjustmentReason extends MetaItem {}
-
 export interface UserRole extends MetaItem {
-  permissions?: string[]; // Example, adjust based on actual API
+  permissions?: string[];
 }
 
 export interface NotificationTemplate {
@@ -73,34 +68,47 @@ export interface NotificationTemplate {
   name: string;
   subject: string;
   body: string;
-  type: string; // e.g., 'EMAIL', 'SMS'
+  type: string;
   createdAt?: string;
   updatedAt?: string;
 }
 
+export interface ProductVariant {
+  id: number;
+  productId: number;
+  sku?: string | null;
+  price?: number | null;
+  compareAtPrice?: number | null;
+  costPrice?: number | null;
+  quantity: number;
+  barcode?: string | null;
+  colorValue?: string | null;
+  sizeValue?: string | null;
+  imageUrls?: string[] | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface Product {
   id: number;
   name: string;
   description?: string | null;
-  sku?: string | null;
-  barcode?: string | null;
-  quantity: number;
-  unitPrice: number;
-  costPrice?: number | null;
-  
-  // Fields as IDs (common in list responses)
+  sku?: string | null; // Base product SKU
+  barcode?: string | null; // Base product barcode
+  quantity: number; // Total quantity, might be sum of variants
+  unitPrice: number; // Base product unit price (might be deprecated if variants handle all pricing)
+  costPrice?: number | null; // Base product cost price
+
   categoryId?: number | null;
   brandId?: number | null;
   supplierId?: number | null;
-  unitId?: number | null; 
+  unitId?: number | null;
 
-  // Fields as nested objects (common in single item responses or detailed views)
   category?: Category | null;
   brand?: Brand | null;
   supplier?: Supplier | null;
   unit?: ProductUnit | null;
-  
+
   imageUrls?: string[] | null;
   tags?: string[] | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | null;
@@ -109,8 +117,18 @@ export interface Product {
   isFeatured?: boolean | null;
   metaTitle?: string | null;
   metaDescription?: string | null;
+  variants?: ProductVariant[] | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface VariantDefinitionDTO {
+  colorValue: string;
+  sizeValue: string;
+  // Potentially other defining attributes like SKU, price for initial generation
+  sku?: string | null;
+  price?: number | null;
+  quantity?: number;
 }
 
 export interface CreateProductRequest {
@@ -118,8 +136,8 @@ export interface CreateProductRequest {
   description?: string | null;
   sku?: string | null;
   barcode?: string | null;
-  quantity: number;
-  unitPrice: number;
+  quantity: number; // This might be overall or ignored if variants define it
+  unitPrice: number; // This might be overall or ignored if variants define it
   costPrice?: number | null;
   categoryId?: number | null;
   brandId?: number | null;
@@ -133,20 +151,53 @@ export interface CreateProductRequest {
   isFeatured?: boolean | null;
   metaTitle?: string | null;
   metaDescription?: string | null;
+  variantDefinitions?: VariantDefinitionDTO[] | null; // For generating variants
 }
+
+export interface UpdateProductRequest extends Partial<Omit<CreateProductRequest, 'variantDefinitions'>> {
+  // variantDefinitions can also be part of update to generate new variants
+  variantDefinitions?: VariantDefinitionDTO[] | null;
+}
+
+
+export interface AddVariantRequest { // For POST /products/{productId}/variants
+  sku: string;
+  price?: number | null;
+  compareAtPrice?: number | null;
+  costPrice?: number | null;
+  quantity: number;
+  barcode?: string | null;
+  colorValue?: string | null;
+  sizeValue?: string | null;
+  imageUrls?: string[] | null;
+}
+
+export interface UpdateVariantRequest { // For PATCH /products/{productId}/variants/{variantId}
+  sku?: string | null;
+  price?: number | null;
+  compareAtPrice?: number | null;
+  costPrice?: number | null;
+  quantity?: number;
+  barcode?: string | null;
+  imageUrls?: string[] | null;
+  // colorValue and sizeValue are usually not updatable on an existing variant, but for completeness:
+  colorValue?: string | null;
+  sizeValue?: string | null;
+}
+
 
 // Helper function for API calls
 async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const defaultOptions: RequestInit = {
     headers: {
       'Content-Type': 'application/json',
-      // 'Authorization': `Bearer ${getToken()}`, 
+      // 'Authorization': `Bearer ${getToken()}`,
     },
   };
   const mergedOptions = { ...defaultOptions, ...options, headers: {...defaultOptions.headers, ...options?.headers} };
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, mergedOptions);
-  
+
   if (!response.ok) {
     let errorMessage = `API request failed: ${response.status} ${response.statusText}`;
     try {
@@ -163,16 +214,14 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
     }
     throw new Error(errorMessage);
   }
-  if (response.status === 204) { // No Content
-    return undefined as T; // Return undefined for 204, let caller handle it
+  if (response.status === 204) {
+    return undefined as T;
   }
   return response.json() as Promise<T>;
 }
 
 // Product endpoints
 export async function fetchProducts(): Promise<Product[]> {
-  // Ensure that even if fetchAPI returns undefined (e.g., from a 204 response) or non-array,
-  // this function always resolves to an array.
   const productsData = await fetchAPI<Product[] | undefined>('/products');
   return Array.isArray(productsData) ? productsData : [];
 }
@@ -188,9 +237,9 @@ export async function createProduct(productData: CreateProductRequest): Promise<
   });
 }
 
-export async function updateProduct(id: number, productData: Partial<CreateProductRequest>): Promise<Product> {
+export async function updateProduct(id: number, productData: UpdateProductRequest): Promise<Product> {
   return fetchAPI<Product>(`/products/${id}`, {
-    method: 'PUT', // Or PATCH if API supports partial updates
+    method: 'PATCH',
     body: JSON.stringify(productData),
   });
 }
@@ -201,7 +250,29 @@ export async function deleteProduct(id: number): Promise<void> {
   });
 }
 
-// V2 Meta endpoints
+// Product Variant Endpoints
+export async function addProductVariant(productId: number, variantData: AddVariantRequest): Promise<ProductVariant> {
+  return fetchAPI<ProductVariant>(`/products/${productId}/variants`, {
+    method: 'POST',
+    body: JSON.stringify(variantData),
+  });
+}
+
+export async function updateProductVariant(productId: number, variantId: number, variantData: UpdateVariantRequest): Promise<ProductVariant> {
+  return fetchAPI<ProductVariant>(`/products/${productId}/variants/${variantId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(variantData),
+  });
+}
+
+export async function deleteProductVariant(productId: number, variantId: number): Promise<void> {
+  return fetchAPI<void>(`/products/${productId}/variants/${variantId}`, {
+    method: 'DELETE',
+  });
+}
+
+
+// V2 Meta endpoints (Only GET for now as per user instruction to skip meta API usage for CRUD forms)
 export async function fetchProductBrands(): Promise<Brand[]> {
   const data = await fetchAPI<Brand[] | undefined>('/meta/product/brands');
   return Array.isArray(data) ? data : [];
@@ -220,7 +291,7 @@ export async function fetchProductCategoriesTree(): Promise<ProductCategoryNode[
   const data = await fetchAPI<ProductCategoryNode[] | undefined>('/meta/product/categories/tree');
   return Array.isArray(data) ? data : [];
 }
-export async function fetchProductCategoriesFlat(): Promise<Category[]> { 
+export async function fetchProductCategoriesFlat(): Promise<Category[]> {
   const data = await fetchAPI<Category[] | undefined>('/meta/product/categories');
   return Array.isArray(data) ? data : [];
 }
@@ -233,7 +304,6 @@ export async function updateProductCategory(id: number, data: Partial<Omit<Categ
 export async function deleteProductCategory(id: number): Promise<void> {
   return fetchAPI<void>(`/meta/product/categories/${id}`, { method: 'DELETE' });
 }
-
 
 export async function fetchProductUnits(): Promise<ProductUnit[]> {
   const data = await fetchAPI<ProductUnit[] | undefined>('/meta/product/units');
@@ -248,7 +318,6 @@ export async function updateProductUnit(id: number, data: Partial<Omit<ProductUn
 export async function deleteProductUnit(id: number): Promise<void> {
   return fetchAPI<void>(`/meta/product/units/${id}`, { method: 'DELETE' });
 }
-
 
 export async function fetchOrderStatuses(): Promise<OrderStatus[]> {
   const data = await fetchAPI<OrderStatus[] | undefined>('/meta/order/statuses');
@@ -284,73 +353,60 @@ export async function deleteNotificationTemplate(id: number): Promise<void> {
   return fetchAPI<void>(`/meta/notification/templates/${id}`, { method: 'DELETE' });
 }
 
-
-// Legacy Meta endpoints (Sizes, Colors, Suppliers - kept if not in V2 meta list)
-export async function fetchSuppliers(): Promise<Supplier[]> {
-  const data = await fetchAPI<Supplier[] | undefined>('/meta/suppliers'); // Assuming this is still a v1/v2 path or needs update
+// Meta endpoints that were not in the V2 list, keeping generic handlers for Settings page
+export async function fetchSuppliers(): Promise<Supplier[]> { // This was used by product form, but now product form hardcodes. Settings page might still use it.
+  const data = await fetchAPI<Supplier[] | undefined>('/meta/suppliers');
   return Array.isArray(data) ? data : [];
 }
 
-export async function fetchProductStatuses(): Promise<string[]> {
-  // Assuming this endpoint returns an array of objects like { name: "ACTIVE" }
-  // If it returns an array of strings directly, this map is not needed.
-  // The API docs (https://orca-app-k6zka.ondigitalocean.app/api-docs -> /meta/product-statuses)
-  // suggest it returns ListOfStringResponse, which implies string[].
-  // However, if it's like other meta items (object with name), the map would be needed.
-  // For now, assuming it returns string[] directly as per ListOfStringResponse.
+export async function fetchProductStatuses(): Promise<string[]> { // Used by product form (hardcoded now) and product list page
   const response = await fetchAPI<string[] | undefined>('/meta/product-statuses');
   return Array.isArray(response) ? response : [];
 }
 
-
-export async function fetchSizes(): Promise<MetaItem[]> {
+export async function fetchSizes(): Promise<MetaItem[]> { // Used by Settings page
   const data = await fetchAPI<MetaItem[] | undefined>('/meta/sizes');
   return Array.isArray(data) ? data : [];
 }
 
-export async function fetchColors(): Promise<MetaColorItem[]> {
+export async function fetchColors(): Promise<MetaColorItem[]> { // Used by Settings page
   const data = await fetchAPI<MetaColorItem[] | undefined>('/meta/colors');
   return Array.isArray(data) ? data : [];
 }
 
-// Generic Meta CRUD (still used by Sizes, Colors, Suppliers on settings page)
-type GenericMetaType = 'sizes' | 'colors' | 'suppliers'; // Limited to those not having specific CRUD above
+type GenericMetaType = 'sizes' | 'colors' | 'suppliers';
 
 export async function createGenericMetaItem(metaType: GenericMetaType, data: Partial<MetaItem & MetaColorItem>): Promise<MetaItem | MetaColorItem> {
-  return fetchAPI<MetaItem | MetaColorItem>(`/meta/${metaType}`, { // Assuming generic path structure
+  return fetchAPI<MetaItem | MetaColorItem>(`/meta/${metaType}`, {
     method: 'POST',
     body: JSON.stringify(data),
   });
 }
 
 export async function updateGenericMetaItem(metaType: GenericMetaType, id: number, data: Partial<MetaItem & MetaColorItem>): Promise<MetaItem | MetaColorItem> {
-  return fetchAPI<MetaItem | MetaColorItem>(`/meta/${metaType}/${id}`, { // Assuming generic path structure
-    method: 'PATCH', // Using PATCH for partial updates
+  return fetchAPI<MetaItem | MetaColorItem>(`/meta/${metaType}/${id}`, {
+    method: 'PATCH',
     body: JSON.stringify(data),
   });
 }
 
 export async function deleteGenericMetaItem(metaType: GenericMetaType, id: number): Promise<void> {
-  return fetchAPI<void>(`/meta/${metaType}/${id}`, { // Assuming generic path structure
+  return fetchAPI<void>(`/meta/${metaType}/${id}`, {
     method: 'DELETE',
   });
 }
 
-
 // Placeholder for Order related API calls
 export interface Order {
   id: string;
-  customer: string; 
+  customer: string;
   date: string;
-  total: string; 
+  total: string;
   status: string;
   items: number;
 }
 export async function fetchOrders(): Promise<Order[]> {
   console.warn("fetchOrders is using mock data. Implement API call.");
-  // Example of ensuring array return for future implementation:
-  // const data = await fetchAPI<Order[] | undefined>('/orders');
-  // return Array.isArray(data) ? data : [];
   return Promise.resolve([
     { id: "ORD001", customer: "Alice Wonderland", date: "2024-07-20", total: "$125.50", status: "Processing", items: 3 },
   ]);
@@ -368,29 +424,121 @@ export interface Procurement {
 }
 export async function fetchProcurements(): Promise<Procurement[]> {
   console.warn("fetchProcurements is using mock data. Implement API call.");
-  // const data = await fetchAPI<Procurement[] | undefined>('/procurements');
-  // return Array.isArray(data) ? data : [];
   return Promise.resolve([
     { id: "PROC001", vendor: "Tech Supplies Inc.", date: "2024-07-15", totalAmount: "$1,500.00", status: "Paid", items: 10, invoice: "INV-TS001.pdf" },
   ]);
 }
 
-// Placeholder for User/Staff related API calls
+// User Management APIs
 export interface User {
-  id: string;
-  name: string;
+  id: number;
+  firstName: string;
+  lastName: string;
   email: string;
-  role: string;
-  status: string;
-  avatar?: string;
-}
-export async function fetchUsers(): Promise<User[]> {
-  console.warn("fetchUsers is using mock data. Implement API call.");
-  // const data = await fetchAPI<User[] | undefined>('/users');
-  // return Array.isArray(data) ? data : [];
-  return Promise.resolve([
-    { id: "USR001", name: "John Admin", email: "john.admin@example.com", role: "Admin", status: "Active", avatar: "https://placehold.co/40x40.png?text=JA" },
-  ]);
+  phone?: string | null;
+  role?: string; // Or UserRole object
+  status?: string; // e.g. ACTIVE, INACTIVE, PENDING
+  createdAt: string;
+  updatedAt: string;
+  // Potentially other fields like avatarUrl, lastLogin
 }
 
-    
+export interface CurrentUser extends User {
+  // any specific fields for /users/me
+}
+
+export interface UserUpdateRequest {
+  firstName?: string;
+  lastName?: string;
+  email?: string; // Usually not updatable or requires verification
+  phone?: string | null;
+  // password?: string; // Handle password changes separately
+  role?: string;
+  status?: string;
+}
+
+export interface BusinessProfile {
+  id: number;
+  name: string;
+  registrationNumber?: string | null;
+  vatNumber?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  userId: number; // Owner
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BusinessProfileCreateRequest {
+  name: string;
+  registrationNumber?: string | null;
+  vatNumber?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+}
+
+export interface BusinessProfileUpdateRequest extends Partial<BusinessProfileCreateRequest> {}
+
+
+export async function fetchCurrentUser(): Promise<CurrentUser> {
+  return fetchAPI<CurrentUser>('/users/me');
+}
+
+export async function updateCurrentUser(data: UserUpdateRequest): Promise<CurrentUser> {
+  return fetchAPI<CurrentUser>('/users/me', {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchUsers(queryParams?: Record<string, string>): Promise<User[]> {
+  const queryString = queryParams ? `?${new URLSearchParams(queryParams).toString()}` : '';
+  const usersData = await fetchAPI<User[] | undefined>(`/users${queryString}`);
+  return Array.isArray(usersData) ? usersData : [];
+}
+
+export async function updateUser(userId: number, data: UserUpdateRequest): Promise<User> {
+  return fetchAPI<User>(`/users/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchBusinessProfiles(): Promise<BusinessProfile[]> {
+  const profilesData = await fetchAPI<BusinessProfile[] | undefined>('/business-profiles');
+  return Array.isArray(profilesData) ? profilesData : [];
+}
+
+export async function createBusinessProfile(data: BusinessProfileCreateRequest): Promise<BusinessProfile> {
+  return fetchAPI<BusinessProfile>('/business-profiles', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchBusinessProfileById(id: number): Promise<BusinessProfile> {
+    return fetchAPI<BusinessProfile>(`/business-profiles/${id}`);
+}
+
+export async function updateBusinessProfile(profileId: number, data: BusinessProfileUpdateRequest): Promise<BusinessProfile> {
+  return fetchAPI<BusinessProfile>(`/business-profiles/${profileId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteBusinessProfile(profileId: number): Promise<void> {
+    return fetchAPI<void>(`/business-profiles/${profileId}`, { method: 'DELETE' });
+}
