@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { fetchBusinessProfileById, deleteBusinessProfile, fetchUserById, type BusinessProfileDto, type AddressDto, type UserDto } from "@/lib/apiClient";
-import { ChevronLeft, Edit, Trash2, Building2, MapPin, Users, CalendarDays, AlertCircle } from "lucide-react";
+import { ChevronLeft, Edit, Trash2, Building2, MapPin, Users, CalendarDays, AlertCircle, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -67,6 +67,7 @@ export default function BusinessProfileDetailPage() {
   const [profile, setProfile] = React.useState<BusinessProfileDto | null>(null);
   const [linkedUsers, setLinkedUsers] = React.useState<UserDto[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [isLoadingUsers, setIsLoadingUsers] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -83,8 +84,17 @@ export default function BusinessProfileDetailPage() {
         const fetchedProfile = await fetchBusinessProfileById(profileId);
         setProfile(fetchedProfile);
         if (fetchedProfile.userIds && fetchedProfile.userIds.length > 0) {
-          const usersData = await Promise.all(fetchedProfile.userIds.map(id => fetchUserById(id).catch(() => null)));
+          setIsLoadingUsers(true);
+          const usersData = await Promise.all(
+            fetchedProfile.userIds.map(id => 
+              fetchUserById(id).catch(() => {
+                console.warn(`Failed to fetch user with ID: ${id}`); // Log warning for individual user fetch failure
+                return null;
+              })
+            )
+          );
           setLinkedUsers(usersData.filter(u => u !== null) as UserDto[]);
+          setIsLoadingUsers(false);
         } else {
           setLinkedUsers([]);
         }
@@ -108,6 +118,7 @@ export default function BusinessProfileDetailPage() {
       await deleteBusinessProfile(profile.id);
       toast({ title: "Success", description: "Business profile deleted successfully." });
       router.push("/business-profiles");
+      router.refresh(); // Ensure list updates
     } catch (err: any) {
       toast({
         title: "Error Deleting Profile",
@@ -119,7 +130,7 @@ export default function BusinessProfileDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 pb-8">
+      <div className="space-y-6 pb-8 animate-pulse">
         <div className="flex items-center justify-between">
            <div className="flex items-center gap-2 md:gap-4">
             <Skeleton className="h-9 w-9" />
@@ -127,9 +138,29 @@ export default function BusinessProfileDetailPage() {
           </div>
           <div className="flex gap-2"><Skeleton className="h-9 w-20" /><Skeleton className="h-9 w-20" /></div>
         </div>
-        <Card className="shadow-md"><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader><CardContent className="space-y-4"><Skeleton className="h-20 w-full" /><Skeleton className="h-20 w-full" /></CardContent></Card>
-        <Card className="shadow-md"><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader><CardContent className="space-y-4"><Skeleton className="h-24 w-full" /></CardContent></Card>
-        <Card className="shadow-md"><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader><CardContent className="space-y-4"><Skeleton className="h-16 w-full" /></CardContent></Card>
+        <Card className="shadow-md"><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" />
+          </CardContent>
+        </Card>
+        <Card className="shadow-md"><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent className="space-y-2">
+            <Skeleton className="h-5 w-1/2" />
+            <Skeleton className="h-5 w-2/3" />
+          </CardContent>
+        </Card>
+        <Card className="shadow-md"><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent className="space-y-4">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </CardContent>
+        </Card>
+         <Card className="shadow-md"><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" />
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -197,27 +228,30 @@ export default function BusinessProfileDetailPage() {
           <DetailItem label="Company Name" value={profile.name} />
           <DetailItem label="GSTIN" value={profile.gstin} />
           <DetailItem label="Payment Terms" value={profile.paymentTerms} />
-          <div className="flex items-start space-x-2">
-            <div>
-                <p className="text-sm text-muted-foreground">Status</p>
-                <Badge variant={(profile.status || "").toUpperCase() === "ACTIVE" ? "default" : "outline"}
-                       className={(profile.status || "").toUpperCase() === "ACTIVE" ? "bg-green-500/20 text-green-700 border-green-500/30" : "bg-gray-500/20 text-gray-700 border-gray-500/30"}>
-                    {profile.status || "N/A"}
-                </Badge>
+          {profile.status && (
+            <div className="flex items-start space-x-2">
+              <div>
+                  <p className="text-sm text-muted-foreground">Status</p>
+                  <Badge variant={(profile.status).toUpperCase() === "ACTIVE" ? "default" : "outline"}
+                         className={(profile.status).toUpperCase() === "ACTIVE" ? "bg-green-500/20 text-green-700 border-green-500/30" : "bg-gray-500/20 text-gray-700 border-gray-500/30"}>
+                      {profile.status}
+                  </Badge>
+              </div>
             </div>
-          </div>
+          )}
+          {!profile.status && <DetailItem label="Status" value="N/A" />}
         </CardContent>
       </Card>
 
       <Card className="shadow-md">
         <CardHeader><CardTitle className="text-lg">Linked Users</CardTitle></CardHeader>
         <CardContent>
-          {isLoading && linkedUsers.length === 0 && <p className="text-muted-foreground">Loading users...</p>}
-          {!isLoading && linkedUsers.length === 0 && <p className="text-muted-foreground">No users linked to this profile.</p>}
-          {linkedUsers.length > 0 && (
+          {isLoadingUsers && <div className="flex items-center text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading users...</div>}
+          {!isLoadingUsers && linkedUsers.length === 0 && <p className="text-muted-foreground">No users linked to this profile.</p>}
+          {!isLoadingUsers && linkedUsers.length > 0 && (
             <ul className="space-y-1 list-disc list-inside">
               {linkedUsers.map(user => (
-                <li key={user.id} className="text-sm">{user.name} (ID: {user.id})</li>
+                <li key={user.id} className="text-sm">{user.name} (ID: {user.id}, Email: {user.email || 'N/A'}, Phone: {user.phone || 'N/A'})</li>
               ))}
             </ul>
           )}

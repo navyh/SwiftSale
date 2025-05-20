@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   fetchBusinessProfileById, 
   updateBusinessProfile, 
-  fetchAllUsers, // To populate user selection
+  fetchAllUsers,
   type BusinessProfileDto, 
   type UpdateBusinessProfileRequest, 
   type AddressDto, 
@@ -96,20 +96,26 @@ export default function EditBusinessProfilePage() {
       setIsLoading(true);
       setIsLoadingUsers(true);
       try {
+        const fetchedProfilePromise = fetchBusinessProfileById(profileId);
+        const fetchedUsersPromise = fetchAllUsers();
+        
         const [fetchedProfile, fetchedUsers] = await Promise.all([
-          fetchBusinessProfileById(profileId),
-          fetchAllUsers()
+          fetchedProfilePromise,
+          fetchedUsersPromise
         ]);
         
         setProfile(fetchedProfile);
         setAllUsers(fetchedUsers);
 
+        const currentStatus = fetchedProfile.status?.toUpperCase();
+        const validStatus = PROFILE_STATUSES.includes(currentStatus as any) ? currentStatus as "ACTIVE" | "INACTIVE" : "ACTIVE";
+
         form.reset({
           name: fetchedProfile.name,
           gstin: fetchedProfile.gstin,
           paymentTerms: fetchedProfile.paymentTerms ?? "",
-          status: fetchedProfile.status as "ACTIVE" | "INACTIVE",
-          addresses: fetchedProfile.addresses?.map(addr => ({ ...addr })) ?? [],
+          status: validStatus,
+          addresses: fetchedProfile.addresses?.map(addr => ({ ...addr, type: addr.type as ("SHIPPING" | "BILLING" | undefined) })) ?? [],
           userIds: fetchedProfile.userIds ?? [],
         });
       } catch (error: any) {
@@ -118,7 +124,8 @@ export default function EditBusinessProfilePage() {
           description: error.message || "Could not load profile or user data.",
           variant: "destructive",
         });
-        router.push("/business-profiles");
+        // Consider not redirecting immediately, allow user to retry or see the error
+        // router.push("/business-profiles"); 
       } finally {
         setIsLoading(false);
         setIsLoadingUsers(false);
@@ -149,6 +156,7 @@ export default function EditBusinessProfilePage() {
         description: "Business profile updated successfully.",
       });
       router.push("/business-profiles");
+      router.refresh(); // To ensure list page reflects changes
     } catch (error: any) {
       toast({
         title: "Error Updating Profile",
@@ -162,18 +170,37 @@ export default function EditBusinessProfilePage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 pb-8">
+      <div className="space-y-6 pb-8 animate-pulse">
         <div className="flex items-center gap-2 md:gap-4">
-          <Skeleton className="h-9 w-9" /><Skeleton className="h-8 w-64 mb-1" />
+          <Skeleton className="h-9 w-9" /><Skeleton className="h-8 w-3/5 mb-1" />
         </div>
-        <Skeleton className="h-48 w-full" /><Skeleton className="h-64 w-full" />
-        <div className="flex justify-end gap-2"><Skeleton className="h-10 w-24" /><Skeleton className="h-10 w-24" /></div>
+        <Card className="shadow-md">
+          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
+            <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
+          </CardContent>
+        </Card>
+        <Card className="shadow-md">
+          <CardHeader><Skeleton className="h-6 w-1/4" /></CardHeader>
+          <CardContent><Skeleton className="h-10 w-full" /></CardContent>
+        </Card>
+        <Card className="shadow-md">
+          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent className="space-y-4">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-10 w-32" />
+          </CardContent>
+        </Card>
+        <CardFooter className="flex justify-end gap-2 pt-6">
+          <Skeleton className="h-10 w-24" /><Skeleton className="h-10 w-32" />
+        </CardFooter>
       </div>
     );
   }
 
   if (!profile) {
-    return <p className="text-center text-muted-foreground">Profile not found.</p>;
+    return <p className="text-center text-muted-foreground py-10">Profile not found or failed to load.</p>;
   }
 
   return (
@@ -329,7 +356,7 @@ export default function EditBusinessProfilePage() {
           <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 pt-6">
             <Button type="button" variant="outline" onClick={() => router.back()} className="w-full sm:w-auto">Cancel</Button>
             <Button type="submit" disabled={isSubmitting || isLoading} className="w-full sm:w-auto">
-              {isSubmitting ? "Saving..." : <><Save className="mr-2 h-4 w-4" /> Save Changes</>}
+              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</> : <><Save className="mr-2 h-4 w-4" /> Save Changes</>}
             </Button>
           </CardFooter>
         </form>

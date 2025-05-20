@@ -120,10 +120,8 @@ export async function fetchUsers(params?: { type?: string; search?: string; page
   const data = await fetchAPI<Page<UserDto> | undefined>(`/users${queryString ? `?${queryString}` : ''}`);
   return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
-// Fetch all users without pagination - for dropdowns etc.
+
 export async function fetchAllUsers(): Promise<UserDto[]> {
-  // Assuming the API supports fetching all users by omitting page/size or using a large size.
-  // Adjust if API has a specific "all" endpoint or requires a different approach.
   const data = await fetchAPI<Page<UserDto> | undefined>(`/users?size=1000`); // Fetch up to 1000 users
   return data?.content ?? [];
 }
@@ -179,7 +177,7 @@ export interface CreateBusinessProfileRequest {
 export interface UpdateBusinessProfileRequest {
   name?: string;
   gstin?: string;
-  status?: 'ACTIVE' | 'INACTIVE' | string;
+  status?: 'ACTIVE' | 'INACTIVE';
   addresses?: (AddressCreateDto | AddressDto)[] | null;
   paymentTerms?: string | null;
   userIds?: number[] | null;
@@ -226,7 +224,7 @@ export async function deleteBusinessProfile(profileId: number): Promise<void> {
 export interface StaffDto {
   id: number;
   userId: number;
-  user?: UserDto;
+  user?: UserDto; // Assuming UserDto can represent the user details
   roles: string[];
   permissions?: string[] | null;
   status: 'ACTIVE' | 'INACTIVE' | string;
@@ -265,6 +263,7 @@ export async function fetchStaffById(staffId: number): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/staff/${staffId}`);
 }
 
+// To create staff, API is POST /users/{userId}/staff
 export async function createStaffMember(userIdForStaff: number, staffData: Omit<CreateStaffRequest, 'userId'>): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/users/${userIdForStaff}/staff`, {
     method: 'POST',
@@ -302,8 +301,8 @@ export interface Category extends MetaItem {
 }
 export interface ProductCategoryNode extends Category {
   children?: ProductCategoryNode[] | null;
-  displayName?: string; // For UI purposes
-  depth?: number; // For UI purposes
+  displayName?: string; 
+  depth?: number; 
 }
 
 export interface ProductUnit extends MetaItem {}
@@ -328,28 +327,25 @@ export interface ProductVariant {
 export interface Product {
   id: number;
   name:string;
+  brand: Brand; // Changed from brandId
+  category: Category; // Changed from categoryId
+  subCategory?: string | null;
+  hsnCode?: string | null;
+  gstTaxRate?: number | null;
   description?: string | null;
-  sku?: string | null;
-  barcode?: string | null;
-  quantity?: number;
-  unitPrice?: number;
-  costPrice?: number | null;
-
-  category?: Category | null;
-  categoryId?: number | null;
-  brand?: Brand | null;
-  brandId?: number | null;
+  status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
+  
+  sku?: string | null; // Base SKU if no variants or for common reference
+  barcode?: string | null; // Base Barcode
+  quantity?: number; // Total quantity, might be sum of variants or for non-variant products
+  unitPrice?: number; // Base unit price
+  costPrice?: number | null; // Base cost price
 
   unitId?: number | null;
   unit?: ProductUnit | null;
 
-  hsnCode?: string | null;
-  gstTaxRate?: number | null;
-  subCategory?: string | null;
-
   imageUrls?: string[] | null;
   tags?: string[] | null;
-  status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
   weight?: number | null;
   dimensions?: string | null;
   isFeatured?: boolean | null;
@@ -362,17 +358,18 @@ export interface Product {
 
 export interface CreateProductRequest {
   name: string;
-  brand: string;
-  hsnCode?: string | null;
-  description?: string | null;
-  gstTaxRate?: number | null;
-  category: string;
+  brand: string; // Expects brand name
+  category: string; // Expects category name
   subCategory?: string | null;
-  colorVariant?: string[] | null;
-  sizeVariant?: string[] | null;
+  hsnCode?: string | null;
+  gstTaxRate?: number | null;
+  description?: string | null;
+  colorVariant?: string[] | null; // For generating variants
+  sizeVariant?: string[] | null;  // For generating variants
   tags?: string[] | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
 
+  // Optional base product details - API might create a default variant if these are provided and color/size are not
   sku?: string | null;
   barcode?: string | null;
   quantity?: number;
@@ -386,14 +383,15 @@ export interface CreateProductRequest {
   metaDescription?: string | null;
 }
 
+
 export interface UpdateProductRequest {
   name?: string;
-  brand?: string;
-  hsnCode?: string | null;
-  description?: string | null;
-  gstTaxRate?: number | null;
-  category?: string;
+  brand?: string; 
+  category?: string; 
   subCategory?: string | null;
+  hsnCode?: string | null;
+  gstTaxRate?: number | null;
+  description?: string | null;
   colorVariant?: string[] | null; // For generating new variants during update
   sizeVariant?: string[] | null;   // For generating new variants during update
   tags?: string[] | null;
@@ -461,7 +459,7 @@ export async function createProduct(productData: CreateProductRequest): Promise<
 
 export async function updateProduct(id: number, productData: UpdateProductRequest): Promise<Product> {
   return fetchAPI<Product>(`/products/${id}`, {
-    method: 'PATCH',
+    method: 'PATCH', // Usually PATCH for partial updates
     body: JSON.stringify(productData),
   });
 }
@@ -559,7 +557,7 @@ export async function fetchInventoryAdjustmentReasons(): Promise<InventoryAdjust
 
 export type UserRoleMeta = string;
 export async function fetchUserRolesMeta(): Promise<UserRoleMeta[]> {
-  const data = await fetchAPI<string[] | undefined>('/meta/user/roles');
+  const data = await fetchAPI<UserRoleMeta[] | undefined>('/meta/user/roles');
   return Array.isArray(data) ? data : [];
 }
 
@@ -568,7 +566,7 @@ export interface NotificationTemplate {
   name: string;
   subject: string;
   body: string;
-  type: string;
+  type: string; // e.g., EMAIL, SMS
   createdAt?: string;
   updatedAt?: string;
 }
@@ -586,15 +584,17 @@ export async function deleteNotificationTemplate(id: number): Promise<void> {
   return fetchAPI<void>(`/meta/notification/templates/${id}`, { method: 'DELETE' }, false);
 }
 
+
 // === OTHER API FUNCTIONS ===
 export interface CurrentUserDto extends UserDto {
+  // any additional fields specific to current user context
 }
 export async function fetchCurrentUser(): Promise<CurrentUserDto> {
   return fetchAPI<CurrentUserDto>('/users/me');
 }
 export async function updateCurrentUser(data: UpdateUserRequest): Promise<CurrentUserDto> {
   return fetchAPI<CurrentUserDto>('/users/me', {
-    method: 'PATCH',
+    method: 'PATCH', // Assuming PATCH for current user update
     body: JSON.stringify(data),
   });
 }
