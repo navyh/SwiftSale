@@ -11,15 +11,31 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
-import { PlusCircle, Edit3, Trash2, Palette, Tag, Ruler, Scale, Settings as SettingsIcon } from "lucide-react";
-import { fetchBrands, fetchCategories, fetchSizes, fetchUnits, fetchColors, createMetaItem, updateMetaItem, deleteMetaItem, MetaItem, MetaColorItem } from "@/lib/apiClient";
+import { PlusCircle, Edit3, Trash2, Palette, Tag, Ruler, Scale, Settings as SettingsIcon, FolderTree, BellRing } from "lucide-react";
+import { 
+  fetchProductBrands, createProductBrand, updateProductBrand, deleteProductBrand, type Brand,
+  fetchProductCategoriesTree, createProductCategory, updateProductCategory, deleteProductCategory, type Category, type ProductCategoryNode,
+  fetchProductUnits, createProductUnit, updateProductUnit, deleteProductUnit, type ProductUnit,
+  fetchSizes, fetchColors, 
+  createGenericMetaItem, updateGenericMetaItem, deleteGenericMetaItem, 
+  type MetaItem, type MetaColorItem, fetchSuppliers, type Supplier,
+  fetchNotificationTemplates, createNotificationTemplate, updateNotificationTemplate, deleteNotificationTemplate, type NotificationTemplate
+} from "@/lib/apiClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-type SettingCategoryKey = 'brands' | 'categories' | 'sizes' | 'units' | 'colors';
-type SettingItemUnion = MetaItem | MetaColorItem;
+type SettingCategoryKey = 
+  | 'productBrands' 
+  | 'productCategories' 
+  | 'productUnits' 
+  | 'sizes' 
+  | 'colors' 
+  | 'suppliers'
+  | 'notificationTemplates';
+
+type SettingItemUnion = Brand | Category | ProductUnit | MetaItem | MetaColorItem | Supplier | NotificationTemplate | ProductCategoryNode;
 
 interface EditDialogState {
   isOpen: boolean;
@@ -29,19 +45,36 @@ interface EditDialogState {
 }
 
 const categoryIcons: Record<SettingCategoryKey, React.ElementType> = {
-  brands: Tag,
-  categories: Tag,
+  productBrands: Tag,
+  productCategories: FolderTree,
+  productUnits: Scale,
   sizes: Ruler,
-  units: Scale,
   colors: Palette,
+  suppliers: UsersRound, // Placeholder icon for suppliers
+  notificationTemplates: BellRing,
 };
 
 const categoryDisplayNames: Record<SettingCategoryKey, string> = {
-  brands: "Brand",
-  categories: "Category",
+  productBrands: "Brand",
+  productCategories: "Category",
+  productUnits: "Unit",
   sizes: "Size",
-  units: "Unit",
   colors: "Color",
+  suppliers: "Supplier",
+  notificationTemplates: "Notification Template",
+};
+
+// Helper to flatten category tree for table display
+const flattenCategoriesForTable = (nodes: ProductCategoryNode[], parentName: string | null = null): (ProductCategoryNode & { displayName: string })[] => {
+  let flatList: (ProductCategoryNode & { displayName: string })[] = [];
+  nodes.forEach(node => {
+    const displayName = parentName ? `${parentName} > ${node.name}` : node.name;
+    flatList.push({ ...node, displayName });
+    if (node.children && node.children.length > 0) {
+      flatList = flatList.concat(flattenCategoriesForTable(node.children, displayName));
+    }
+  });
+  return flatList;
 };
 
 
@@ -49,7 +82,7 @@ const SettingSection = ({
   title, 
   categoryKey,
   onEdit,
-  forceRefreshKey, // Added to help trigger re-fetch
+  forceRefreshKey,
 }: { 
   title: string; 
   categoryKey: SettingCategoryKey;
@@ -68,11 +101,16 @@ const SettingSection = ({
     try {
       let data;
       switch (categoryKey) {
-        case 'brands': data = await fetchBrands(); break;
-        case 'categories': data = await fetchCategories(); break;
+        case 'productBrands': data = await fetchProductBrands(); break;
+        case 'productCategories': 
+          const treeData = await fetchProductCategoriesTree(); 
+          data = flattenCategoriesForTable(treeData); // Flatten for table display
+          break;
+        case 'productUnits': data = await fetchProductUnits(); break;
         case 'sizes': data = await fetchSizes(); break;
-        case 'units': data = await fetchUnits(); break;
         case 'colors': data = await fetchColors(); break;
+        case 'suppliers': data = await fetchSuppliers(); break;
+        case 'notificationTemplates': data = await fetchNotificationTemplates(); break;
         default: throw new Error("Invalid category key");
       }
       setItems(data as SettingItemUnion[]);
@@ -86,16 +124,52 @@ const SettingSection = ({
 
   React.useEffect(() => {
     fetchData();
-  }, [fetchData, forceRefreshKey]); // Re-fetch when forceRefreshKey changes
+  }, [fetchData, forceRefreshKey]);
 
   const handleDelete = async (itemId: number) => {
     try {
-      await deleteMetaItem(categoryKey, itemId);
+      switch (categoryKey) {
+        case 'productBrands': await deleteProductBrand(itemId); break;
+        case 'productCategories': await deleteProductCategory(itemId); break;
+        case 'productUnits': await deleteProductUnit(itemId); break;
+        case 'sizes': await deleteGenericMetaItem('sizes', itemId); break;
+        case 'colors': await deleteGenericMetaItem('colors', itemId); break;
+        case 'suppliers': await deleteGenericMetaItem('suppliers', itemId); break;
+        case 'notificationTemplates': await deleteNotificationTemplate(itemId); break;
+        default: throw new Error("Invalid category key for delete");
+      }
       toast({title: "Success", description: `${categoryDisplayNames[categoryKey]} deleted.`});
-      setItems(prev => prev.filter(item => item.id !== itemId)); // Optimistic update
-    } catch (err: any)      {
+      setItems(prev => prev.filter(item => item.id !== itemId));
+    } catch (err: any) {
       toast({title: "Error", description: err.message || `Failed to delete ${categoryDisplayNames[categoryKey]}.`, variant: "destructive"});
     }
+  };
+
+  const renderAdditionalHeaders = () => {
+    if (categoryKey === 'colors') return <TableHead>Preview</TableHead>;
+    if (categoryKey === 'notificationTemplates') return <TableHead className="hidden md:table-cell">Type</TableHead>;
+    return null;
+  };
+
+  const renderAdditionalCells = (item: SettingItemUnion) => {
+    if (categoryKey === 'colors' && (item as MetaColorItem).hexCode) {
+      return (
+        <TableCell>
+          <div style={{ backgroundColor: (item as MetaColorItem).hexCode! }} className="h-5 w-5 rounded-full border"></div>
+        </TableCell>
+      );
+    }
+    if (categoryKey === 'notificationTemplates' && (item as NotificationTemplate).type) {
+       return <TableCell className="hidden md:table-cell">{(item as NotificationTemplate).type}</TableCell>;
+    }
+    return null;
+  };
+
+  const getDescriptionOrEquivalent = (item: SettingItemUnion) => {
+    if (categoryKey === 'colors') return (item as MetaColorItem).hexCode || 'N/A';
+    if (categoryKey === 'notificationTemplates') return (item as NotificationTemplate).subject || 'N/A'; // Show subject instead of description
+    if (categoryKey === 'productCategories') return (item as ProductCategoryNode).description || 'N/A';
+    return (item as MetaItem).description || 'N/A';
   };
 
 
@@ -111,7 +185,7 @@ const SettingSection = ({
             <PlusCircle className="mr-2 h-4 w-4" /> Add New {categoryDisplayNames[categoryKey]}
           </Button>
         </div>
-        <CardDescription>Manage all {title.toLowerCase()} for your products.</CardDescription>
+        <CardDescription>Manage all {title.toLowerCase()} for your products or system.</CardDescription>
       </CardHeader>
       <CardContent>
         {error && <p className="text-destructive text-center py-4">{error}</p>}
@@ -124,10 +198,9 @@ const SettingSection = ({
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                {categoryKey === 'colors' && <TableHead>Preview</TableHead>}
-                {/* Description or Hex Code based on type */}
+                {renderAdditionalHeaders()}
                 <TableHead className="hidden md:table-cell">
-                    {categoryKey === 'colors' ? 'Hex Code' : 'Description'}
+                    {categoryKey === 'colors' ? 'Hex Code' : (categoryKey === 'notificationTemplates' ? 'Subject' : 'Description')}
                 </TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -135,16 +208,12 @@ const SettingSection = ({
             <TableBody>
               {items.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.name}</TableCell>
-                  {categoryKey === 'colors' && (item as MetaColorItem).hexCode && (
-                    <TableCell>
-                      <div style={{ backgroundColor: (item as MetaColorItem).hexCode! }} className="h-5 w-5 rounded-full border"></div>
-                    </TableCell>
-                  )}
+                  <TableCell className="font-medium">
+                    {categoryKey === 'productCategories' ? (item as ProductCategoryNode & {displayName: string}).displayName : item.name}
+                  </TableCell>
+                  {renderAdditionalCells(item)}
                   <TableCell className="hidden md:table-cell truncate max-w-xs">
-                    {categoryKey === 'colors' 
-                      ? ((item as MetaColorItem).hexCode || 'N/A')
-                      : (item.description || 'N/A')}
+                    {getDescriptionOrEquivalent(item)}
                   </TableCell>
                   
                   <TableCell className="text-right space-x-1">
@@ -188,21 +257,43 @@ const SettingSection = ({
 export default function SettingsPage() {
   const { toast } = useToast();
   const [dialogState, setDialogState] = React.useState<EditDialogState>({ isOpen: false, item: null, categoryKey: null, mode: 'add' });
-  const [forceRefreshKey, setForceRefreshKey] = React.useState(0); // Key to trigger re-fetch in sections
+  const [forceRefreshKey, setForceRefreshKey] = React.useState(0);
   
-  // Form state for the dialog
   const [itemName, setItemName] = React.useState('');
   const [itemDescription, setItemDescription] = React.useState('');
   const [itemHexCode, setItemHexCode] = React.useState('');
+  // For Notification Templates
+  const [itemSubject, setItemSubject] = React.useState('');
+  const [itemBody, setItemBody] = React.useState('');
+  const [itemType, setItemType] = React.useState('');
+  // For Categories
+  const [itemParentId, setItemParentId] = React.useState<number | null>(null);
+
+
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const handleEditOpen = (item: SettingItemUnion | null, mode: 'add' | 'edit', categoryKey: SettingCategoryKey) => {
     setItemName(item?.name || '');
-    setItemDescription(item?.description || ''); // Default to empty string
-    if (categoryKey === 'colors' && item) {
-      setItemHexCode((item as MetaColorItem).hexCode || '');
+    const desc = (item as MetaItem)?.description || '';
+    setItemDescription(desc);
+    
+    if (categoryKey === 'colors') {
+      setItemHexCode((item as MetaColorItem)?.hexCode || '');
     } else {
       setItemHexCode('');
+    }
+    if (categoryKey === 'notificationTemplates') {
+      const ntItem = item as NotificationTemplate | null;
+      setItemSubject(ntItem?.subject || '');
+      setItemBody(ntItem?.body || '');
+      setItemType(ntItem?.type || '');
+    } else {
+      setItemSubject(''); setItemBody(''); setItemType('');
+    }
+    if (categoryKey === 'productCategories') {
+      setItemParentId((item as Category)?.parentId || null);
+    } else {
+      setItemParentId(null);
     }
     setDialogState({ isOpen: true, item, categoryKey, mode });
   };
@@ -210,6 +301,7 @@ export default function SettingsPage() {
   const handleDialogClose = () => {
     setDialogState({ isOpen: false, item: null, categoryKey: null, mode: 'add' });
     setItemName(''); setItemDescription(''); setItemHexCode('');
+    setItemSubject(''); setItemBody(''); setItemType(''); setItemParentId(null);
   };
 
   const handleDialogSubmit = async () => {
@@ -217,35 +309,64 @@ export default function SettingsPage() {
       toast({ title: "Validation Error", description: "Name is required.", variant: "destructive" });
       return;
     }
-    if (dialogState.categoryKey === 'colors' && !itemHexCode.match(/^#[0-9A-Fa-f]{6}$/)) { // Basic hex validation
+    if (dialogState.categoryKey === 'colors' && !itemHexCode.match(/^#[0-9A-Fa-f]{6}$/)) {
        toast({ title: "Validation Error", description: "Hex code must be in #RRGGBB format.", variant: "destructive" });
        return;
     }
+    if (dialogState.categoryKey === 'notificationTemplates' && (!itemSubject.trim() || !itemBody.trim() || !itemType.trim())) {
+       toast({ title: "Validation Error", description: "For Notification Templates, Name, Subject, Body, and Type are required.", variant: "destructive" });
+       return;
+    }
+
 
     setIsSubmitting(true);
-    const payload: Partial<MetaItem & MetaColorItem> = { name: itemName.trim() };
+    let payload: any = { name: itemName.trim() };
     
-    if (dialogState.categoryKey === 'colors') {
-      payload.hexCode = itemHexCode.trim();
-    } else {
-      // Only add description if it's not for colors and it has content
-      if (itemDescription.trim()) {
-        payload.description = itemDescription.trim();
-      }
+    if (dialogState.categoryKey !== 'colors' && dialogState.categoryKey !== 'notificationTemplates') {
+      if (itemDescription.trim()) payload.description = itemDescription.trim();
     }
+
+    if (dialogState.categoryKey === 'colors') payload.hexCode = itemHexCode.trim();
+    
+    if (dialogState.categoryKey === 'productCategories') {
+        if (itemParentId) payload.parentId = itemParentId; // TODO: Add parentId selector to dialog
+    }
+
+    if (dialogState.categoryKey === 'notificationTemplates') {
+      payload = { ...payload, subject: itemSubject.trim(), body: itemBody.trim(), type: itemType.trim() };
+    }
+
 
     try {
       if (dialogState.mode === 'add') {
-        await createMetaItem(dialogState.categoryKey, payload);
+        switch(dialogState.categoryKey) {
+          case 'productBrands': await createProductBrand(payload); break;
+          case 'productCategories': await createProductCategory(payload); break;
+          case 'productUnits': await createProductUnit(payload); break;
+          case 'sizes': await createGenericMetaItem('sizes', payload); break;
+          case 'colors': await createGenericMetaItem('colors', payload); break;
+          case 'suppliers': await createGenericMetaItem('suppliers', payload); break;
+          case 'notificationTemplates': await createNotificationTemplate(payload); break;
+          default: throw new Error("Invalid category key for create");
+        }
         toast({ title: "Success", description: `${categoryDisplayNames[dialogState.categoryKey]} added successfully.` });
       } else if (dialogState.item) {
-        await updateMetaItem(dialogState.categoryKey, dialogState.item.id, payload);
+        switch(dialogState.categoryKey) {
+          case 'productBrands': await updateProductBrand(dialogState.item.id, payload); break;
+          case 'productCategories': await updateProductCategory(dialogState.item.id, payload); break;
+          case 'productUnits': await updateProductUnit(dialogState.item.id, payload); break;
+          case 'sizes': await updateGenericMetaItem('sizes', dialogState.item.id, payload); break;
+          case 'colors': await updateGenericMetaItem('colors', dialogState.item.id, payload); break;
+          case 'suppliers': await updateGenericMetaItem('suppliers', dialogState.item.id, payload); break;
+          case 'notificationTemplates': await updateNotificationTemplate(dialogState.item.id, payload); break;
+          default: throw new Error("Invalid category key for update");
+        }
         toast({ title: "Success", description: `${categoryDisplayNames[dialogState.categoryKey]} updated successfully.` });
       }
-      setForceRefreshKey(prev => prev + 1); // Trigger re-fetch in sections
+      setForceRefreshKey(prev => prev + 1);
       handleDialogClose();
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || `Failed to save ${categoryDisplayNames[dialogState.categoryKey]}.`, variant: "destructive" });
+      toast({ title: "Error", description: err.message || `Failed to save ${categoryDisplayNames[dialogState.categoryKey!].toLowerCase()}.`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -264,26 +385,28 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
-        <SettingSection title="Brands" categoryKey="brands" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
-        <SettingSection title="Categories" categoryKey="categories" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
+        <SettingSection title="Product Brands" categoryKey="productBrands" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
+        <SettingSection title="Product Categories" categoryKey="productCategories" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
+        <SettingSection title="Product Units" categoryKey="productUnits" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
         <SettingSection title="Sizes" categoryKey="sizes" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
-        <SettingSection title="Units" categoryKey="units" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
         <SettingSection title="Colors" categoryKey="colors" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
+        <SettingSection title="Suppliers" categoryKey="suppliers" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
+        <SettingSection title="Notification Templates" categoryKey="notificationTemplates" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
         
         <Card className="shadow-md lg:col-span-2">
           <CardHeader>
             <div className="flex items-center gap-2">
               <SettingsIcon className="h-5 w-5 text-primary" />
-              <CardTitle>Other Settings</CardTitle>
+              <CardTitle>Other Meta Settings</CardTitle>
             </div>
-            <CardDescription>Manage other system-wide configurations.</CardDescription>
+            <CardDescription>Manage other system-wide classification data.</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              General application settings like currency, timezone, notification preferences, API integrations, etc., will be managed here using relevant meta endpoints.
+              Order Statuses, Payment Types, Inventory Adjustment Reasons, User Roles will be managed here or in their respective module settings once those UI sections are built.
             </p>
              <Button variant="outline" className="mt-4" disabled>
-              Configure System Options (Coming Soon)
+              Configure Other Meta (Coming Soon)
             </Button>
           </CardContent>
         </Card>
@@ -293,7 +416,7 @@ export default function SettingsPage() {
       </p>
 
       <Dialog open={dialogState.isOpen} onOpenChange={(isOpen) => { if (!isOpen) handleDialogClose(); else setDialogState(prev => ({...prev, isOpen: true})); }}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{dialogState.mode === 'add' ? 'Add New' : 'Edit'} {dialogState.categoryKey ? categoryDisplayNames[dialogState.categoryKey] : ''}</DialogTitle>
             <DialogDescription>
@@ -306,20 +429,41 @@ export default function SettingsPage() {
               <Input id="name" value={itemName} onChange={(e) => setItemName(e.target.value)} className="col-span-3" placeholder={`${dialogState.categoryKey ? categoryDisplayNames[dialogState.categoryKey] : ''} name`} />
             </div>
             
-            {/* Show Description field for all meta types except Colors */}
-            {dialogState.categoryKey && dialogState.categoryKey !== 'colors' && (
+            {dialogState.categoryKey && dialogState.categoryKey !== 'colors' && dialogState.categoryKey !== 'notificationTemplates' && (
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="description" className="text-right">Description</Label>
                 <Textarea id="description" value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} className="col-span-3" placeholder="Optional description" />
               </div>
             )}
 
-            {/* Show Hex Code field only for Colors */}
             {dialogState.categoryKey === 'colors' && (
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="hexCode" className="text-right">Hex Code*</Label>
                 <Input id="hexCode" value={itemHexCode} onChange={(e) => setItemHexCode(e.target.value)} className="col-span-3" placeholder="#RRGGBB" />
               </div>
+            )}
+            
+            {dialogState.categoryKey === 'notificationTemplates' && (
+              <>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="subject" className="text-right">Subject*</Label>
+                  <Input id="subject" value={itemSubject} onChange={(e) => setItemSubject(e.target.value)} className="col-span-3" placeholder="Notification Subject" />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="body" className="text-right">Body*</Label>
+                  <Textarea id="body" value={itemBody} onChange={(e) => setItemBody(e.target.value)} className="col-span-3" placeholder="Notification Body Content" rows={5}/>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="type" className="text-right">Type*</Label>
+                  <Input id="type" value={itemType} onChange={(e) => setItemType(e.target.value)} className="col-span-3" placeholder="e.g., EMAIL, SMS" />
+                </div>
+              </>
+            )}
+            {/* TODO: Add Parent ID selector for categories if editing/creating them here */}
+            {dialogState.categoryKey === 'productCategories' && (
+                 <p className="text-xs text-muted-foreground col-span-4 text-center pt-2">
+                    Parent category selection will be added later. New categories are created as top-level.
+                 </p>
             )}
           </div>
           <DialogFooter>
@@ -337,3 +481,7 @@ export default function SettingsPage() {
   );
 }
 
+// Needed for suppliers icon
+import { UsersRound } from "lucide-react";
+
+    

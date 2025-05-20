@@ -9,7 +9,6 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label"; // Not directly used with FormField, but good to have
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,17 +16,41 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { useToast } from "@/hooks/use-toast";
 import { 
   createProduct,
-  type CreateProductRequest 
-} from "@/lib/apiClient"; // Removed meta fetch functions
+  type CreateProductRequest,
+  fetchProductBrands,
+  fetchProductCategoriesTree,
+  fetchProductUnits,
+  fetchProductStatuses,
+  fetchSuppliers,
+  type Brand,
+  type ProductCategoryNode,
+  type ProductUnit,
+  type Supplier
+} from "@/lib/apiClient";
 import { PackagePlus, ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// Define simple types for hardcoded data
-interface HardcodedMetaItem {
-  id: number;
-  name: string;
+interface SelectOption {
+  value: string;
+  label: string;
 }
+
+// Helper to flatten category tree for select dropdown
+const flattenCategories = (categories: ProductCategoryNode[], level = 0, prefix = ""): SelectOption[] => {
+  let options: SelectOption[] = [];
+  categories.forEach(category => {
+    options.push({
+      value: category.id.toString(),
+      label: `${prefix}${category.name}`
+    });
+    if (category.children && category.children.length > 0) {
+      options = options.concat(flattenCategories(category.children, level + 1, `${prefix}  `));
+    }
+  });
+  return options;
+};
+
 
 const productFormSchema = z.object({
   name: z.string().min(1, "Product name is required"),
@@ -40,9 +63,10 @@ const productFormSchema = z.object({
   categoryId: z.string().optional().nullable(),
   brandId: z.string().optional().nullable(),
   supplierId: z.string().optional().nullable(),
+  unitId: z.string().optional().nullable(),
   imageUrlsInput: z.string().optional().nullable(), 
   tagsInput: z.string().optional().nullable(), 
-  status: z.enum(['ACTIVE', 'DRAFT', 'ARCHIVED', 'OUT_OF_STOCK']).default('DRAFT').optional().nullable(),
+  status: z.string().optional().nullable(), // API returns strings for statuses
   weight: z.coerce.number({invalid_type_error: "Weight must be a number"}).min(0).optional().nullable(),
   dimensions: z.string().optional().nullable(),
   isFeatured: z.boolean().default(false).optional(),
@@ -52,48 +76,26 @@ const productFormSchema = z.object({
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
 
-// Hardcoded data
-const hardcodedCategories: HardcodedMetaItem[] = [
-  { id: 1, name: 'Electronics' },
-  { id: 2, name: 'Books' },
-  { id: 3, name: 'Clothing' },
-  { id: 4, name: 'Home Goods' },
-  { id: 5, name: 'Sports Equipment' },
-];
-
-const hardcodedBrands: HardcodedMetaItem[] = [
-  { id: 1, name: 'Generic Brand' },
-  { id: 2, name: 'Premium Brand' },
-  { id: 3, name: 'TechBrand' },
-  { id: 4, name: 'FashionBrand' },
-];
-
-const hardcodedSuppliers: HardcodedMetaItem[] = [
-  { id: 1, name: 'Main Supplier Inc.' },
-  { id: 2, name: 'Secondary Supplier Co.' },
-  { id: 3, name: 'Local Vendor LLC' },
-];
-
-const hardcodedProductStatuses: CreateProductRequest['status'][] = ['ACTIVE', 'DRAFT', 'ARCHIVED', 'OUT_OF_STOCK'];
-
 
 export default function CreateProductPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
   
-  // Use hardcoded data
-  const [categories, setCategories] = React.useState<HardcodedMetaItem[]>(hardcodedCategories);
-  const [brands, setBrands] = React.useState<HardcodedMetaItem[]>(hardcodedBrands);
-  const [suppliers, setSuppliers] = React.useState<HardcodedMetaItem[]>(hardcodedSuppliers);
-  const [productStatuses, setProductStatuses] = React.useState<Array<CreateProductRequest['status']>>(hardcodedProductStatuses);
-  const [isLoadingData, setIsLoadingData] = React.useState(false); // Set to false as data is hardcoded
+  const [categories, setCategories] = React.useState<SelectOption[]>([]);
+  const [brands, setBrands] = React.useState<Brand[]>([]);
+  const [suppliers, setSuppliers] = React.useState<Supplier[]>([]);
+  const [units, setUnits] = React.useState<ProductUnit[]>([]);
+  const [productStatuses, setProductStatuses] = React.useState<string[]>([]);
+  
+  const [isLoadingCategories, setIsLoadingCategories] = React.useState(true);
+  const [isLoadingBrands, setIsLoadingBrands] = React.useState(true);
+  const [isLoadingSuppliers, setIsLoadingSuppliers] = React.useState(true);
+  const [isLoadingUnits, setIsLoadingUnits] = React.useState(true);
+  const [isLoadingStatuses, setIsLoadingStatuses] = React.useState(true);
 
   const initialStatusQueryParam = searchParams.get('status') as CreateProductRequest['status'];
-  const validInitialStatus = initialStatusQueryParam && productStatuses.includes(initialStatusQueryParam) 
-    ? initialStatusQueryParam 
-    : (productStatuses.includes('DRAFT') ? 'DRAFT' : productStatuses[0]);
-
+  
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
@@ -107,9 +109,10 @@ export default function CreateProductPage() {
       categoryId: undefined,
       brandId: undefined,
       supplierId: undefined,
+      unitId: undefined,
       imageUrlsInput: "",
       tagsInput: "",
-      status: validInitialStatus,
+      status: initialStatusQueryParam || "DRAFT",
       weight: undefined,
       dimensions: "",
       isFeatured: false,
@@ -119,18 +122,37 @@ export default function CreateProductPage() {
   });
 
   React.useEffect(() => {
-    // Data is now hardcoded, so no async fetching needed here for these dropdowns.
-    // We still might want to reset form status based on query params.
-    const queryStatus = searchParams.get('status') as CreateProductRequest['status'];
-    if (queryStatus && productStatuses.includes(queryStatus)) {
-      form.reset({ ...form.getValues(), status: queryStatus });
-    } else if (productStatuses.includes('DRAFT')) {
-       form.reset({ ...form.getValues(), status: 'DRAFT' });
-    } else if (productStatuses.length > 0) {
-       form.reset({ ...form.getValues(), status: productStatuses[0] });
-    }
-    setIsLoadingData(false); // Ensure loading is set to false
-  }, [form, searchParams, productStatuses]); // productStatuses is now stable
+    const fetchData = async () => {
+      try {
+        const [categoriesData, brandsData, suppliersData, unitsData, statusesData] = await Promise.all([
+          fetchProductCategoriesTree().finally(() => setIsLoadingCategories(false)),
+          fetchProductBrands().finally(() => setIsLoadingBrands(false)),
+          fetchSuppliers().finally(() => setIsLoadingSuppliers(false)), // Assuming suppliers are still from old meta or a new endpoint
+          fetchProductUnits().finally(() => setIsLoadingUnits(false)),
+          fetchProductStatuses().finally(() => setIsLoadingStatuses(false)),
+        ]);
+        setCategories(flattenCategories(categoriesData));
+        setBrands(brandsData);
+        setSuppliers(suppliersData);
+        setUnits(unitsData);
+        setProductStatuses(statusesData);
+
+        const validInitialStatus = initialStatusQueryParam && statusesData.includes(initialStatusQueryParam)
+          ? initialStatusQueryParam
+          : (statusesData.includes('DRAFT') ? 'DRAFT' : statusesData[0]);
+        form.reset({ ...form.getValues(), status: validInitialStatus });
+
+      } catch (error: any) {
+        toast({
+          title: "Error fetching product metadata",
+          description: error.message || "Could not load data for dropdowns.",
+          variant: "destructive",
+        });
+      }
+    };
+    fetchData();
+  }, [form, initialStatusQueryParam, toast]);
+
 
   async function onSubmit(data: ProductFormValues) {
     try {
@@ -139,11 +161,12 @@ export default function CreateProductPage() {
         categoryId: data.categoryId ? parseInt(data.categoryId, 10) : null,
         brandId: data.brandId ? parseInt(data.brandId, 10) : null,
         supplierId: data.supplierId ? parseInt(data.supplierId, 10) : null,
+        unitId: data.unitId ? parseInt(data.unitId, 10) : null,
         imageUrls: data.imageUrlsInput ? data.imageUrlsInput.split(',').map(url => url.trim()).filter(url => url) : null,
         tags: data.tagsInput ? data.tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag) : null,
         costPrice: data.costPrice === undefined || data.costPrice === null ? null : Number(data.costPrice),
         weight: data.weight === undefined || data.weight === null ? null : Number(data.weight),
-        status: data.status || 'DRAFT', 
+        status: data.status as CreateProductRequest['status'] || 'DRAFT', 
       };
       
       await createProduct(productPayload);
@@ -161,6 +184,8 @@ export default function CreateProductPage() {
       });
     }
   }
+  
+  const isLoadingData = isLoadingCategories || isLoadingBrands || isLoadingSuppliers || isLoadingUnits || isLoadingStatuses;
 
   return (
     <div className="space-y-6 pb-8">
@@ -293,22 +318,22 @@ export default function CreateProductPage() {
               <CardTitle>Organization</CardTitle>
               <CardDescription>Categorize and group your product.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 md:gap-6">
-              {isLoadingData && !categories.length ? <Skeleton className="h-10 w-full rounded-md" /> : <FormField
+            <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 md:gap-6">
+              {isLoadingCategories ? <Skeleton className="h-10 w-full rounded-md" /> : <FormField
                 control={form.control}
                 name="categoryId"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Category</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value?.toString()} value={field.value?.toString()} disabled={isLoadingData || categories.length === 0}>
+                    <Select onValueChange={field.onChange} defaultValue={field.value?.toString()} value={field.value?.toString()} disabled={categories.length === 0}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder={isLoadingData ? "Loading..." : (categories.length === 0 ? "No categories available" : "Select a category")} />
+                          <SelectValue placeholder={categories.length === 0 ? "No categories available" : "Select a category"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         {categories.map(cat => (
-                          <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
+                          <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -316,16 +341,16 @@ export default function CreateProductPage() {
                   </FormItem>
                 )}
               />}
-              {isLoadingData && !brands.length ? <Skeleton className="h-10 w-full rounded-md" /> : <FormField
+              {isLoadingBrands ? <Skeleton className="h-10 w-full rounded-md" /> : <FormField
                 control={form.control}
                 name="brandId"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Brand</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value?.toString()} value={field.value?.toString()} disabled={isLoadingData || brands.length === 0}>
+                    <Select onValueChange={field.onChange} defaultValue={field.value?.toString()} value={field.value?.toString()} disabled={brands.length === 0}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder={isLoadingData ? "Loading..." : (brands.length === 0 ? "No brands available" : "Select a brand")} />
+                          <SelectValue placeholder={brands.length === 0 ? "No brands available" : "Select a brand"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -338,16 +363,16 @@ export default function CreateProductPage() {
                   </FormItem>
                 )}
               />}
-              {isLoadingData && !suppliers.length ? <Skeleton className="h-10 w-full rounded-md" /> : <FormField
+              {isLoadingSuppliers ? <Skeleton className="h-10 w-full rounded-md" /> : <FormField
                 control={form.control}
                 name="supplierId"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Supplier</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value?.toString()} value={field.value?.toString()} disabled={isLoadingData || suppliers.length === 0}>
+                    <Select onValueChange={field.onChange} defaultValue={field.value?.toString()} value={field.value?.toString()} disabled={suppliers.length === 0}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder={isLoadingData ? "Loading..." : (suppliers.length === 0 ? "No suppliers available" : "Select a supplier")} />
+                          <SelectValue placeholder={suppliers.length === 0 ? "No suppliers available" : "Select a supplier"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -360,16 +385,38 @@ export default function CreateProductPage() {
                   </FormItem>
                 )}
               />}
-               {isLoadingData && !productStatuses.length ? <Skeleton className="h-10 w-full rounded-md" /> : <FormField
+               {isLoadingUnits ? <Skeleton className="h-10 w-full rounded-md" /> : <FormField
+                control={form.control}
+                name="unitId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Unit</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value?.toString()} value={field.value?.toString()} disabled={units.length === 0}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={units.length === 0 ? "No units available" : "Select a unit"} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {units.map(unit => (
+                          <SelectItem key={unit.id} value={unit.id.toString()}>{unit.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />}
+               {isLoadingStatuses ? <Skeleton className="h-10 w-full rounded-md" /> : <FormField
                 control={form.control}
                 name="status"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Status</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value ?? ""} disabled={isLoadingData || productStatuses.length === 0}>
+                    <Select onValueChange={field.onChange} value={field.value ?? ""} disabled={productStatuses.length === 0}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder={isLoadingData ? "Loading..." : (productStatuses.length === 0 ? "No statuses available" : "Select product status")} />
+                          <SelectValue placeholder={productStatuses.length === 0 ? "No statuses available" : "Select product status"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -532,3 +579,4 @@ export default function CreateProductPage() {
   );
 }
 
+    

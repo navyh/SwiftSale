@@ -19,7 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { PlusCircle, Search, Edit3, Trash2, Filter, Package } from "lucide-react";
-import { fetchProducts, deleteProduct, type Product, fetchCategories, fetchBrands, type Category, type Brand } from "@/lib/apiClient";
+import { fetchProducts, deleteProduct, type Product, fetchProductCategoriesFlat, fetchProductBrands, type Category, type Brand } from "@/lib/apiClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -46,8 +46,8 @@ export default function ProductsPage() {
     try {
       const [productsData, categoriesData, brandsData] = await Promise.all([
         fetchProducts(),
-        fetchCategories(),
-        fetchBrands()
+        fetchProductCategoriesFlat(), // Updated function call
+        fetchProductBrands()        // Updated function call
       ]);
       setProducts(productsData);
 
@@ -113,6 +113,11 @@ export default function ProductsPage() {
     return categoryId && categoriesMap[categoryId] ? categoriesMap[categoryId] : "N/A";
   }
 
+  const getBrandName = (brandId?: number | null) => {
+    return brandId && brandsMap[brandId] ? brandsMap[brandId] : "N/A";
+  }
+
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -159,6 +164,7 @@ export default function ProductsPage() {
                 <TableHead className="w-[60px] md:w-[80px]">Image</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead className="hidden md:table-cell">Category</TableHead>
+                <TableHead className="hidden lg:table-cell">Brand</TableHead> {/* Added Brand column */}
                 <TableHead>Price</TableHead>
                 <TableHead className="hidden sm:table-cell">Stock</TableHead>
                 <TableHead>Status</TableHead>
@@ -172,6 +178,7 @@ export default function ProductsPage() {
                     <TableCell><Skeleton className="h-10 w-10 rounded-md" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-3/4" /></TableCell>
                     <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-1/2" /></TableCell>
+                    <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-1/2" /></TableCell> {/* Skeleton for Brand */}
                     <TableCell><Skeleton className="h-4 w-1/4" /></TableCell>
                     <TableCell className="hidden sm:table-cell"><Skeleton className="h-4 w-1/4" /></TableCell>
                     <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
@@ -183,7 +190,7 @@ export default function ProductsPage() {
                 ))
               ) : filteredProducts.length === 0 && !error ? (
                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-10">
+                    <TableCell colSpan={8} className="text-center py-10"> {/* Updated colSpan */}
                       <Package className="mx-auto h-12 w-12 text-muted-foreground mb-2"/>
                       <p className="text-muted-foreground">No products found.</p>
                       {products.length > 0 && searchTerm && <p className="text-sm text-muted-foreground">Try adjusting your search term.</p>}
@@ -204,6 +211,7 @@ export default function ProductsPage() {
                     </TableCell>
                     <TableCell className="font-medium">{product.name}</TableCell>
                     <TableCell className="hidden md:table-cell">{getCategoryName(product.categoryId)}</TableCell>
+                    <TableCell className="hidden lg:table-cell">{getBrandName(product.brandId)}</TableCell> {/* Display Brand Name */}
                     <TableCell>{formatPrice(product.unitPrice)}</TableCell>
                     <TableCell className="hidden sm:table-cell">{product.quantity}</TableCell>
                     <TableCell>
@@ -272,3 +280,5 @@ export default function ProductsPage() {
     </div>
   );
 }
+
+
