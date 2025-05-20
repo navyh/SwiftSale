@@ -81,7 +81,7 @@ export interface UserDto {
   name: string;
   phone: string;
   email?: string | null;
-  type: 'B2C' | 'B2B' | string; // API schema specifies "type" not "userType", "B2C_USER", "B2B_USER"
+  type: 'B2C' | 'B2B' | string; 
   gstin?: string | null;
   addresses?: AddressDto[] | null;
   status?: 'ACTIVE' | 'INACTIVE' | string | null; 
@@ -96,11 +96,13 @@ export interface CreateUserRequest {
   type: 'B2C' | 'B2B' | string; 
   gstin?: string | null; 
   addresses?: AddressCreateDto[] | null;
+  status?: 'ACTIVE' | 'INACTIVE' | string | null; // Added as per swagger, optional
 }
 
 export interface UpdateUserRequest {
   name?: string;
   email?: string | null;
+  type?: 'B2C' | 'B2B' | string;
   gstin?: string | null;
   addresses?: (AddressCreateDto | AddressDto)[] | null;
   status?: 'ACTIVE' | 'INACTIVE' | string; 
@@ -162,7 +164,8 @@ export interface CreateBusinessProfileRequest {
   gstin: string;
   addresses?: AddressCreateDto[] | null;
   paymentTerms?: string | null;
-  userIds?: number[] | null;
+  userIds?: number[] | null; // API expects array of user IDs
+  status?: 'ACTIVE' | 'INACTIVE' | string | null; // Added as per swagger, optional
 }
 
 export interface UpdateBusinessProfileRequest {
@@ -237,7 +240,7 @@ export interface UpdateStaffRequest {
 
 export async function fetchStaff(params?: { role?: string; status?: string; page?: number; size?: number; search?: string }): Promise<Page<StaffDto>> {
   const queryParams = new URLSearchParams();
-  if (params?.search) queryParams.append('search', params.search);
+  if (params?.search) queryParams.append('search', params.search); // Assuming API supports search for staff name via User
   if (params?.role) queryParams.append('role', params.role);
   if (params?.status) queryParams.append('status', params.status);
   if (params?.page !== undefined) queryParams.append('page', params.page.toString());
@@ -287,17 +290,11 @@ export interface Brand extends MetaItem {}
 export interface Category extends MetaItem {
   parentId?: number | null;
 }
-export interface ProductCategoryNode extends MetaItem {
-  parentId?: number | null;
+export interface ProductCategoryNode extends Category { // Using Category as base
   children?: ProductCategoryNode[] | null;
 }
 
 export interface ProductUnit extends MetaItem {}
-
-export interface VariantDefinitionDTO {
-  color: string;
-  size: string;
-}
 
 export interface ProductVariant { 
   id: number;
@@ -308,8 +305,8 @@ export interface ProductVariant {
   costPrice?: number | null;
   quantity: number;
   barcode?: string | null;
-  color?: string | null; 
-  size?: string | null;  
+  color?: string | null; // API uses 'color'
+  size?: string | null;  // API uses 'size'
   imageUrls?: string[] | null;
   createdAt?: string;
   updatedAt?: string;
@@ -588,5 +585,3 @@ export async function updateCurrentUser(data: UpdateUserRequest): Promise<Curren
     body: JSON.stringify(data),
   });
 }
-
-    
