@@ -255,12 +255,12 @@ export async function fetchStaff(params?: { role?: string; status?: string; page
   if (params?.size !== undefined) queryParams.append('size', params.size.toString());
 
   const queryString = queryParams.toString();
-  const data = await fetchAPI<Page<StaffDto> | undefined>(`/staff${queryString ? `?${queryString}` : ''}`);
+  const data = await fetchAPI<Page<StaffDto> | undefined>(`/users/staff${queryString ? `?${queryString}` : ''}`);
   return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
 
 export async function fetchStaffById(staffId: number): Promise<StaffDto> {
-  return fetchAPI<StaffDto>(`/staff/${staffId}`);
+  return fetchAPI<StaffDto>(`/users/staff/${staffId}`);
 }
 
 export async function createStaffMember(userIdForStaff: number, staffData: Omit<CreateStaffRequest, 'userId'>): Promise<StaffDto> {
@@ -271,14 +271,14 @@ export async function createStaffMember(userIdForStaff: number, staffData: Omit<
 }
 
 export async function updateStaffMember(staffId: number, staffData: UpdateStaffRequest): Promise<StaffDto> {
-  return fetchAPI<StaffDto>(`/staff/${staffId}`, {
+  return fetchAPI<StaffDto>(`/user/staff/${staffId}`, {
     method: 'PUT',
     body: JSON.stringify(staffData),
   });
 }
 
 export async function deleteStaffMember(staffId: number): Promise<void> {
-  return fetchAPI<void>(`/staff/${staffId}`, {
+  return fetchAPI<void>(`/user/staff/${staffId}`, {
     method: 'DELETE',
   }, false);
 }
