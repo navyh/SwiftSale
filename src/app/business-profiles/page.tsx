@@ -192,7 +192,7 @@ export default function BusinessProfilesListPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
+                <TableHead>Company Name</TableHead>
                 <TableHead className="hidden md:table-cell">GSTIN</TableHead>
                 <TableHead className="hidden lg:table-cell">Payment Terms</TableHead>
                 <TableHead>Users</TableHead>
@@ -252,7 +252,7 @@ export default function BusinessProfilesListPage() {
                           <AlertDialogHeader>
                             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                             <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete the profile "{profile.name}".
+                              This action cannot be undone. This will permanently delete the company "{profile.name}".
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>

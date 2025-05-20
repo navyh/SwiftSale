@@ -29,7 +29,7 @@ const addressSchema = z.object({
 });
 
 const profileFormSchema = z.object({
-  name: z.string().min(1, "Business name is required"),
+  name: z.string().min(1, "Company name is required"),
   gstin: z.string().min(1, "GSTIN is required")
     .regex(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, "Invalid GSTIN format"),
   paymentTerms: z.string().optional().nullable(),
@@ -120,7 +120,7 @@ export default function CreateBusinessProfilePage() {
             <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
               <FormField control={form.control} name="name" render={({ field }) => (
                 <FormItem className="md:col-span-2">
-                  <FormLabel>Business Name *</FormLabel>
+                  <FormLabel>Company Name *</FormLabel>
                   <FormControl><Input placeholder="e.g., Acme Corp" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
