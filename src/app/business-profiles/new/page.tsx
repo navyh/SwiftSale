@@ -76,7 +76,7 @@ export default function CreateBusinessProfilePage() {
             ...addr,
             line2: addr.line2 || undefined,
             type: addr.type || undefined,
-        })) || undefined,
+        })) || [], // Send empty array if addresses is null/undefined
         userIds: undefined, // Not handling userIds on creation form for simplicity
       };
       
