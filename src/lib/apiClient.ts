@@ -96,7 +96,7 @@ export interface CreateUserRequest {
   type: 'B2C' | 'B2B' | string; 
   gstin?: string | null; 
   addresses?: AddressCreateDto[] | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string | null; // Added as per swagger, optional
+  status?: 'ACTIVE' | 'INACTIVE' | string | null;
 }
 
 export interface UpdateUserRequest {
@@ -165,11 +165,12 @@ export interface CreateBusinessProfileRequest {
   addresses?: AddressCreateDto[] | null;
   paymentTerms?: string | null;
   userIds?: number[] | null; // API expects array of user IDs
-  status?: 'ACTIVE' | 'INACTIVE' | string | null; // Added as per swagger, optional
+  status?: 'ACTIVE' | 'INACTIVE' | string | null;
 }
 
 export interface UpdateBusinessProfileRequest {
   name?: string;
+  gstin?: string; // gstin is updatable as per PUT /business-profiles/{id}
   status?: 'ACTIVE' | 'INACTIVE' | string;
   addresses?: (AddressCreateDto | AddressDto)[] | null;
   paymentTerms?: string | null;
@@ -226,6 +227,7 @@ export interface StaffDto {
 }
 
 export interface CreateStaffRequest { 
+  userId: number; // As per POST /users/{userId}/staff
   roles: string[];
   permissions?: string[] | null;
   status?: 'ACTIVE' | 'INACTIVE' | string; 
@@ -240,7 +242,7 @@ export interface UpdateStaffRequest {
 
 export async function fetchStaff(params?: { role?: string; status?: string; page?: number; size?: number; search?: string }): Promise<Page<StaffDto>> {
   const queryParams = new URLSearchParams();
-  if (params?.search) queryParams.append('search', params.search); // Assuming API supports search for staff name via User
+  if (params?.search) queryParams.append('search', params.search);
   if (params?.role) queryParams.append('role', params.role);
   if (params?.status) queryParams.append('status', params.status);
   if (params?.page !== undefined) queryParams.append('page', params.page.toString());
@@ -255,10 +257,11 @@ export async function fetchStaffById(staffId: number): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/staff/${staffId}`);
 }
 
-export async function createStaffMember(userIdForStaff: number, staffData: CreateStaffRequest): Promise<StaffDto> {
+// POST /users/{userId}/staff
+export async function createStaffMember(userIdForStaff: number, staffData: Omit<CreateStaffRequest, 'userId'>): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/users/${userIdForStaff}/staff`, {
     method: 'POST',
-    body: JSON.stringify(staffData),
+    body: JSON.stringify(staffData), // userId is part of path, not body
   });
 }
 
@@ -290,23 +293,26 @@ export interface Brand extends MetaItem {}
 export interface Category extends MetaItem {
   parentId?: number | null;
 }
-export interface ProductCategoryNode extends Category { // Using Category as base
+export interface ProductCategoryNode extends Category {
   children?: ProductCategoryNode[] | null;
+  displayName?: string; // For UI
+  depth?: number; // For UI
 }
 
 export interface ProductUnit extends MetaItem {}
 
-export interface ProductVariant { 
+
+export interface ProductVariant {
   id: number;
   productId: number;
   sku?: string | null;
   price?: number | null;
-  compareAtPrice?: number | null; 
+  compareAtPrice?: number | null;
   costPrice?: number | null;
   quantity: number;
   barcode?: string | null;
-  color?: string | null; // API uses 'color'
-  size?: string | null;  // API uses 'size'
+  color?: string | null;
+  size?: string | null;
   imageUrls?: string[] | null;
   createdAt?: string;
   updatedAt?: string;
@@ -585,3 +591,4 @@ export async function updateCurrentUser(data: UpdateUserRequest): Promise<Curren
     body: JSON.stringify(data),
   });
 }
+
