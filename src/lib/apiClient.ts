@@ -81,10 +81,10 @@ export interface UserDto {
   name: string;
   phone: string;
   email?: string | null;
-  type: 'B2C_USER' | 'B2B_USER' | string; // API schema specifies "type" not "userType"
+  type: 'B2C' | 'B2B' | string; // API schema specifies "type" not "userType", "B2C_USER", "B2B_USER"
   gstin?: string | null;
   addresses?: AddressDto[] | null;
-  status?: string | null; 
+  status?: 'ACTIVE' | 'INACTIVE' | string | null; 
   createdAt?: string;
   updatedAt?: string;
 }
@@ -93,20 +93,17 @@ export interface CreateUserRequest {
   name: string;
   phone: string;
   email?: string | null;
-  // password?: string | null; // Not in CreateUserRequest schema
-  type: 'B2C_USER' | 'B2B_USER' | string; 
+  type: 'B2C' | 'B2B' | string; 
   gstin?: string | null; 
   addresses?: AddressCreateDto[] | null;
 }
 
 export interface UpdateUserRequest {
   name?: string;
-  // phone is not in UpdateUserRequest schema
   email?: string | null;
-  // type is not in UpdateUserRequest schema
   gstin?: string | null;
   addresses?: (AddressCreateDto | AddressDto)[] | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string; // This is part of UserDto, but likely updatable via PATCH
+  status?: 'ACTIVE' | 'INACTIVE' | string; 
 }
 
 
@@ -135,7 +132,7 @@ export async function createUser(userData: CreateUserRequest): Promise<UserDto> 
 
 export async function updateUser(userId: number, userData: UpdateUserRequest): Promise<UserDto> {
   return fetchAPI<UserDto>(`/users/${userId}`, {
-    method: 'PUT', // API Spec says PUT for /users/{id}
+    method: 'PUT', 
     body: JSON.stringify(userData),
   });
 }
@@ -170,7 +167,6 @@ export interface CreateBusinessProfileRequest {
 
 export interface UpdateBusinessProfileRequest {
   name?: string;
-  // gstin not in UpdateBusinessProfileRequest
   status?: 'ACTIVE' | 'INACTIVE' | string;
   addresses?: (AddressCreateDto | AddressDto)[] | null;
   paymentTerms?: string | null;
@@ -215,10 +211,10 @@ export async function deleteBusinessProfile(profileId: number): Promise<void> {
 }
 
 // === STAFF MANAGEMENT ===
-export interface StaffDto { // Based on StaffDto schema
+export interface StaffDto { 
   id: number;
   userId: number; 
-  user?: UserDto; // Included in response
+  user?: UserDto; 
   roles: string[];
   permissions?: string[] | null;
   status: 'ACTIVE' | 'INACTIVE' | string; 
@@ -226,13 +222,13 @@ export interface StaffDto { // Based on StaffDto schema
   updatedAt?: string;
 }
 
-export interface CreateStaffRequest { // For POST /users/{userId}/staff
+export interface CreateStaffRequest { 
   roles: string[];
   permissions?: string[] | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string; // Added as per API spec for CreateStaffRequest
+  status?: 'ACTIVE' | 'INACTIVE' | string; 
 }
 
-export interface UpdateStaffRequest { // For PUT /staff/{staffId}
+export interface UpdateStaffRequest { 
   roles?: string[];
   permissions?: string[] | null;
   status?: 'ACTIVE' | 'INACTIVE' | string;
@@ -298,7 +294,12 @@ export interface ProductCategoryNode extends MetaItem {
 
 export interface ProductUnit extends MetaItem {}
 
-export interface ProductVariant { // As per VariantDto
+export interface VariantDefinitionDTO {
+  color: string;
+  size: string;
+}
+
+export interface ProductVariant { 
   id: number;
   productId: number;
   sku?: string | null;
@@ -307,8 +308,8 @@ export interface ProductVariant { // As per VariantDto
   costPrice?: number | null;
   quantity: number;
   barcode?: string | null;
-  color?: string | null; // API Schema uses 'color'
-  size?: string | null;  // API Schema uses 'size'
+  color?: string | null; 
+  size?: string | null;  
   imageUrls?: string[] | null;
   createdAt?: string;
   updatedAt?: string;
@@ -324,12 +325,10 @@ export interface Product {
   unitPrice?: number;
   costPrice?: number | null;
 
-  // For GET /products list, these might be IDs
-  categoryId?: number | null;
-  brandId?: number | null;
-  // For GET /products/{id}, these are nested objects
   category?: Category | null; 
+  categoryId?: number | null;
   brand?: Brand | null; 
+  brandId?: number | null;
   
   unitId?: number | null; 
   unit?: ProductUnit | null; 
@@ -404,7 +403,7 @@ export interface UpdateProductRequest {
 }
 
 
-export interface AddVariantRequest { // For POST /products/{productId}/variants
+export interface AddVariantRequest { 
   sku: string; 
   price?: number | null;
   compareAtPrice?: number | null;
@@ -416,7 +415,7 @@ export interface AddVariantRequest { // For POST /products/{productId}/variants
   imageUrls?: string[] | null;
 }
 
-export interface UpdateVariantRequest { // For PATCH /products/{productId}/variants/{variantId}
+export interface UpdateVariantRequest { 
   sku?: string | null; 
   price?: number | null;
   compareAtPrice?: number | null;
@@ -530,15 +529,15 @@ export async function deleteProductUnit(id: number): Promise<void> {
   return fetchAPI<void>(`/meta/product/units/${id}`, { method: 'DELETE' }, false);
 }
 
-export interface OrderStatus extends MetaItem {}
+export type OrderStatus = string;
 export async function fetchOrderStatuses(): Promise<OrderStatus[]> {
-  const data = await fetchAPI<OrderStatus[] | undefined>('/meta/order/statuses');
+  const data = await fetchAPI<string[] | undefined>('/meta/order/statuses');
   return Array.isArray(data) ? data : [];
 }
 
-export interface PaymentType extends MetaItem {}
+export type PaymentType = string;
 export async function fetchPaymentTypes(): Promise<PaymentType[]> {
-  const data = await fetchAPI<PaymentType[] | undefined>('/meta/order/payment-types');
+  const data = await fetchAPI<string[] | undefined>('/meta/order/payment-types');
   return Array.isArray(data) ? data : [];
 }
 
@@ -548,11 +547,9 @@ export async function fetchInventoryAdjustmentReasons(): Promise<InventoryAdjust
   return Array.isArray(data) ? data : [];
 }
 
-export interface UserRole extends MetaItem { 
-  permissions?: string[];
-}
-export async function fetchUserRolesMeta(): Promise<UserRole[]> {
-  const data = await fetchAPI<UserRole[] | undefined>('/meta/user/roles');
+export type UserRoleMeta = string;
+export async function fetchUserRolesMeta(): Promise<UserRoleMeta[]> {
+  const data = await fetchAPI<string[] | undefined>('/meta/user/roles');
   return Array.isArray(data) ? data : [];
 }
 
@@ -581,7 +578,6 @@ export async function deleteNotificationTemplate(id: number): Promise<void> {
 
 // === OTHER API FUNCTIONS ===
 export interface CurrentUserDto extends UserDto { 
-  // UserDto covers the response for /users/me as per API spec
 }
 export async function fetchCurrentUser(): Promise<CurrentUserDto> {
   return fetchAPI<CurrentUserDto>('/users/me');
@@ -592,3 +588,5 @@ export async function updateCurrentUser(data: UpdateUserRequest): Promise<Curren
     body: JSON.stringify(data),
   });
 }
+
+    
