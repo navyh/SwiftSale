@@ -104,8 +104,12 @@ export interface UpdateUserRequest {
   email?: string | null;
   type?: 'B2C' | 'B2B' | string;
   gstin?: string | null;
-  addresses?: (AddressCreateDto | AddressDto)[] | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string; 
+  // For addresses, API might expect:
+  // - full list of addresses (some with IDs for update, some without for create)
+  // - or separate endpoints for address management.
+  // Assuming for now it takes the full list.
+  addresses?: (AddressCreateDto | AddressDto)[] | null; 
+  status?: 'ACTIVE' | 'INACTIVE' | string | null; 
 }
 
 
@@ -164,13 +168,13 @@ export interface CreateBusinessProfileRequest {
   gstin: string;
   addresses?: AddressCreateDto[] | null;
   paymentTerms?: string | null;
-  userIds?: number[] | null; // API expects array of user IDs
+  userIds?: number[] | null; 
   status?: 'ACTIVE' | 'INACTIVE' | string | null;
 }
 
 export interface UpdateBusinessProfileRequest {
   name?: string;
-  gstin?: string; // gstin is updatable as per PUT /business-profiles/{id}
+  gstin?: string;
   status?: 'ACTIVE' | 'INACTIVE' | string;
   addresses?: (AddressCreateDto | AddressDto)[] | null;
   paymentTerms?: string | null;
@@ -227,7 +231,7 @@ export interface StaffDto {
 }
 
 export interface CreateStaffRequest { 
-  userId: number; // As per POST /users/{userId}/staff
+  userId: number; 
   roles: string[];
   permissions?: string[] | null;
   status?: 'ACTIVE' | 'INACTIVE' | string; 
@@ -257,11 +261,10 @@ export async function fetchStaffById(staffId: number): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/staff/${staffId}`);
 }
 
-// POST /users/{userId}/staff
 export async function createStaffMember(userIdForStaff: number, staffData: Omit<CreateStaffRequest, 'userId'>): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/users/${userIdForStaff}/staff`, {
     method: 'POST',
-    body: JSON.stringify(staffData), // userId is part of path, not body
+    body: JSON.stringify(staffData), 
   });
 }
 
@@ -295,8 +298,8 @@ export interface Category extends MetaItem {
 }
 export interface ProductCategoryNode extends Category {
   children?: ProductCategoryNode[] | null;
-  displayName?: string; // For UI
-  depth?: number; // For UI
+  displayName?: string; 
+  depth?: number; 
 }
 
 export interface ProductUnit extends MetaItem {}
@@ -304,15 +307,15 @@ export interface ProductUnit extends MetaItem {}
 
 export interface ProductVariant {
   id: number;
-  productId: number;
+  productId?: number;
   sku?: string | null;
   price?: number | null;
   compareAtPrice?: number | null;
   costPrice?: number | null;
   quantity: number;
   barcode?: string | null;
-  color?: string | null;
-  size?: string | null;
+  color?: string | null; // Renamed from colorValue
+  size?: string | null;  // Renamed from sizeValue
   imageUrls?: string[] | null;
   createdAt?: string;
   updatedAt?: string;
