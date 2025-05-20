@@ -17,37 +17,59 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { PlusCircle, Search, Edit3, Trash2, Filter, Package } from "lucide-react";
-import { fetchProducts, deleteProduct, type Product } from "@/lib/apiClient";
+import { fetchProducts, deleteProduct, type Product, fetchCategories, fetchBrands, type Category, type Brand } from "@/lib/apiClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 
+interface CategoriesMap {
+  [key: number]: string;
+}
+
+interface BrandsMap {
+  [key: number]: string;
+}
+
 export default function ProductsPage() {
   const [products, setProducts] = React.useState<Product[]>([]);
+  const [categoriesMap, setCategoriesMap] = React.useState<CategoriesMap>({});
+  const [brandsMap, setBrandsMap] = React.useState<BrandsMap>({});
   const [isLoading, setIsLoading] = React.useState(true);
   const [searchTerm, setSearchTerm] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const { toast } = useToast();
 
-  const loadProducts = React.useCallback(async () => {
+  const loadData = React.useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await fetchProducts();
-      setProducts(data);
+      const [productsData, categoriesData, brandsData] = await Promise.all([
+        fetchProducts(),
+        fetchCategories(),
+        fetchBrands()
+      ]);
+      setProducts(productsData);
+
+      const catMap: CategoriesMap = {};
+      categoriesData.forEach(cat => { catMap[cat.id] = cat.name; });
+      setCategoriesMap(catMap);
+
+      const brMap: BrandsMap = {};
+      brandsData.forEach(brand => { brMap[brand.id] = brand.name; });
+      setBrandsMap(brMap);
+
     } catch (err: any) {
-      setError(err.message || "Failed to fetch products.");
-      toast({ title: "Error", description: err.message || "Failed to fetch products.", variant: "destructive" });
+      setError(err.message || "Failed to fetch data.");
+      toast({ title: "Error", description: err.message || "Failed to fetch data.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
   }, [toast]);
 
   React.useEffect(() => {
-    loadProducts();
-  }, [loadProducts]);
+    loadData();
+  }, [loadData]);
 
   const handleDeleteProduct = async (productId: number) => {
     try {
@@ -59,11 +81,18 @@ export default function ProductsPage() {
     }
   };
 
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.category?.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredProducts = products.filter(product => {
+    const categoryName = product.categoryId ? categoriesMap[product.categoryId]?.toLowerCase() : "";
+    const brandName = product.brandId ? brandsMap[product.brandId]?.toLowerCase() : "";
+    const lowerSearchTerm = searchTerm.toLowerCase();
+
+    return (
+      product.name.toLowerCase().includes(lowerSearchTerm) ||
+      (product.sku && product.sku.toLowerCase().includes(lowerSearchTerm)) ||
+      (categoryName && categoryName.includes(lowerSearchTerm)) ||
+      (brandName && brandName.includes(lowerSearchTerm))
+    );
+  });
 
   const getStatusColor = (status?: string | null) => {
     switch (status) {
@@ -71,13 +100,17 @@ export default function ProductsPage() {
       case 'OUT_OF_STOCK': return "bg-red-100 text-red-700";
       case 'DRAFT': return "bg-yellow-100 text-yellow-700";
       case 'ARCHIVED': return "bg-gray-100 text-gray-700";
-      default: return "bg-blue-100 text-blue-700";
+      default: return "bg-blue-100 text-blue-700"; // For null or other statuses
     }
   };
   
   const formatPrice = (price?: number | null) => {
     if (price === null || price === undefined) return "N/A";
     return `$${price.toFixed(2)}`;
+  }
+
+  const getCategoryName = (categoryId?: number | null) => {
+    return categoryId && categoriesMap[categoryId] ? categoriesMap[categoryId] : "N/A";
   }
 
   return (
@@ -111,7 +144,7 @@ export default function ProductsPage() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <Button variant="outline" disabled>
+              <Button variant="outline" disabled> {/* Filters can be implemented later */}
                 <Filter className="mr-2 h-4 w-4" /> Filters
               </Button>
             </div>
@@ -119,7 +152,7 @@ export default function ProductsPage() {
           <CardDescription>View, edit, and manage all your products.</CardDescription>
         </CardHeader>
         <CardContent>
-          {error && <p className="text-red-500 text-center">{error}</p>}
+          {error && <p className="text-destructive text-center">{error}</p>}
           <Table>
             <TableHeader>
               <TableRow>
@@ -143,8 +176,8 @@ export default function ProductsPage() {
                     <TableCell className="hidden sm:table-cell"><Skeleton className="h-4 w-1/4" /></TableCell>
                     <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
                     <TableCell className="text-right space-x-1">
-                      <Skeleton className="h-8 w-8 inline-block" />
-                      <Skeleton className="h-8 w-8 inline-block" />
+                      <Skeleton className="h-8 w-8 inline-block rounded" />
+                      <Skeleton className="h-8 w-8 inline-block rounded" />
                     </TableCell>
                   </TableRow>
                 ))
@@ -166,11 +199,11 @@ export default function ProductsPage() {
                         width={40} 
                         height={40} 
                         className="rounded-md aspect-square object-cover"
-                        data-ai-hint={product.category?.name?.toLowerCase() || "product image"}
+                        data-ai-hint={getCategoryName(product.categoryId).toLowerCase() || "product"}
                       />
                     </TableCell>
                     <TableCell className="font-medium">{product.name}</TableCell>
-                    <TableCell className="hidden md:table-cell">{product.category?.name || "N/A"}</TableCell>
+                    <TableCell className="hidden md:table-cell">{getCategoryName(product.categoryId)}</TableCell>
                     <TableCell>{formatPrice(product.unitPrice)}</TableCell>
                     <TableCell className="hidden sm:table-cell">{product.quantity}</TableCell>
                     <TableCell>
@@ -180,7 +213,7 @@ export default function ProductsPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="icon" className="hover:text-primary" asChild>
-                        <Link href={`/products/${product.id}/edit`}> {/* Placeholder for edit page */}
+                        <Link href={`/products/${product.id}/edit`}> {/* TODO: Implement edit page */}
                           <Edit3 className="h-4 w-4" />
                           <span className="sr-only">Edit</span>
                         </Link>
@@ -203,7 +236,7 @@ export default function ProductsPage() {
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
                             <AlertDialogAction
                               onClick={() => handleDeleteProduct(product.id)}
-                              className="bg-destructive hover:bg-destructive/90"
+                              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
                             >
                               Delete
                             </AlertDialogAction>

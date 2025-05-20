@@ -10,7 +10,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { PlusCircle, Edit3, Trash2, Palette, Tag, Ruler, Scale, Settings as SettingsIcon } from "lucide-react";
 import { fetchBrands, fetchCategories, fetchSizes, fetchUnits, fetchColors, createMetaItem, updateMetaItem, deleteMetaItem, MetaItem, MetaColorItem } from "@/lib/apiClient";
 import { useToast } from "@/hooks/use-toast";
@@ -48,11 +48,13 @@ const categoryDisplayNames: Record<SettingCategoryKey, string> = {
 const SettingSection = ({ 
   title, 
   categoryKey,
-  onEdit
+  onEdit,
+  forceRefreshKey, // Added to help trigger re-fetch
 }: { 
   title: string; 
   categoryKey: SettingCategoryKey;
   onEdit: (item: SettingItemUnion | null, mode: 'add' | 'edit', key: SettingCategoryKey) => void;
+  forceRefreshKey: number;
 }) => {
   const Icon = categoryIcons[categoryKey];
   const { toast } = useToast();
@@ -84,14 +86,14 @@ const SettingSection = ({
 
   React.useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, forceRefreshKey]); // Re-fetch when forceRefreshKey changes
 
   const handleDelete = async (itemId: number) => {
     try {
       await deleteMetaItem(categoryKey, itemId);
       toast({title: "Success", description: `${categoryDisplayNames[categoryKey]} deleted.`});
-      setItems(prev => prev.filter(item => item.id !== itemId));
-    } catch (err: any) {
+      setItems(prev => prev.filter(item => item.id !== itemId)); // Optimistic update
+    } catch (err: any)      {
       toast({title: "Error", description: err.message || `Failed to delete ${categoryDisplayNames[categoryKey]}.`, variant: "destructive"});
     }
   };
@@ -112,7 +114,7 @@ const SettingSection = ({
         <CardDescription>Manage all {title.toLowerCase()} for your products.</CardDescription>
       </CardHeader>
       <CardContent>
-        {error && <p className="text-red-500 text-center py-4">{error}</p>}
+        {error && <p className="text-destructive text-center py-4">{error}</p>}
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
@@ -123,7 +125,10 @@ const SettingSection = ({
               <TableRow>
                 <TableHead>Name</TableHead>
                 {categoryKey === 'colors' && <TableHead>Preview</TableHead>}
-                <TableHead className="hidden md:table-cell">Description</TableHead>
+                {/* Description or Hex Code based on type */}
+                <TableHead className="hidden md:table-cell">
+                    {categoryKey === 'colors' ? 'Hex Code' : 'Description'}
+                </TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -136,8 +141,11 @@ const SettingSection = ({
                       <div style={{ backgroundColor: (item as MetaColorItem).hexCode! }} className="h-5 w-5 rounded-full border"></div>
                     </TableCell>
                   )}
-                  {categoryKey !== 'colors' && <TableCell className="hidden md:table-cell truncate max-w-xs">{item.description || 'N/A'}</TableCell>}
-                  {categoryKey === 'colors' && <TableCell className="hidden md:table-cell truncate max-w-xs">{(item as MetaColorItem).hexCode || 'N/A'}</TableCell>}
+                  <TableCell className="hidden md:table-cell truncate max-w-xs">
+                    {categoryKey === 'colors' 
+                      ? ((item as MetaColorItem).hexCode || 'N/A')
+                      : (item.description || 'N/A')}
+                  </TableCell>
                   
                   <TableCell className="text-right space-x-1">
                     <Button variant="ghost" size="icon" className="hover:text-primary h-8 w-8" onClick={() => onEdit(item, 'edit', categoryKey)}>
@@ -160,7 +168,7 @@ const SettingSection = ({
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(item.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                          <AlertDialogAction onClick={() => handleDelete(item.id)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
@@ -180,6 +188,7 @@ const SettingSection = ({
 export default function SettingsPage() {
   const { toast } = useToast();
   const [dialogState, setDialogState] = React.useState<EditDialogState>({ isOpen: false, item: null, categoryKey: null, mode: 'add' });
+  const [forceRefreshKey, setForceRefreshKey] = React.useState(0); // Key to trigger re-fetch in sections
   
   // Form state for the dialog
   const [itemName, setItemName] = React.useState('');
@@ -189,7 +198,7 @@ export default function SettingsPage() {
 
   const handleEditOpen = (item: SettingItemUnion | null, mode: 'add' | 'edit', categoryKey: SettingCategoryKey) => {
     setItemName(item?.name || '');
-    setItemDescription(item?.description || '');
+    setItemDescription(item?.description || ''); // Default to empty string
     if (categoryKey === 'colors' && item) {
       setItemHexCode((item as MetaColorItem).hexCode || '');
     } else {
@@ -208,15 +217,22 @@ export default function SettingsPage() {
       toast({ title: "Validation Error", description: "Name is required.", variant: "destructive" });
       return;
     }
-    if (dialogState.categoryKey === 'colors' && !itemHexCode.match(/^#[0-9A-Fa-f]{6}$/)) {
+    if (dialogState.categoryKey === 'colors' && !itemHexCode.match(/^#[0-9A-Fa-f]{6}$/)) { // Basic hex validation
        toast({ title: "Validation Error", description: "Hex code must be in #RRGGBB format.", variant: "destructive" });
        return;
     }
 
     setIsSubmitting(true);
-    const payload: any = { name: itemName.trim() };
-    if (itemDescription.trim()) payload.description = itemDescription.trim();
-    if (dialogState.categoryKey === 'colors') payload.hexCode = itemHexCode.trim();
+    const payload: Partial<MetaItem & MetaColorItem> = { name: itemName.trim() };
+    
+    if (dialogState.categoryKey === 'colors') {
+      payload.hexCode = itemHexCode.trim();
+    } else {
+      // Only add description if it's not for colors and it has content
+      if (itemDescription.trim()) {
+        payload.description = itemDescription.trim();
+      }
+    }
 
     try {
       if (dialogState.mode === 'add') {
@@ -226,11 +242,7 @@ export default function SettingsPage() {
         await updateMetaItem(dialogState.categoryKey, dialogState.item.id, payload);
         toast({ title: "Success", description: `${categoryDisplayNames[dialogState.categoryKey]} updated successfully.` });
       }
-      // This is a bit of a hack; ideally, the SettingSection would re-fetch or update its state.
-      // For simplicity now, we might just close and rely on user seeing the change or refreshing.
-      // A better solution would involve a shared state or callback to refresh the specific section.
-      // For now, let's reload the page to reflect changes.
-      window.location.reload(); 
+      setForceRefreshKey(prev => prev + 1); // Trigger re-fetch in sections
       handleDialogClose();
     } catch (err: any) {
       toast({ title: "Error", description: err.message || `Failed to save ${categoryDisplayNames[dialogState.categoryKey]}.`, variant: "destructive" });
@@ -252,11 +264,11 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
-        <SettingSection title="Brands" categoryKey="brands" onEdit={handleEditOpen} />
-        <SettingSection title="Categories" categoryKey="categories" onEdit={handleEditOpen} />
-        <SettingSection title="Sizes" categoryKey="sizes" onEdit={handleEditOpen} />
-        <SettingSection title="Units" categoryKey="units" onEdit={handleEditOpen} />
-        <SettingSection title="Colors" categoryKey="colors" onEdit={handleEditOpen} />
+        <SettingSection title="Brands" categoryKey="brands" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
+        <SettingSection title="Categories" categoryKey="categories" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
+        <SettingSection title="Sizes" categoryKey="sizes" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
+        <SettingSection title="Units" categoryKey="units" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
+        <SettingSection title="Colors" categoryKey="colors" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
         
         <Card className="shadow-md lg:col-span-2">
           <CardHeader>
@@ -293,12 +305,16 @@ export default function SettingsPage() {
               <Label htmlFor="name" className="text-right">Name*</Label>
               <Input id="name" value={itemName} onChange={(e) => setItemName(e.target.value)} className="col-span-3" placeholder={`${dialogState.categoryKey ? categoryDisplayNames[dialogState.categoryKey] : ''} name`} />
             </div>
-            {dialogState.categoryKey !== 'sizes' && dialogState.categoryKey !== 'units' && dialogState.categoryKey !== 'colors' && (
+            
+            {/* Show Description field for all meta types except Colors */}
+            {dialogState.categoryKey && dialogState.categoryKey !== 'colors' && (
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="description" className="text-right">Description</Label>
                 <Textarea id="description" value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} className="col-span-3" placeholder="Optional description" />
               </div>
             )}
+
+            {/* Show Hex Code field only for Colors */}
             {dialogState.categoryKey === 'colors' && (
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="hexCode" className="text-right">Hex Code*</Label>

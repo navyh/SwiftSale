@@ -2,7 +2,7 @@
 // src/lib/apiClient.ts
 "use client"; // To be used in client components
 
-const API_BASE_URL = 'https://orca-app-k6zka.ondigitalocean.app/api/v2'; // Updated to v2
+const API_BASE_URL = 'https://orca-app-k6zka.ondigitalocean.app/api/v2';
 
 export interface Category {
   id: number;
@@ -41,6 +41,7 @@ export interface MetaItem {
 
 export interface MetaColorItem extends MetaItem {
   hexCode?: string | null;
+  // Colors typically don't have a separate description field in many APIs if hexCode is primary
 }
 
 export interface Product {
@@ -52,9 +53,17 @@ export interface Product {
   quantity: number;
   unitPrice: number;
   costPrice?: number | null;
+  
+  // IDs from list view, and always available
+  categoryId?: number | null;
+  brandId?: number | null;
+  supplierId?: number | null;
+
+  // Full objects, potentially from detail view or hydrated client-side
   category?: Category | null;
   brand?: Brand | null;
   supplier?: Supplier | null;
+  
   imageUrls?: string[] | null;
   tags?: string[] | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | null;
@@ -65,7 +74,7 @@ export interface Product {
   metaDescription?: string | null;
   createdAt: string;
   updatedAt: string;
-  // productAttributes - not handled in this iteration for simplicity
+  // productAttributes and productVariants - not handled in this iteration for simplicity
 }
 
 export interface CreateProductRequest {
@@ -87,6 +96,7 @@ export interface CreateProductRequest {
   isFeatured?: boolean | null;
   metaTitle?: string | null;
   metaDescription?: string | null;
+  // productAttributes and productVariants omitted for now as per UI simplicity
 }
 
 // Helper function for API calls
@@ -127,10 +137,12 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
 
 // Product endpoints
 export async function fetchProducts(): Promise<Product[]> {
+  // This endpoint returns products with categoryId, brandId, etc.
   return fetchAPI<Product[]>('/products');
 }
 
 export async function fetchProductById(id: number): Promise<Product> {
+  // This endpoint might return products with nested category, brand objects
   return fetchAPI<Product>(`/products/${id}`);
 }
 
@@ -239,7 +251,7 @@ export async function fetchUsers(): Promise<User[]> {
 }
 
 // Generic function to create Meta items (Brands, Categories, etc.)
-export async function createMetaItem(metaType: 'brands' | 'categories' | 'suppliers' | 'sizes' | 'units' | 'colors', data: { name: string; description?: string; hexCode?: string }): Promise<MetaItem | MetaColorItem> {
+export async function createMetaItem(metaType: 'brands' | 'categories' | 'suppliers' | 'sizes' | 'units' | 'colors', data: Partial<MetaItem & MetaColorItem>): Promise<MetaItem | MetaColorItem> {
   return fetchAPI<MetaItem | MetaColorItem>(`/meta/${metaType}`, {
     method: 'POST',
     body: JSON.stringify(data),
@@ -247,7 +259,7 @@ export async function createMetaItem(metaType: 'brands' | 'categories' | 'suppli
 }
 
 // Generic function to update Meta items
-export async function updateMetaItem(metaType: 'brands' | 'categories' | 'suppliers' | 'sizes' | 'units' | 'colors', id: number, data: { name: string; description?: string; hexCode?: string }): Promise<MetaItem | MetaColorItem> {
+export async function updateMetaItem(metaType: 'brands' | 'categories' | 'suppliers' | 'sizes' | 'units' | 'colors', id: number, data: Partial<MetaItem & MetaColorItem>): Promise<MetaItem | MetaColorItem> {
   return fetchAPI<MetaItem | MetaColorItem>(`/meta/${metaType}/${id}`, {
     method: 'PUT',
     body: JSON.stringify(data),
@@ -260,4 +272,3 @@ export async function deleteMetaItem(metaType: 'brands' | 'categories' | 'suppli
     method: 'DELETE',
   });
 }
-
