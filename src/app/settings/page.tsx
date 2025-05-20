@@ -11,10 +11,11 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PlusCircle, Edit3, Trash2, Settings as SettingsIcon, FolderTree, BellRing, UsersRound, ListChecks, CreditCard, FileText as InventoryIcon, Tag, Scale } from "lucide-react";
 import {
   fetchProductBrands, createProductBrand, updateProductBrand, deleteProductBrand, type Brand,
-  fetchProductCategoriesTree, createProductCategory, updateProductCategory, deleteProductCategory, type Category, type ProductCategoryNode,
+  fetchProductCategoriesTree, createProductCategory, updateProductCategory, deleteProductCategory, type Category, type ProductCategoryNode, fetchProductCategoriesFlat,
   fetchProductUnits, createProductUnit, updateProductUnit, deleteProductUnit, type ProductUnit,
   fetchNotificationTemplates, createNotificationTemplate, updateNotificationTemplate, deleteNotificationTemplate, type NotificationTemplate,
   fetchOrderStatuses, fetchPaymentTypes, fetchInventoryAdjustmentReasons, fetchUserRolesMeta,
@@ -67,13 +68,14 @@ const categoryDisplayNames: Record<SettingCategoryKey, string> = {
   userRolesMeta: "User Role (System)",
 };
 
-const flattenCategoriesForTable = (nodes: ProductCategoryNode[], parentName: string | null = null): (ProductCategoryNode & { displayName: string })[] => {
-  let flatList: (ProductCategoryNode & { displayName: string })[] = [];
+const flattenCategoriesForTable = (nodes: ProductCategoryNode[], parentName: string | null = null, depth = 0): (ProductCategoryNode & { displayName: string; depth: number })[] => {
+  let flatList: (ProductCategoryNode & { displayName: string; depth: number })[] = [];
   nodes.forEach(node => {
-    const displayName = parentName ? `${parentName} > ${node.name}` : node.name;
-    flatList.push({ ...node, displayName });
+    const prefix = depth > 0 ? '\u00A0\u00A0'.repeat(depth) + '↳ ' : '';
+    const displayName = prefix + node.name;
+    flatList.push({ ...node, displayName, depth });
     if (node.children && node.children.length > 0) {
-      flatList = flatList.concat(flattenCategoriesForTable(node.children, displayName));
+      flatList = flatList.concat(flattenCategoriesForTable(node.children, displayName, depth + 1));
     }
   });
   return flatList;
@@ -102,8 +104,8 @@ const SettingSection = ({
   const fetchData = React.useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    let data: SettingItemUnion[] = [];
     try {
-      let data: SettingItemUnion[] = [];
       switch (categoryKey) {
         case 'productBrands': data = await fetchProductBrands(); break;
         case 'productCategories':
@@ -140,10 +142,10 @@ const SettingSection = ({
         case 'productCategories': await deleteProductCategory(itemId); break;
         case 'productUnits': await deleteProductUnit(itemId); break;
         case 'notificationTemplates': await deleteNotificationTemplate(itemId); break;
-        default: throw new Error("Invalid category key for delete or non-deletable item");
+        default: throw new Error("Invalid category key for delete or non-deletable item: " + categoryKey);
       }
       toast({title: "Success", description: `${categoryDisplayNames[categoryKey]} deleted.`});
-      setItems(prev => prev.filter(item => item.id !== itemId));
+      fetchData(); // Re-fetch to update list
     } catch (err: any) {
       toast({title: "Error", description: err.message || `Failed to delete ${categoryDisplayNames[categoryKey]}.`, variant: "destructive"});
     }
@@ -167,8 +169,6 @@ const SettingSection = ({
 
   const getDescriptionOrEquivalent = (item: SettingItemUnion) => {
     if (categoryKey === 'notificationTemplates') return (item as NotificationTemplate).subject || 'N/A';
-    // For UserRole, description is part of MetaItem, so default case handles it.
-    // For OrderStatus, PaymentType, InventoryAdjustmentReason, description is part of MetaItem.
     return (item as MetaItem).description || 'N/A';
   };
 
@@ -278,19 +278,38 @@ const SettingSection = ({
 export default function SettingsPage() {
   const { toast } = useToast();
   const [dialogState, setDialogState] = React.useState<EditDialogState>({ isOpen: false, item: null, categoryKey: null, mode: 'add' });
-  const [forceRefreshKey, setForceRefreshKey] = React.useState(0);
+  const [forceRefreshKey, setForceRefreshKey] = React.useState(0); // Used to trigger re-fetch in sections
 
   const [itemName, setItemName] = React.useState('');
   const [itemDescription, setItemDescription] = React.useState('');
   const [itemSubject, setItemSubject] = React.useState(''); 
   const [itemBody, setItemBody] = React.useState('');       
   const [itemType, setItemType] = React.useState('');         
-  const [itemParentId, setItemParentId] = React.useState<number | null>(null); 
-  // Permissions field state for UserRoles - not editable via this dialog currently
-  // const [itemPermissions, setItemPermissions] = React.useState<string[]>([]);
+  const [itemParentId, setItemParentId] = React.useState<string | null>(null); // Use string for Select value
+
+  const [flatCategoriesForDialog, setFlatCategoriesForDialog] = React.useState<Category[]>([]);
+  const [isLoadingDialogData, setIsLoadingDialogData] = React.useState(false);
 
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  React.useEffect(() => {
+    const loadDialogDropdownData = async () => {
+      if (dialogState.categoryKey === 'productCategories' && dialogState.isOpen) {
+        setIsLoadingDialogData(true);
+        try {
+          const categories = await fetchProductCategoriesFlat();
+          setFlatCategoriesForDialog(categories);
+        } catch (error) {
+          toast({ title: "Error", description: "Failed to load categories for dropdown.", variant: "destructive" });
+          setFlatCategoriesForDialog([]);
+        } finally {
+          setIsLoadingDialogData(false);
+        }
+      }
+    };
+    loadDialogDropdownData();
+  }, [dialogState.isOpen, dialogState.categoryKey, toast]);
 
   const handleEditOpen = (item: SettingItemUnion | null, mode: 'add' | 'edit', categoryKey: SettingCategoryKey) => {
     setItemName(item?.name || '');
@@ -302,12 +321,9 @@ export default function SettingsPage() {
     setItemBody(ntItem?.body || '');
     setItemType(ntItem?.type || '');
 
-    setItemParentId((item as Category)?.parentId || null);
-    // if (categoryKey === 'userRolesMeta' && item) {
-    //   setItemPermissions((item as UserRole).permissions || []);
-    // } else {
-    //   setItemPermissions([]);
-    // }
+    const catItem = item as Category | null;
+    setItemParentId(catItem?.parentId?.toString() || null);
+
 
     setDialogState({ isOpen: true, item, categoryKey, mode });
   };
@@ -316,7 +332,6 @@ export default function SettingsPage() {
     setDialogState({ isOpen: false, item: null, categoryKey: null, mode: 'add' });
     setItemName(''); setItemDescription('');
     setItemSubject(''); setItemBody(''); setItemType(''); setItemParentId(null);
-    // setItemPermissions([]);
   };
 
   const handleDialogSubmit = async () => {
@@ -337,10 +352,12 @@ export default function SettingsPage() {
     }
 
     if (dialogState.categoryKey === 'productCategories') {
-        // Parent ID for categories is not handled in this dialog for creation/update for simplicity.
-        // New categories are top-level. Updating parent requires a different UI.
-        if (itemParentId && dialogState.mode === 'edit' && dialogState.item?.id) {
-             // payload.parentId = itemParentId; // Potentially for future, but API for PATCH doesn't allow parentId update directly if it makes it complex.
+        payload.parentId = itemParentId ? parseInt(itemParentId, 10) : null;
+        // Prevent setting parentId to the item's own id
+        if (dialogState.mode === 'edit' && dialogState.item?.id === payload.parentId) {
+            toast({ title: "Validation Error", description: "A category cannot be its own parent.", variant: "destructive" });
+            setIsSubmitting(false);
+            return;
         }
     }
 
@@ -353,24 +370,24 @@ export default function SettingsPage() {
       if (dialogState.mode === 'add') {
         switch(dialogState.categoryKey) {
           case 'productBrands': await createProductBrand(payload); break;
-          case 'productCategories': await createProductCategory(payload); break; // Creates as top-level
+          case 'productCategories': await createProductCategory(payload); break; 
           case 'productUnits': await createProductUnit(payload); break;
           case 'notificationTemplates': await createNotificationTemplate(payload); break;
-          default: throw new Error("Invalid category key for create or non-creatable item");
+          default: throw new Error("Invalid category key for create or non-creatable item: " + dialogState.categoryKey);
         }
         toast({ title: "Success", description: `${categoryDisplayNames[dialogState.categoryKey]} added successfully.` });
-      } else if (dialogState.item?.id) { // Ensure item and item.id exist for update
+      } else if (dialogState.item?.id) { 
          let currentItemId = dialogState.item.id;
         switch(dialogState.categoryKey) {
           case 'productBrands': await updateProductBrand(currentItemId, payload); break;
           case 'productCategories': await updateProductCategory(currentItemId, payload); break;
           case 'productUnits': await updateProductUnit(currentItemId, payload); break;
           case 'notificationTemplates': await updateNotificationTemplate(currentItemId, payload); break;
-          default: throw new Error("Invalid category key for update or non-updatable item");
+          default: throw new Error("Invalid category key for update or non-updatable item: " + dialogState.categoryKey);
         }
         toast({ title: "Success", description: `${categoryDisplayNames[dialogState.categoryKey]} updated successfully.` });
       }
-      setForceRefreshKey(prev => prev + 1); // Trigger re-fetch in SettingSection
+      setForceRefreshKey(prev => prev + 1); 
       handleDialogClose();
     } catch (err: any) {
       toast({ title: "Error", description: err.message || `Failed to save ${categoryDisplayNames[dialogState.categoryKey!].toLowerCase()}.`, variant: "destructive" });
@@ -430,6 +447,31 @@ export default function SettingsPage() {
               </div>
             )}
 
+            {dialogState.categoryKey === 'productCategories' && (
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="parentId" className="text-right">Parent Category</Label>
+                <Select
+                  value={itemParentId || ""} // Ensure value is a string for Select
+                  onValueChange={(value) => setItemParentId(value === "null" ? null : value)} // Handle "null" string for no parent
+                  disabled={isLoadingDialogData}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder={isLoadingDialogData ? "Loading..." : "Select parent category"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="null">-- No Parent --</SelectItem>
+                    {flatCategoriesForDialog
+                      .filter(cat => dialogState.item?.id !== cat.id) // Prevent selecting self as parent
+                      .map(cat => (
+                        <SelectItem key={cat.id} value={cat.id.toString()}>
+                          {cat.name}
+                        </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {dialogState.categoryKey === 'notificationTemplates' && (
               <>
                 <div className="grid grid-cols-4 items-center gap-4">
@@ -446,17 +488,12 @@ export default function SettingsPage() {
                 </div>
               </>
             )}
-            {dialogState.categoryKey === 'productCategories' && (
-                 <p className="text-xs text-muted-foreground col-span-4 text-center pt-2">
-                    Parent category selection for creating sub-categories will be added later. New categories are created as top-level.
-                 </p>
-            )}
           </div>
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline">Cancel</Button>
             </DialogClose>
-            <Button type="submit" onClick={handleDialogSubmit} disabled={isSubmitting}>
+            <Button type="submit" onClick={handleDialogSubmit} disabled={isSubmitting || isLoadingDialogData}>
               {isSubmitting ? (dialogState.mode === 'add' ? 'Adding...' : 'Saving...') : (dialogState.mode === 'add' ? 'Add' : 'Save Changes')}
             </Button>
           </DialogFooter>
@@ -466,3 +503,4 @@ export default function SettingsPage() {
   );
 }
 
+    
