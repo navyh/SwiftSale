@@ -2,7 +2,7 @@
 // src/lib/apiClient.ts
 "use client"; // To be used in client components
 
-const API_BASE_URL = 'https://orca-app-k6zka.ondigitalocean.app/api/v1';
+const API_BASE_URL = 'https://orca-app-k6zka.ondigitalocean.app/api/v2'; // Updated to v2
 
 export interface Category {
   id: number;
@@ -260,3 +260,4 @@ export async function deleteMetaItem(metaType: 'brands' | 'categories' | 'suppli
     method: 'DELETE',
   });
 }
+
