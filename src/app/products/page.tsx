@@ -1,9 +1,11 @@
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PlusCircle, Search, Edit3, Trash2, Filter } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 
 const products = [
   { id: "PROD001", name: "Premium Wireless Mouse", category: "Electronics", price: "$49.99", stock: 120, status: "Active", image: "https://placehold.co/40x40.png", dataAiHint: "computer mouse" },
@@ -21,9 +23,11 @@ export default function ProductsPage() {
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Product Management</h1>
           <p className="text-muted-foreground">Manage your product inventory, variants, and details.</p>
         </div>
-        <Button>
-          <PlusCircle className="mr-2 h-4 w-4" /> Add New Product
-        </Button>
+        <Link href="/products/new" passHref>
+          <Button>
+            <PlusCircle className="mr-2 h-4 w-4" /> Add New Product
+          </Button>
+        </Link>
       </div>
 
       <Card className="shadow-md">
@@ -69,7 +73,7 @@ export default function ProductsPage() {
                     <span className={`px-2 py-1 text-xs rounded-full ${
                       product.status === "Active" ? "bg-green-100 text-green-700" : 
                       product.status === "Out of Stock" ? "bg-red-100 text-red-700" : 
-                      "bg-yellow-100 text-yellow-700"
+                      "bg-yellow-100 text-yellow-700" // Draft or other statuses
                     }`}>
                       {product.status}
                     </span>
