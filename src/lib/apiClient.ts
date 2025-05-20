@@ -177,7 +177,7 @@ export interface CreateBusinessProfileRequest {
 export interface UpdateBusinessProfileRequest {
   name?: string;
   gstin?: string;
-  status?: 'ACTIVE' | 'INACTIVE';
+  status?: 'ACTIVE' | 'INACTIVE' | undefined;
   addresses?: (AddressCreateDto | AddressDto)[] | null;
   paymentTerms?: string | null;
   userIds?: number[] | null;
@@ -224,7 +224,7 @@ export async function deleteBusinessProfile(profileId: number): Promise<void> {
 export interface StaffDto {
   id: number;
   userId: number;
-  user?: UserDto; // Assuming UserDto can represent the user details
+  user?: UserDto; 
   roles: string[];
   permissions?: string[] | null;
   status: 'ACTIVE' | 'INACTIVE' | string;
@@ -236,13 +236,13 @@ export interface CreateStaffRequest {
   userId: number;
   roles: string[];
   permissions?: string[] | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string;
+  status?: 'ACTIVE' | 'INACTIVE' | string | null;
 }
 
 export interface UpdateStaffRequest {
   roles?: string[];
   permissions?: string[] | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string;
+  status?: 'ACTIVE' | 'INACTIVE' | string | null;
 }
 
 
@@ -263,7 +263,6 @@ export async function fetchStaffById(staffId: number): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/staff/${staffId}`);
 }
 
-// To create staff, API is POST /users/{userId}/staff
 export async function createStaffMember(userIdForStaff: number, staffData: Omit<CreateStaffRequest, 'userId'>): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/users/${userIdForStaff}/staff`, {
     method: 'POST',
@@ -317,8 +316,8 @@ export interface ProductVariant {
   costPrice?: number | null;
   quantity: number;
   barcode?: string | null;
-  color?: string | null;
-  size?: string | null;
+  color?: string | null; // Changed from colorValue
+  size?: string | null;  // Changed from sizeValue
   imageUrls?: string[] | null;
   createdAt?: string;
   updatedAt?: string;
@@ -327,19 +326,21 @@ export interface ProductVariant {
 export interface Product {
   id: number;
   name:string;
-  brand: Brand; // Changed from brandId
-  category: Category; // Changed from categoryId
+  brand?: Brand | null; 
+  brandId?: number | null;
+  category?: Category | null; 
+  categoryId?: number | null;
   subCategory?: string | null;
   hsnCode?: string | null;
   gstTaxRate?: number | null;
   description?: string | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
   
-  sku?: string | null; // Base SKU if no variants or for common reference
-  barcode?: string | null; // Base Barcode
-  quantity?: number; // Total quantity, might be sum of variants or for non-variant products
-  unitPrice?: number; // Base unit price
-  costPrice?: number | null; // Base cost price
+  sku?: string | null; 
+  barcode?: string | null; 
+  quantity?: number; 
+  unitPrice?: number; 
+  costPrice?: number | null; 
 
   unitId?: number | null;
   unit?: ProductUnit | null;
@@ -358,18 +359,17 @@ export interface Product {
 
 export interface CreateProductRequest {
   name: string;
-  brand: string; // Expects brand name
-  category: string; // Expects category name
-  subCategory?: string | null;
+  brand: string; 
   hsnCode?: string | null;
-  gstTaxRate?: number | null;
   description?: string | null;
-  colorVariant?: string[] | null; // For generating variants
-  sizeVariant?: string[] | null;  // For generating variants
+  gstTaxRate?: number | null;
+  category: string; 
+  subCategory?: string | null;
+  colorVariant?: string[] | null; 
+  sizeVariant?: string[] | null;  
   tags?: string[] | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
 
-  // Optional base product details - API might create a default variant if these are provided and color/size are not
   sku?: string | null;
   barcode?: string | null;
   quantity?: number;
@@ -392,8 +392,8 @@ export interface UpdateProductRequest {
   hsnCode?: string | null;
   gstTaxRate?: number | null;
   description?: string | null;
-  colorVariant?: string[] | null; // For generating new variants during update
-  sizeVariant?: string[] | null;   // For generating new variants during update
+  colorVariant?: string[] | null; 
+  sizeVariant?: string[] | null;   
   tags?: string[] | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
 
@@ -459,7 +459,7 @@ export async function createProduct(productData: CreateProductRequest): Promise<
 
 export async function updateProduct(id: number, productData: UpdateProductRequest): Promise<Product> {
   return fetchAPI<Product>(`/products/${id}`, {
-    method: 'PATCH', // Usually PATCH for partial updates
+    method: 'PATCH', 
     body: JSON.stringify(productData),
   });
 }
@@ -594,7 +594,7 @@ export async function fetchCurrentUser(): Promise<CurrentUserDto> {
 }
 export async function updateCurrentUser(data: UpdateUserRequest): Promise<CurrentUserDto> {
   return fetchAPI<CurrentUserDto>('/users/me', {
-    method: 'PATCH', // Assuming PATCH for current user update
+    method: 'PATCH', 
     body: JSON.stringify(data),
   });
 }

@@ -13,12 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { fetchUserById, updateUser, type UpdateUserRequest, type UserDto, type AddressDto, type AddressCreateDto } from "@/lib/apiClient";
-import { ChevronLeft, Save, Trash2, PlusCircle, UserCog } from "lucide-react";
+import { ChevronLeft, Save, Trash2, PlusCircle, UserCog, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const addressSchema = z.object({
-  id: z.number().optional().nullable(), // Existing addresses will have an ID
+  id: z.number().optional().nullable(), 
   line1: z.string().min(1, "Address line 1 is required"),
   line2: z.string().optional().nullable(),
   city: z.string().min(1, "City is required"),
@@ -91,15 +91,23 @@ export default function EditUserPage() {
       try {
         const fetchedUser = await fetchUserById(userId);
         setUser(fetchedUser);
+        const currentStatus = fetchedUser.status?.toUpperCase();
+        const validStatus = USER_STATUSES.includes(currentStatus as any) ? currentStatus as "ACTIVE" | "INACTIVE" : "ACTIVE";
+
         form.reset({
           name: fetchedUser.name,
           email: fetchedUser.email ?? "",
-          type: fetchedUser.type as "B2C" | "B2B",
+          type: fetchedUser.type as "B2C" | "B2B", // API type should match these
           gstin: fetchedUser.gstin ?? "",
-          status: (fetchedUser.status as "ACTIVE" | "INACTIVE") ?? "ACTIVE",
-          addresses: fetchedUser.addresses?.map(addr => ({ ...addr, type: addr.type as "SHIPPING" | "BILLING" | undefined })) ?? [],
+          status: validStatus,
+          addresses: fetchedUser.addresses?.map(addr => ({ 
+            ...addr, 
+            type: addr.type as ("SHIPPING" | "BILLING" | undefined) ?? undefined,
+            line2: addr.line2 ?? ""
+          })) ?? [],
         });
       } catch (error: any) {
+        console.error("Error fetching user for edit:", error);
         toast({
           title: "Error Fetching User",
           description: error.message || "Could not load user data.",
@@ -120,12 +128,12 @@ export default function EditUserPage() {
         name: data.name,
         email: data.email || undefined,
         type: data.type,
-        gstin: data.type === "B2B" ? data.gstin || undefined : undefined,
+        gstin: data.type === "B2B" ? (data.gstin || undefined) : undefined,
         status: data.status,
         addresses: data.addresses?.map(addr => {
-          const { id, ...rest } = addr; // Separate id from other fields
-          return id ? { id, ...rest, line2: rest.line2 || undefined, type: rest.type || undefined } // Existing address with ID
-                    : { ...rest, line2: rest.line2 || undefined, type: rest.type || undefined };      // New address without ID
+          const { id, ...rest } = addr; 
+          return id ? { id, ...rest, line2: rest.line2 || undefined, type: rest.type || undefined } 
+                    : { ...rest, line2: rest.line2 || undefined, type: rest.type || undefined };      
         }) || [],
       };
       
@@ -135,7 +143,9 @@ export default function EditUserPage() {
         description: "User updated successfully.",
       });
       router.push("/users");
+      router.refresh();
     } catch (error: any) {
+      console.error("Error updating user:", error);
       toast({
         title: "Error Updating User",
         description: error.message || "An unexpected error occurred.",
@@ -148,7 +158,7 @@ export default function EditUserPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 pb-8">
+      <div className="space-y-6 pb-8 animate-pulse">
         <div className="flex items-center gap-2 md:gap-4">
           <Skeleton className="h-9 w-9" />
           <div>
@@ -156,12 +166,24 @@ export default function EditUserPage() {
             <Skeleton className="h-4 w-80" />
           </div>
         </div>
-        <Skeleton className="h-48 w-full" />
-        <Skeleton className="h-64 w-full" />
-        <div className="flex justify-end gap-2">
-          <Skeleton className="h-10 w-24" />
-          <Skeleton className="h-10 w-24" />
-        </div>
+        <Card className="shadow-md">
+          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
+            <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
+             <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
+          </CardContent>
+        </Card>
+        <Card className="shadow-md">
+          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent className="space-y-4">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-10 w-32" />
+          </CardContent>
+        </Card>
+        <CardFooter className="flex justify-end gap-2 pt-6">
+          <Skeleton className="h-10 w-24" /><Skeleton className="h-10 w-32" />
+        </CardFooter>
       </div>
     );
   }
@@ -334,7 +356,7 @@ export default function EditUserPage() {
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting || isLoading} className="w-full sm:w-auto">
-              {isSubmitting ? "Saving..." : <><Save className="mr-2 h-4 w-4" /> Save Changes</>}
+              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</> : <><Save className="mr-2 h-4 w-4" /> Save Changes</>}
             </Button>
           </CardFooter>
         </form>

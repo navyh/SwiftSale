@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { fetchUserById, deleteUser, type UserDto, type AddressDto } from "@/lib/apiClient";
-import { ChevronLeft, Edit, Trash2, UserCircle, MapPin, FileText, CalendarDays, AlertCircle } from "lucide-react";
+import { ChevronLeft, Edit, Trash2, UserCircle, MapPin, FileText, CalendarDays, AlertCircle, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -82,6 +82,7 @@ export default function UserDetailPage() {
         const fetchedUser = await fetchUserById(userId);
         setUser(fetchedUser);
       } catch (err: any) {
+        console.error("Error fetching user details:", err);
         setError(err.message || "Could not load user data.");
         toast({
           title: "Error Fetching User",
@@ -101,7 +102,9 @@ export default function UserDetailPage() {
       await deleteUser(user.id);
       toast({ title: "Success", description: "User deleted successfully." });
       router.push("/users");
+      router.refresh();
     } catch (err: any) {
+      console.error("Error deleting user:", err);
       toast({
         title: "Error Deleting User",
         description: err.message || "An unexpected error occurred.",
@@ -112,7 +115,7 @@ export default function UserDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 pb-8">
+      <div className="space-y-6 pb-8 animate-pulse">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 md:gap-4">
             <Skeleton className="h-9 w-9" />
@@ -126,8 +129,26 @@ export default function UserDetailPage() {
             <Skeleton className="h-9 w-20" />
           </div>
         </div>
-        <Card className="shadow-md"><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader><CardContent className="space-y-4"><Skeleton className="h-20 w-full" /><Skeleton className="h-20 w-full" /></CardContent></Card>
-        <Card className="shadow-md"><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader><CardContent className="space-y-4"><Skeleton className="h-24 w-full" /></CardContent></Card>
+        <Card className="shadow-md">
+          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" />
+          </CardContent>
+        </Card>
+        <Card className="shadow-md">
+          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent className="space-y-4">
+            <Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" />
+          </CardContent>
+        </Card>
+        <Card className="shadow-md">
+          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" />
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -146,6 +167,8 @@ export default function UserDetailPage() {
   if (!user) {
     return <p className="text-center text-muted-foreground py-10">User not found.</p>;
   }
+  
+  const userStatus = user.status ? (user.status).toUpperCase() : "N/A";
 
   return (
     <div className="space-y-6 pb-8">
@@ -202,9 +225,9 @@ export default function UserDetailPage() {
            <div className="flex items-start space-x-2">
             <div>
                 <p className="text-sm text-muted-foreground">Status</p>
-                <Badge variant={user.status?.toUpperCase() === 'ACTIVE' ? 'default' : 'outline'}
-                       className={user.status?.toUpperCase() === 'ACTIVE' ? 'bg-green-500/20 text-green-700 border-green-500/30' : 'bg-yellow-500/20 text-yellow-700 border-yellow-500/30'}>
-                    {user.status || "N/A"}
+                <Badge variant={userStatus === 'ACTIVE' ? 'default' : 'outline'}
+                       className={userStatus === 'ACTIVE' ? 'bg-green-500/20 text-green-700 border-green-500/30' : 'bg-yellow-500/20 text-yellow-700 border-yellow-500/30'}>
+                    {userStatus}
                 </Badge>
             </div>
           </div>
@@ -238,4 +261,3 @@ export default function UserDetailPage() {
     </div>
   );
 }
-

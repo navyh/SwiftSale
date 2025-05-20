@@ -85,20 +85,21 @@ export default function BusinessProfileDetailPage() {
         setProfile(fetchedProfile);
         if (fetchedProfile.userIds && fetchedProfile.userIds.length > 0) {
           setIsLoadingUsers(true);
-          const usersData = await Promise.all(
-            fetchedProfile.userIds.map(id => 
-              fetchUserById(id).catch(() => {
-                console.warn(`Failed to fetch user with ID: ${id}`); // Log warning for individual user fetch failure
-                return null;
-              })
-            )
+          const usersDataPromises = fetchedProfile.userIds.map(id => 
+            fetchUserById(id).catch((userError) => {
+              console.warn(`Failed to fetch user with ID: ${id}. Error: ${userError.message}`);
+              return null; 
+            })
           );
+          const usersData = await Promise.all(usersDataPromises);
           setLinkedUsers(usersData.filter(u => u !== null) as UserDto[]);
           setIsLoadingUsers(false);
         } else {
           setLinkedUsers([]);
+          setIsLoadingUsers(false);
         }
       } catch (err: any) {
+        console.error("Error fetching business profile details:", err);
         setError(err.message || "Could not load business profile data.");
         toast({
           title: "Error Fetching Profile",
@@ -118,8 +119,9 @@ export default function BusinessProfileDetailPage() {
       await deleteBusinessProfile(profile.id);
       toast({ title: "Success", description: "Business profile deleted successfully." });
       router.push("/business-profiles");
-      router.refresh(); // Ensure list updates
+      router.refresh(); 
     } catch (err: any) {
+      console.error("Error deleting business profile:", err);
       toast({
         title: "Error Deleting Profile",
         description: err.message || "An unexpected error occurred.",
@@ -142,12 +144,14 @@ export default function BusinessProfileDetailPage() {
           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" />
           </CardContent>
         </Card>
         <Card className="shadow-md"><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
           <CardContent className="space-y-2">
             <Skeleton className="h-5 w-1/2" />
             <Skeleton className="h-5 w-2/3" />
+             <Skeleton className="h-5 w-1/2" />
           </CardContent>
         </Card>
         <Card className="shadow-md"><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
@@ -179,6 +183,8 @@ export default function BusinessProfileDetailPage() {
   if (!profile) {
     return <p className="text-center text-muted-foreground py-10">Business profile not found.</p>;
   }
+
+  const profileStatus = profile.status ? (profile.status).toUpperCase() : "N/A";
 
   return (
     <div className="space-y-6 pb-8">
@@ -228,18 +234,15 @@ export default function BusinessProfileDetailPage() {
           <DetailItem label="Company Name" value={profile.name} />
           <DetailItem label="GSTIN" value={profile.gstin} />
           <DetailItem label="Payment Terms" value={profile.paymentTerms} />
-          {profile.status && (
-            <div className="flex items-start space-x-2">
+          <div className="flex items-start space-x-2">
               <div>
                   <p className="text-sm text-muted-foreground">Status</p>
-                  <Badge variant={(profile.status).toUpperCase() === "ACTIVE" ? "default" : "outline"}
-                         className={(profile.status).toUpperCase() === "ACTIVE" ? "bg-green-500/20 text-green-700 border-green-500/30" : "bg-gray-500/20 text-gray-700 border-gray-500/30"}>
-                      {profile.status}
+                  <Badge variant={profileStatus === "ACTIVE" ? "default" : "outline"}
+                         className={profileStatus === "ACTIVE" ? "bg-green-500/20 text-green-700 border-green-500/30" : "bg-gray-500/20 text-gray-700 border-gray-500/30"}>
+                      {profileStatus}
                   </Badge>
               </div>
             </div>
-          )}
-          {!profile.status && <DetailItem label="Status" value="N/A" />}
         </CardContent>
       </Card>
 

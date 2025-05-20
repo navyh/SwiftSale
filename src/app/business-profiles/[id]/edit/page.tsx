@@ -115,17 +115,20 @@ export default function EditBusinessProfilePage() {
           gstin: fetchedProfile.gstin,
           paymentTerms: fetchedProfile.paymentTerms ?? "",
           status: validStatus,
-          addresses: fetchedProfile.addresses?.map(addr => ({ ...addr, type: addr.type as ("SHIPPING" | "BILLING" | undefined) })) ?? [],
+          addresses: fetchedProfile.addresses?.map(addr => ({ 
+            ...addr, 
+            type: addr.type as ("SHIPPING" | "BILLING" | undefined) ?? undefined,
+            line2: addr.line2 ?? "",
+          })) ?? [],
           userIds: fetchedProfile.userIds ?? [],
         });
       } catch (error: any) {
+        console.error("Error fetching data for edit business profile:", error);
         toast({
           title: "Error Fetching Data",
           description: error.message || "Could not load profile or user data.",
           variant: "destructive",
         });
-        // Consider not redirecting immediately, allow user to retry or see the error
-        // router.push("/business-profiles"); 
       } finally {
         setIsLoading(false);
         setIsLoadingUsers(false);
@@ -156,8 +159,9 @@ export default function EditBusinessProfilePage() {
         description: "Business profile updated successfully.",
       });
       router.push("/business-profiles");
-      router.refresh(); // To ensure list page reflects changes
+      router.refresh(); 
     } catch (error: any) {
+      console.error("Error updating business profile:", error);
       toast({
         title: "Error Updating Profile",
         description: error.message || "An unexpected error occurred.",
