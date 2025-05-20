@@ -68,14 +68,14 @@ const categoryDisplayNames: Record<SettingCategoryKey, string> = {
   userRolesMeta: "User Role (System)",
 };
 
-const flattenCategoriesForTable = (nodes: ProductCategoryNode[], parentName: string | null = null, depth = 0): (ProductCategoryNode & { displayName: string; depth: number })[] => {
+const flattenCategoriesForTable = (nodes: ProductCategoryNode[], depth = 0): (ProductCategoryNode & { displayName: string; depth: number })[] => {
   let flatList: (ProductCategoryNode & { displayName: string; depth: number })[] = [];
   nodes.forEach(node => {
     const prefix = depth > 0 ? '\u00A0\u00A0'.repeat(depth) + '↳ ' : '';
     const displayName = prefix + node.name;
     flatList.push({ ...node, displayName, depth });
     if (node.children && node.children.length > 0) {
-      flatList = flatList.concat(flattenCategoriesForTable(node.children, displayName, depth + 1));
+      flatList = flatList.concat(flattenCategoriesForTable(node.children, depth + 1));
     }
   });
   return flatList;
@@ -145,7 +145,7 @@ const SettingSection = ({
         default: throw new Error("Invalid category key for delete or non-deletable item: " + categoryKey);
       }
       toast({title: "Success", description: `${categoryDisplayNames[categoryKey]} deleted.`});
-      fetchData(); // Re-fetch to update list
+      fetchData(); 
     } catch (err: any) {
       toast({title: "Error", description: err.message || `Failed to delete ${categoryDisplayNames[categoryKey]}.`, variant: "destructive"});
     }
@@ -196,8 +196,11 @@ const SettingSection = ({
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                {renderAdditionalHeaders() && <TableHead className="hidden md:table-cell">Info</TableHead>}
-                <TableHead className="hidden md:table-cell">Details</TableHead>
+                {renderAdditionalHeaders()}
+                <TableHead className="hidden md:table-cell">
+                  {categoryKey === 'notificationTemplates' ? 'Subject' : 
+                   categoryKey === 'userRolesMeta' ? 'Description' : 'Description'}
+                </TableHead>
                 {isEditable && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
@@ -278,14 +281,14 @@ const SettingSection = ({
 export default function SettingsPage() {
   const { toast } = useToast();
   const [dialogState, setDialogState] = React.useState<EditDialogState>({ isOpen: false, item: null, categoryKey: null, mode: 'add' });
-  const [forceRefreshKey, setForceRefreshKey] = React.useState(0); // Used to trigger re-fetch in sections
+  const [forceRefreshKey, setForceRefreshKey] = React.useState(0);
 
   const [itemName, setItemName] = React.useState('');
   const [itemDescription, setItemDescription] = React.useState('');
   const [itemSubject, setItemSubject] = React.useState(''); 
   const [itemBody, setItemBody] = React.useState('');       
   const [itemType, setItemType] = React.useState('');         
-  const [itemParentId, setItemParentId] = React.useState<string | null>(null); // Use string for Select value
+  const [itemParentId, setItemParentId] = React.useState<string | null>(null);
 
   const [flatCategoriesForDialog, setFlatCategoriesForDialog] = React.useState<Category[]>([]);
   const [isLoadingDialogData, setIsLoadingDialogData] = React.useState(false);
@@ -298,7 +301,7 @@ export default function SettingsPage() {
       if (dialogState.categoryKey === 'productCategories' && dialogState.isOpen) {
         setIsLoadingDialogData(true);
         try {
-          const categories = await fetchProductCategoriesFlat();
+          const categories = await fetchProductCategoriesFlat(); // Use flat list for dropdown
           setFlatCategoriesForDialog(categories);
         } catch (error) {
           toast({ title: "Error", description: "Failed to load categories for dropdown.", variant: "destructive" });
@@ -321,7 +324,7 @@ export default function SettingsPage() {
     setItemBody(ntItem?.body || '');
     setItemType(ntItem?.type || '');
 
-    const catItem = item as Category | null;
+    const catItem = item as ProductCategoryNode | Category | null; // Can be either from tree or flat
     setItemParentId(catItem?.parentId?.toString() || null);
 
 
@@ -353,7 +356,6 @@ export default function SettingsPage() {
 
     if (dialogState.categoryKey === 'productCategories') {
         payload.parentId = itemParentId ? parseInt(itemParentId, 10) : null;
-        // Prevent setting parentId to the item's own id
         if (dialogState.mode === 'edit' && dialogState.item?.id === payload.parentId) {
             toast({ title: "Validation Error", description: "A category cannot be its own parent.", variant: "destructive" });
             setIsSubmitting(false);
@@ -451,8 +453,8 @@ export default function SettingsPage() {
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="parentId" className="text-right">Parent Category</Label>
                 <Select
-                  value={itemParentId || ""} // Ensure value is a string for Select
-                  onValueChange={(value) => setItemParentId(value === "null" ? null : value)} // Handle "null" string for no parent
+                  value={itemParentId || ""} 
+                  onValueChange={(value) => setItemParentId(value === "null" ? null : value)} 
                   disabled={isLoadingDialogData}
                 >
                   <SelectTrigger className="col-span-3">
@@ -461,7 +463,7 @@ export default function SettingsPage() {
                   <SelectContent>
                     <SelectItem value="null">-- No Parent --</SelectItem>
                     {flatCategoriesForDialog
-                      .filter(cat => dialogState.item?.id !== cat.id) // Prevent selecting self as parent
+                      .filter(cat => dialogState.item?.id !== cat.id) 
                       .map(cat => (
                         <SelectItem key={cat.id} value={cat.id.toString()}>
                           {cat.name}
