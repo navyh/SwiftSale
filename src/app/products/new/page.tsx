@@ -17,56 +17,37 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   createProduct,
   type CreateProductRequest,
-  fetchProductBrands,
-  fetchProductCategoriesTree,
-  fetchProductUnits,
-  fetchProductStatuses,
-  fetchSuppliers,
-  type Brand,
-  type ProductCategoryNode,
-  type ProductUnit,
-  type Supplier
+  // Meta API calls are skipped for this form based on user instruction
 } from "@/lib/apiClient";
 import { PackagePlus, ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 
-interface SelectOption {
-  value: string;
-  label: string;
-}
 
-// Helper to flatten category tree for select dropdown
-const flattenCategories = (categories: ProductCategoryNode[], level = 0, prefix = ""): SelectOption[] => {
-  let options: SelectOption[] = [];
-  categories.forEach(category => {
-    options.push({
-      value: category.id.toString(),
-      label: `${prefix}${category.name}`
-    });
-    if (category.children && category.children.length > 0) {
-      options = options.concat(flattenCategories(category.children, level + 1, `${prefix}  `));
-    }
-  });
-  return options;
-};
+// Hardcoded data as meta APIs are skipped for forms
+const hardcodedStatuses = ["ACTIVE", "DRAFT", "ARCHIVED", "OUT_OF_STOCK"];
 
 
 const productFormSchema = z.object({
   name: z.string().min(1, "Product name is required"),
+  brand: z.string().min(1, "Brand name is required"),
+  hsnCode: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
+  gstTaxRate: z.coerce.number({invalid_type_error: "GST Tax Rate must be a number"}).min(0).optional().nullable(),
+  category: z.string().min(1, "Category name is required"),
+  subCategory: z.string().optional().nullable(),
+  colorVariantInput: z.string().optional().nullable().describe("Comma-separated color names"),
+  sizeVariantInput: z.string().optional().nullable().describe("Comma-separated size names"),
+  tagsInput: z.string().optional().nullable().describe("Comma-separated tags"),
+  status: z.string().optional().nullable(),
+
+  // Optional fields from original form, retained if API might support them
   sku: z.string().optional().nullable(),
   barcode: z.string().optional().nullable(),
-  quantity: z.coerce.number({invalid_type_error: "Quantity must be a number"}).int().min(0, "Quantity must be non-negative"),
-  unitPrice: z.coerce.number({invalid_type_error: "Unit price must be a number"}).min(0, "Unit price must be non-negative"),
+  quantity: z.coerce.number({invalid_type_error: "Quantity must be a number"}).int().min(0, "Quantity must be non-negative").optional().nullable(),
+  unitPrice: z.coerce.number({invalid_type_error: "Unit price must be a number"}).min(0, "Unit price must be non-negative").optional().nullable(),
   costPrice: z.coerce.number({invalid_type_error: "Cost price must be a number"}).min(0).optional().nullable(),
-  categoryId: z.string().optional().nullable(),
-  brandId: z.string().optional().nullable(),
-  supplierId: z.string().optional().nullable(),
-  unitId: z.string().optional().nullable(),
   imageUrlsInput: z.string().optional().nullable(), 
-  tagsInput: z.string().optional().nullable(), 
-  status: z.string().optional().nullable(), // API returns strings for statuses
   weight: z.coerce.number({invalid_type_error: "Weight must be a number"}).min(0).optional().nullable(),
   dimensions: z.string().optional().nullable(),
   isFeatured: z.boolean().default(false).optional(),
@@ -82,37 +63,31 @@ export default function CreateProductPage() {
   const searchParams = useSearchParams();
   const { toast } = useToast();
   
-  const [categories, setCategories] = React.useState<SelectOption[]>([]);
-  const [brands, setBrands] = React.useState<Brand[]>([]);
-  const [suppliers, setSuppliers] = React.useState<Supplier[]>([]);
-  const [units, setUnits] = React.useState<ProductUnit[]>([]);
-  const [productStatuses, setProductStatuses] = React.useState<string[]>([]);
-  
-  const [isLoadingCategories, setIsLoadingCategories] = React.useState(true);
-  const [isLoadingBrands, setIsLoadingBrands] = React.useState(true);
-  const [isLoadingSuppliers, setIsLoadingSuppliers] = React.useState(true);
-  const [isLoadingUnits, setIsLoadingUnits] = React.useState(true);
-  const [isLoadingStatuses, setIsLoadingStatuses] = React.useState(true);
-
-  const initialStatusQueryParam = searchParams.get('status') as CreateProductRequest['status'];
+  const initialStatusQueryParam = searchParams.get('status');
+  const productStatuses = hardcodedStatuses; // Using hardcoded statuses
   
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
       name: "",
+      brand: "",
+      hsnCode: "",
       description: "",
+      gstTaxRate: undefined,
+      category: "",
+      subCategory: "",
+      colorVariantInput: "",
+      sizeVariantInput: "",
+      tagsInput: "",
+      status: initialStatusQueryParam && productStatuses.includes(initialStatusQueryParam.toUpperCase()) 
+              ? initialStatusQueryParam.toUpperCase() 
+              : (productStatuses.includes('DRAFT') ? 'DRAFT' : productStatuses[0]),
       sku: "",
       barcode: "",
-      quantity: 0,
-      unitPrice: 0,
+      quantity: 0, // Defaulting to 0 as it might be handled by variants
+      unitPrice: 0, // Defaulting to 0
       costPrice: undefined,
-      categoryId: undefined,
-      brandId: undefined,
-      supplierId: undefined,
-      unitId: undefined,
       imageUrlsInput: "",
-      tagsInput: "",
-      status: initialStatusQueryParam || "DRAFT",
       weight: undefined,
       dimensions: "",
       isFeatured: false,
@@ -122,51 +97,48 @@ export default function CreateProductPage() {
   });
 
   React.useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [categoriesData, brandsData, suppliersData, unitsData, statusesData] = await Promise.all([
-          fetchProductCategoriesTree().finally(() => setIsLoadingCategories(false)),
-          fetchProductBrands().finally(() => setIsLoadingBrands(false)),
-          fetchSuppliers().finally(() => setIsLoadingSuppliers(false)), // Assuming suppliers are still from old meta or a new endpoint
-          fetchProductUnits().finally(() => setIsLoadingUnits(false)),
-          fetchProductStatuses().finally(() => setIsLoadingStatuses(false)),
-        ]);
-        setCategories(flattenCategories(categoriesData));
-        setBrands(brandsData);
-        setSuppliers(suppliersData);
-        setUnits(unitsData);
-        setProductStatuses(statusesData);
-
-        const validInitialStatus = initialStatusQueryParam && statusesData.includes(initialStatusQueryParam)
-          ? initialStatusQueryParam
-          : (statusesData.includes('DRAFT') ? 'DRAFT' : statusesData[0]);
-        form.reset({ ...form.getValues(), status: validInitialStatus });
-
-      } catch (error: any) {
-        toast({
-          title: "Error fetching product metadata",
-          description: error.message || "Could not load data for dropdowns.",
-          variant: "destructive",
-        });
-      }
-    };
-    fetchData();
-  }, [form, initialStatusQueryParam, toast]);
+    // If initialStatusQueryParam is present and valid, ensure it's set
+    const validInitialStatus = initialStatusQueryParam && productStatuses.includes(initialStatusQueryParam.toUpperCase())
+      ? initialStatusQueryParam.toUpperCase()
+      : (productStatuses.includes('DRAFT') ? 'DRAFT' : productStatuses[0]);
+    if (form.getValues('status') !== validInitialStatus) {
+      form.reset({ ...form.getValues(), status: validInitialStatus });
+    }
+  }, [form, initialStatusQueryParam, productStatuses]);
 
 
   async function onSubmit(data: ProductFormValues) {
     try {
+      const colorVariants = data.colorVariantInput?.split(',').map(c => c.trim()).filter(Boolean) || null;
+      const sizeVariants = data.sizeVariantInput?.split(',').map(s => s.trim()).filter(Boolean) || null;
+      const tags = data.tagsInput?.split(',').map(t => t.trim()).filter(Boolean) || null;
+      const imageUrls = data.imageUrlsInput?.split(',').map(url => url.trim()).filter(Boolean) || null;
+
       const productPayload: CreateProductRequest = {
-        ...data,
-        categoryId: data.categoryId ? parseInt(data.categoryId, 10) : null,
-        brandId: data.brandId ? parseInt(data.brandId, 10) : null,
-        supplierId: data.supplierId ? parseInt(data.supplierId, 10) : null,
-        unitId: data.unitId ? parseInt(data.unitId, 10) : null,
-        imageUrls: data.imageUrlsInput ? data.imageUrlsInput.split(',').map(url => url.trim()).filter(url => url) : null,
-        tags: data.tagsInput ? data.tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag) : null,
+        name: data.name,
+        brand: data.brand,
+        hsnCode: data.hsnCode || null,
+        description: data.description || null,
+        gstTaxRate: data.gstTaxRate === undefined || data.gstTaxRate === null ? null : Number(data.gstTaxRate),
+        category: data.category,
+        subCategory: data.subCategory || null,
+        colorVariant: colorVariants,
+        sizeVariant: sizeVariants,
+        tags: tags,
+        status: data.status as CreateProductRequest['status'] || 'DRAFT',
+        
+        // Optional fields
+        sku: data.sku || null,
+        barcode: data.barcode || null,
+        quantity: data.quantity === undefined || data.quantity === null ? undefined : Number(data.quantity), // API might ignore if variants exist
+        unitPrice: data.unitPrice === undefined || data.unitPrice === null ? undefined : Number(data.unitPrice), // API might ignore
         costPrice: data.costPrice === undefined || data.costPrice === null ? null : Number(data.costPrice),
+        imageUrls: imageUrls,
         weight: data.weight === undefined || data.weight === null ? null : Number(data.weight),
-        status: data.status as CreateProductRequest['status'] || 'DRAFT', 
+        dimensions: data.dimensions || null,
+        isFeatured: data.isFeatured,
+        metaTitle: data.metaTitle || null,
+        metaDescription: data.metaDescription || null,
       };
       
       await createProduct(productPayload);
@@ -185,7 +157,8 @@ export default function CreateProductPage() {
     }
   }
   
-  const isLoadingData = isLoadingCategories || isLoadingBrands || isLoadingSuppliers || isLoadingUnits || isLoadingStatuses;
+  // No async data loading for dropdowns in this version as per instruction
+  const isLoadingData = false; 
 
   return (
     <div className="space-y-6 pb-8">
@@ -209,54 +182,42 @@ export default function CreateProductPage() {
               <CardDescription>Enter the fundamental details of the product.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
+              <FormField control={form.control} name="name" render={({ field }) => (
                   <FormItem className="md:col-span-2">
                     <FormLabel>Product Name *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., Wireless Ergonomic Mouse" {...field} />
-                    </FormControl>
+                    <FormControl><Input placeholder="e.g., Premium Cotton T-Shirt" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
+              <FormField control={form.control} name="brand" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Brand *</FormLabel>
+                    <FormControl><Input placeholder="e.g., Nike" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField control={form.control} name="category" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Category *</FormLabel>
+                    <FormControl><Input placeholder="e.g., Apparel" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField control={form.control} name="subCategory" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sub-Category</FormLabel>
+                    <FormControl><Input placeholder="e.g., T-Shirts" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+               <FormField control={form.control} name="description" render={({ field }) => (
                   <FormItem className="md:col-span-2">
                     <FormLabel>Description</FormLabel>
-                    <FormControl>
-                      <Textarea rows={4} placeholder="Detailed description of the product..." {...field} value={field.value ?? ""} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="sku"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>SKU (Stock Keeping Unit)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., WEM-BLK-01" {...field} value={field.value ?? ""} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="barcode"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Barcode (UPC/EAN)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., 123456789012" {...field} value={field.value ?? ""} />
-                    </FormControl>
+                    <FormControl><Textarea rows={3} placeholder="Detailed description..." {...field} value={field.value ?? ""} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -266,46 +227,21 @@ export default function CreateProductPage() {
 
           <Card className="shadow-md">
             <CardHeader>
-              <CardTitle>Pricing & Stock</CardTitle>
-              <CardDescription>Manage inventory levels and pricing.</CardDescription>
+              <CardTitle>Codes & Taxes</CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 md:gap-6">
-              <FormField
-                control={form.control}
-                name="quantity"
-                render={({ field }) => (
+            <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
+              <FormField control={form.control} name="hsnCode" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Quantity in Stock *</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="0" {...field} />
-                    </FormControl>
+                    <FormLabel>HSN Code</FormLabel>
+                    <FormControl><Input placeholder="e.g., 61091000" {...field} value={field.value ?? ""} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="unitPrice"
-                render={({ field }) => (
+              <FormField control={form.control} name="gstTaxRate" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Unit Price (Selling Price) *</FormLabel>
-                    <FormControl>
-                      <Input type="number" step="0.01" placeholder="0.00" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="costPrice"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cost Price</FormLabel>
-                    <FormControl>
-                       <Input type="number" step="0.01" placeholder="0.00" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? ""} />
-                    </FormControl>
-                    <FormDescription>Optional cost of acquiring the product.</FormDescription>
+                    <FormLabel>GST Tax Rate (%)</FormLabel>
+                    <FormControl><Input type="number" step="0.01" placeholder="e.g., 18" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? ""} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -315,102 +251,120 @@ export default function CreateProductPage() {
           
           <Card className="shadow-md">
             <CardHeader>
-              <CardTitle>Organization</CardTitle>
-              <CardDescription>Categorize and group your product.</CardDescription>
+                <CardTitle>Variant Generation</CardTitle>
+                <CardDescription>Enter comma-separated color and size names. The backend will generate variants for each combination.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 md:gap-6">
-              {isLoadingCategories ? <Skeleton className="h-10 w-full rounded-md" /> : <FormField
-                control={form.control}
-                name="categoryId"
-                render={({ field }) => (
+            <CardContent className="grid gap-4 md:grid-cols-2">
+                <FormField control={form.control} name="colorVariantInput" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Color Names</FormLabel>
+                            <FormControl><Input {...field} placeholder="e.g., Red, Blue, Green" value={field.value ?? ""} /></FormControl>
+                            <FormDescription>Comma-separated, e.g., Red, Blue</FormDescription>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+                <FormField control={form.control} name="sizeVariantInput" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Size Names</FormLabel>
+                            <FormControl><Input {...field} placeholder="e.g., S, M, L" value={field.value ?? ""} /></FormControl>
+                             <FormDescription>Comma-separated, e.g., S, M, L</FormDescription>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-md">
+            <CardHeader>
+              <CardTitle>Optional Base Product Details</CardTitle>
+              <CardDescription>These might be used if the product has no variants or as base values. API may override with variant data.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 md:gap-6">
+              <FormField control={form.control} name="sku" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Category</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value?.toString()} value={field.value?.toString()} disabled={categories.length === 0}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={categories.length === 0 ? "No categories available" : "Select a category"} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {categories.map(cat => (
-                          <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormLabel>Base SKU</FormLabel>
+                    <FormControl><Input placeholder="e.g., BASE-TSHIRT" {...field} value={field.value ?? ""} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
-              />}
-              {isLoadingBrands ? <Skeleton className="h-10 w-full rounded-md" /> : <FormField
-                control={form.control}
-                name="brandId"
-                render={({ field }) => (
+              />
+              <FormField control={form.control} name="barcode" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Brand</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value?.toString()} value={field.value?.toString()} disabled={brands.length === 0}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={brands.length === 0 ? "No brands available" : "Select a brand"} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {brands.map(brand => (
-                          <SelectItem key={brand.id} value={brand.id.toString()}>{brand.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormLabel>Base Barcode</FormLabel>
+                    <FormControl><Input placeholder="e.g., 123456789012" {...field} value={field.value ?? ""} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
-              />}
-              {isLoadingSuppliers ? <Skeleton className="h-10 w-full rounded-md" /> : <FormField
-                control={form.control}
-                name="supplierId"
-                render={({ field }) => (
+              />
+              <FormField control={form.control} name="quantity" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Supplier</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value?.toString()} value={field.value?.toString()} disabled={suppliers.length === 0}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={suppliers.length === 0 ? "No suppliers available" : "Select a supplier"} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {suppliers.map(sup => (
-                          <SelectItem key={sup.id} value={sup.id.toString()}>{sup.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormLabel>Base Quantity</FormLabel>
+                    <FormControl><Input type="number" placeholder="0" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? 0} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
-              />}
-               {isLoadingUnits ? <Skeleton className="h-10 w-full rounded-md" /> : <FormField
-                control={form.control}
-                name="unitId"
-                render={({ field }) => (
+              />
+              <FormField control={form.control} name="unitPrice" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Unit</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value?.toString()} value={field.value?.toString()} disabled={units.length === 0}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={units.length === 0 ? "No units available" : "Select a unit"} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {units.map(unit => (
-                          <SelectItem key={unit.id} value={unit.id.toString()}>{unit.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormLabel>Base Unit Price</FormLabel>
+                    <FormControl><Input type="number" step="0.01" placeholder="0.00" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? 0.00} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
-              />}
-               {isLoadingStatuses ? <Skeleton className="h-10 w-full rounded-md" /> : <FormField
-                control={form.control}
-                name="status"
-                render={({ field }) => (
+              />
+              <FormField control={form.control} name="costPrice" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Base Cost Price</FormLabel>
+                    <FormControl><Input type="number" step="0.01" placeholder="0.00" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+          
+          <Card className="shadow-md">
+            <CardHeader>
+              <CardTitle>Media & Details</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
+              <FormField control={form.control} name="tagsInput" render={({ field }) => (
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>Tags</FormLabel>
+                    <FormControl><Input placeholder="e.g., Cotton, Round Neck, Summer" {...field} value={field.value ?? ""}/></FormControl>
+                    <FormDescription>Comma-separated tags.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField control={form.control} name="imageUrlsInput" render={({ field }) => (
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>Image URLs</FormLabel>
+                    <FormControl><Textarea rows={3} placeholder="e.g., https://example.com/image1.jpg, https://example.com/image2.png" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormDescription>Comma-separated URLs for product images.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+               <FormField control={form.control} name="weight" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Weight (kg)</FormLabel>
+                    <FormControl><Input type="number" step="0.01" placeholder="0.00" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField control={form.control} name="dimensions" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Dimensions (e.g., LxWxH cm)</FormLabel>
+                    <FormControl><Input placeholder="e.g., 10x5x2" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField control={form.control} name="status" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Status</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value ?? ""} disabled={productStatuses.length === 0}>
@@ -428,90 +382,13 @@ export default function CreateProductPage() {
                     <FormMessage />
                   </FormItem>
                 )}
-              />}
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-md">
-             <CardHeader>
-                <CardTitle>Media & Details</CardTitle>
-                <CardDescription>Additional product imagery, tags, and specifications.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
-              <FormField
-                control={form.control}
-                name="imageUrlsInput"
-                render={({ field }) => (
-                  <FormItem className="md:col-span-2">
-                    <FormLabel>Image URLs</FormLabel>
-                    <FormControl>
-                      <Textarea rows={3} placeholder="e.g., https://example.com/image1.jpg, https://example.com/image2.png" {...field} value={field.value ?? ""} />
-                    </FormControl>
-                    <FormDescription>Comma-separated URLs for product images.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
               />
-              <FormField
-                control={form.control}
-                name="tagsInput"
-                render={({ field }) => (
-                  <FormItem className="md:col-span-2">
-                    <FormLabel>Tags</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., electronics, new, featured" {...field} value={field.value ?? ""}/>
-                    </FormControl>
-                    <FormDescription>Comma-separated tags for product discovery.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-               <FormField
-                control={form.control}
-                name="weight"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Weight (kg)</FormLabel>
-                    <FormControl>
-                       <Input type="number" step="0.01" placeholder="0.00" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? ""} />
-                    </FormControl>
-                    <FormDescription>Product weight for shipping.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="dimensions"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Dimensions (e.g., LxWxH cm)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., 10x5x2" {...field} value={field.value ?? ""} />
-                    </FormControl>
-                    <FormDescription>Product dimensions for packaging.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="isFeatured"
-                render={({ field }) => (
+              <FormField control={form.control} name="isFeatured" render={({ field }) => (
                   <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2">
-                    <FormControl>
-                      <Checkbox
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
+                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                     <div className="space-y-1 leading-none">
-                      <FormLabel>
-                        Featured Product
-                      </FormLabel>
-                      <FormDescription>
-                        Mark this product as featured to highlight it on storefronts or special sections.
-                      </FormDescription>
+                      <FormLabel>Featured Product</FormLabel>
+                      <FormDescription>Mark this product as featured.</FormDescription>
                     </div>
                   </FormItem>
                 )}
@@ -520,48 +397,24 @@ export default function CreateProductPage() {
           </Card>
           
           <Card className="shadow-md">
-             <CardHeader>
-                <CardTitle>SEO Information (Optional)</CardTitle>
-                <CardDescription>Optimize product visibility for search engines.</CardDescription>
-            </CardHeader>
+             <CardHeader><CardTitle>SEO Information (Optional)</CardTitle></CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
-                 <FormField
-                control={form.control}
-                name="metaTitle"
-                render={({ field }) => (
+                 <FormField control={form.control} name="metaTitle" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Meta Title</FormLabel>
-                    <FormControl>
-                      <Input placeholder="SEO friendly title (max 70 chars)" {...field} value={field.value ?? ""} />
-                    </FormControl>
+                    <FormControl><Input placeholder="SEO friendly title (max 70 chars)" {...field} value={field.value ?? ""} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="metaDescription"
-                render={({ field }) => (
+              <FormField control={form.control} name="metaDescription" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Meta Description</FormLabel>
-                    <FormControl>
-                      <Textarea rows={3} placeholder="Concise SEO description (max 160 chars)" {...field} value={field.value ?? ""} />
-                    </FormControl>
+                    <FormControl><Textarea rows={3} placeholder="Concise SEO description (max 160 chars)" {...field} value={field.value ?? ""} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-md">
-            <CardHeader>
-                <CardTitle>Product Attributes</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <p className="text-sm text-muted-foreground">
-                    Advanced product attribute management (e.g., size, color options based on selectable attributes from Settings) will be implemented in a future update.
-                </p>
             </CardContent>
           </Card>
 
@@ -578,5 +431,3 @@ export default function CreateProductPage() {
     </div>
   );
 }
-
-    

@@ -21,75 +21,53 @@ import {
   updateProduct,
   type UpdateProductRequest,
   type Product,
-  type VariantDefinitionDTO,
+  // type VariantDefinitionDTO, // Replaced by colorVariant/sizeVariant arrays
   // Hardcoded data for dropdowns as meta APIs are skipped for forms
 } from "@/lib/apiClient";
 import { ChevronLeft, Package, Save, PlusCircle, Trash2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Hardcoded data (as per instruction to skip meta APIs for forms)
-const hardcodedCategories = [
-  { id: "1", name: "Electronics" },
-  { id: "2", name: "Books" },
-  { id: "3", name: "Clothing" },
-  { id: "4", name: "Home Goods" },
-];
-
-const hardcodedBrands = [
-  { id: "1", name: "BrandA" },
-  { id: "2", name: "BrandB" },
-  { id: "3", name: "BrandC" },
-];
-
-const hardcodedSuppliers = [
-  { id: "1", name: "SupplierX" },
-  { id: "2", name: "SupplierY" },
-];
-
-const hardcodedUnits = [
-  { id: "1", name: "PCS" },
-  { id: "2", name: "KG" },
-  { id: "3", name: "Set" },
-];
-
 const hardcodedProductStatuses = ["ACTIVE", "DRAFT", "ARCHIVED", "OUT_OF_STOCK"];
 
 
-const variantDefinitionSchema = z.object({
-  colorValue: z.string().min(1, "Color value is required"),
-  sizeValue: z.string().min(1, "Size value is required"),
-  sku: z.string().optional().nullable(),
-  price: z.coerce.number().optional().nullable(),
-  quantity: z.coerce.number().int().optional().nullable(),
-});
-
 const productFormSchema = z.object({
   name: z.string().min(1, "Product name is required"),
+  brand: z.string().min(1, "Brand name is required"), // Changed from brandId
+  hsnCode: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
-  sku: z.string().optional().nullable(), // Base SKU
-  barcode: z.string().optional().nullable(), // Base Barcode
-  quantity: z.coerce.number({invalid_type_error: "Quantity must be a number"}).int().min(0), // Overall quantity
-  unitPrice: z.coerce.number({invalid_type_error: "Unit price must be a number"}).min(0), // Overall price
-  costPrice: z.coerce.number({invalid_type_error: "Cost price must be a number"}).min(0).optional().nullable(),
-  categoryId: z.string().optional().nullable(),
-  brandId: z.string().optional().nullable(),
-  supplierId: z.string().optional().nullable(),
-  unitId: z.string().optional().nullable(),
-  imageUrlsInput: z.string().optional().nullable(),
-  tagsInput: z.string().optional().nullable(),
+  gstTaxRate: z.coerce.number({invalid_type_error: "GST Tax Rate must be a number"}).min(0).optional().nullable(),
+  category: z.string().min(1, "Category name is required"), // Changed from categoryId
+  subCategory: z.string().optional().nullable(),
+  
   status: z.string().optional().nullable(),
+  
+  // For generating new variants via color/size name arrays
+  newColorValues: z.string().optional().nullable().describe("Comma-separated new color names"),
+  newSizeValues: z.string().optional().nullable().describe("Comma-separated new size names"),
+  
+  tagsInput: z.string().optional().nullable(),
+
+  // Optional base product fields
+  sku: z.string().optional().nullable(), 
+  barcode: z.string().optional().nullable(), 
+  quantity: z.coerce.number({invalid_type_error: "Quantity must be a number"}).int().min(0).optional().nullable(),
+  unitPrice: z.coerce.number({invalid_type_error: "Unit price must be a number"}).min(0).optional().nullable(),
+  costPrice: z.coerce.number({invalid_type_error: "Cost price must be a number"}).min(0).optional().nullable(),
+  imageUrlsInput: z.string().optional().nullable(),
   weight: z.coerce.number({invalid_type_error: "Weight must be a number"}).min(0).optional().nullable(),
   dimensions: z.string().optional().nullable(),
   isFeatured: z.boolean().default(false).optional(),
   metaTitle: z.string().max(70).optional().nullable(),
   metaDescription: z.string().max(160).optional().nullable(),
-  // For generating new variants
-  newColorValues: z.string().optional().describe("Comma-separated new color values"),
-  newSizeValues: z.string().optional().describe("Comma-separated new size values"),
-  // variantDefinitions: z.array(variantDefinitionSchema).optional().nullable(), // For direct definition, might be simpler with color/size strings
 });
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
+
+// Mock maps for displaying brand/category names if API returns IDs but form needs names
+const hardcodedCategoriesMap: { [key: string]: string } = { "1": "Electronics", "2": "Books", "3": "Clothing", "4": "Home Goods" };
+const hardcodedBrandsMap: { [key: string]: string } = { "1": "BrandA", "2": "BrandB", "3": "BrandC" };
+
 
 export default function EditProductPage() {
   const router = useRouter();
@@ -101,24 +79,33 @@ export default function EditProductPage() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  // Using hardcoded data for dropdowns
-  const categories = hardcodedCategories;
-  const brands = hardcodedBrands;
-  const suppliers = hardcodedSuppliers;
-  const units = hardcodedUnits;
   const productStatuses = hardcodedProductStatuses;
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
       name: "",
+      brand: "",
+      hsnCode: "",
       description: "",
+      gstTaxRate: undefined,
+      category: "",
+      subCategory: "",
+      status: "DRAFT",
+      newColorValues: "",
+      newSizeValues: "",
+      tagsInput: "",
       sku: "",
       barcode: "",
       quantity: 0,
       unitPrice: 0,
-      newColorValues: "",
-      newSizeValues: "",
+      costPrice: undefined,
+      imageUrlsInput: "",
+      weight: undefined,
+      dimensions: "",
+      isFeatured: false,
+      metaTitle: "",
+      metaDescription: "",
     },
   });
 
@@ -136,26 +123,31 @@ export default function EditProductPage() {
         setProduct(fetchedProduct);
         form.reset({
           name: fetchedProduct.name,
+          // If API returns brand/category objects with names, use those.
+          // If API returns brandId/categoryId, map them using hardcoded maps for display,
+          // but the form field 'brand' and 'category' will be string inputs.
+          brand: fetchedProduct.brand?.name || (fetchedProduct.brandId ? hardcodedBrandsMap[fetchedProduct.brandId.toString()] : "") || "",
+          category: fetchedProduct.category?.name || (fetchedProduct.categoryId ? hardcodedCategoriesMap[fetchedProduct.categoryId.toString()] : "") || "",
+          subCategory: fetchedProduct.subCategory ?? "",
+          hsnCode: fetchedProduct.hsnCode ?? "",
           description: fetchedProduct.description ?? "",
+          gstTaxRate: fetchedProduct.gstTaxRate ?? undefined,
+          status: fetchedProduct.status ?? "DRAFT",
+          
+          tagsInput: fetchedProduct.tags?.join(", ") ?? "",
           sku: fetchedProduct.sku ?? "",
           barcode: fetchedProduct.barcode ?? "",
-          quantity: fetchedProduct.quantity,
-          unitPrice: fetchedProduct.unitPrice,
+          quantity: fetchedProduct.quantity ?? 0,
+          unitPrice: fetchedProduct.unitPrice ?? 0,
           costPrice: fetchedProduct.costPrice ?? undefined,
-          categoryId: fetchedProduct.categoryId?.toString() ?? undefined,
-          brandId: fetchedProduct.brandId?.toString() ?? undefined,
-          supplierId: fetchedProduct.supplierId?.toString() ?? undefined,
-          unitId: fetchedProduct.unitId?.toString() ?? undefined,
           imageUrlsInput: fetchedProduct.imageUrls?.join(", ") ?? "",
-          tagsInput: fetchedProduct.tags?.join(", ") ?? "",
-          status: fetchedProduct.status ?? undefined,
           weight: fetchedProduct.weight ?? undefined,
           dimensions: fetchedProduct.dimensions ?? "",
           isFeatured: fetchedProduct.isFeatured ?? false,
           metaTitle: fetchedProduct.metaTitle ?? "",
           metaDescription: fetchedProduct.metaDescription ?? "",
-          newColorValues: "",
-          newSizeValues: "",
+          newColorValues: "", // Reset for new additions
+          newSizeValues: "", // Reset for new additions
         });
       } catch (error: any) {
         toast({
@@ -175,40 +167,35 @@ export default function EditProductPage() {
   async function onSubmit(data: ProductFormValues) {
     setIsSubmitting(true);
     try {
-      let variantDefinitions: VariantDefinitionDTO[] = [];
-      if (data.newColorValues && data.newSizeValues) {
-        const colors = data.newColorValues.split(',').map(c => c.trim()).filter(Boolean);
-        const sizes = data.newSizeValues.split(',').map(s => s.trim()).filter(Boolean);
-        if (colors.length > 0 && sizes.length > 0) {
-          colors.forEach(colorValue => {
-            sizes.forEach(sizeValue => {
-              variantDefinitions.push({ colorValue, sizeValue });
-            });
-          });
-        }
-      }
+      const colorVariant = data.newColorValues?.split(',').map(c => c.trim()).filter(Boolean) || undefined; // undefined if empty, so API can ignore
+      const sizeVariant = data.newSizeValues?.split(',').map(s => s.trim()).filter(Boolean) || undefined;   // undefined if empty
+      const tags = data.tagsInput?.split(',').map(t => t.trim()).filter(Boolean) || undefined;
+      const imageUrls = data.imageUrlsInput?.split(',').map(url => url.trim()).filter(Boolean) || undefined;
 
       const payload: UpdateProductRequest = {
         name: data.name,
-        description: data.description,
-        sku: data.sku,
-        barcode: data.barcode,
-        quantity: data.quantity,
-        unitPrice: data.unitPrice,
-        costPrice: data.costPrice,
-        categoryId: data.categoryId ? parseInt(data.categoryId) : null,
-        brandId: data.brandId ? parseInt(data.brandId) : null,
-        supplierId: data.supplierId ? parseInt(data.supplierId) : null,
-        unitId: data.unitId ? parseInt(data.unitId) : null,
-        imageUrls: data.imageUrlsInput ? data.imageUrlsInput.split(',').map(url => url.trim()).filter(Boolean) : null,
-        tags: data.tagsInput ? data.tagsInput.split(',').map(tag => tag.trim()).filter(Boolean) : null,
+        brand: data.brand,
+        hsnCode: data.hsnCode || undefined,
+        description: data.description || undefined,
+        gstTaxRate: data.gstTaxRate === undefined || data.gstTaxRate === null ? undefined : Number(data.gstTaxRate),
+        category: data.category,
+        subCategory: data.subCategory || undefined,
+        colorVariant: (colorVariant && colorVariant.length > 0) ? colorVariant : undefined,
+        sizeVariant: (sizeVariant && sizeVariant.length > 0) ? sizeVariant : undefined,
+        tags: tags,
         status: data.status as UpdateProductRequest['status'] || undefined,
-        weight: data.weight,
-        dimensions: data.dimensions,
+        
+        sku: data.sku || undefined,
+        barcode: data.barcode || undefined,
+        quantity: data.quantity === undefined || data.quantity === null ? undefined : Number(data.quantity),
+        unitPrice: data.unitPrice === undefined || data.unitPrice === null ? undefined : Number(data.unitPrice),
+        costPrice: data.costPrice === undefined || data.costPrice === null ? undefined : Number(data.costPrice),
+        imageUrls: imageUrls,
+        weight: data.weight === undefined || data.weight === null ? undefined : Number(data.weight),
+        dimensions: data.dimensions || undefined,
         isFeatured: data.isFeatured,
-        metaTitle: data.metaTitle,
-        metaDescription: data.metaDescription,
-        variantDefinitions: variantDefinitions.length > 0 ? variantDefinitions : undefined,
+        metaTitle: data.metaTitle || undefined,
+        metaDescription: data.metaDescription || undefined,
       };
 
       await updateProduct(productId, payload);
@@ -216,7 +203,7 @@ export default function EditProductPage() {
         title: "Success",
         description: "Product updated successfully.",
       });
-      router.push("/products");
+      router.push("/products"); // Or router.refresh() if staying on page
     } catch (error: any) {
       toast({
         title: "Error Updating Product",
@@ -271,15 +258,72 @@ export default function EditProductPage() {
                   </FormItem>
                 )}
               />
-               <FormField control={form.control} name="description" render={({ field }) => (
-                  <FormItem className="md:col-span-2">
-                    <FormLabel>Description</FormLabel>
-                    <FormControl><Textarea rows={4} {...field} value={field.value ?? ""} /></FormControl>
+              <FormField control={form.control} name="brand" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Brand *</FormLabel>
+                    <FormControl><Input placeholder="e.g., Nike" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <FormField control={form.control} name="sku" render={({ field }) => (
+              <FormField control={form.control} name="category" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Category *</FormLabel>
+                    <FormControl><Input placeholder="e.g., Apparel" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField control={form.control} name="subCategory" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sub-Category</FormLabel>
+                    <FormControl><Input placeholder="e.g., T-Shirts" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField control={form.control} name="description" render={({ field }) => (
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>Description</FormLabel>
+                    <FormControl><Textarea rows={3} {...field} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-md">
+            <CardHeader>
+              <CardTitle>Codes & Taxes</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
+              <FormField control={form.control} name="hsnCode" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>HSN Code</FormLabel>
+                    <FormControl><Input placeholder="e.g., 61091000" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField control={form.control} name="gstTaxRate" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>GST Tax Rate (%)</FormLabel>
+                    <FormControl><Input type="number" step="0.01" placeholder="e.g., 18" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-md">
+            <CardHeader>
+              <CardTitle>Optional Base Product Details</CardTitle>
+              <CardDescription>Base values if product has no variants or as default. API may use variant-specific data.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 md:gap-6">
+                <FormField control={form.control} name="sku" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Base SKU</FormLabel>
                     <FormControl><Input {...field} value={field.value ?? ""} /></FormControl>
@@ -295,27 +339,18 @@ export default function EditProductPage() {
                   </FormItem>
                 )}
               />
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-md">
-            <CardHeader>
-              <CardTitle>Pricing & Stock (Base Product)</CardTitle>
-              <CardDescription>Base values if product has no variants or as default.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 md:gap-6">
               <FormField control={form.control} name="quantity" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Base Quantity *</FormLabel>
-                    <FormControl><Input type="number" {...field} /></FormControl>
+                    <FormLabel>Base Quantity</FormLabel>
+                    <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? 0} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
               <FormField control={form.control} name="unitPrice" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Base Unit Price *</FormLabel>
-                    <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
+                    <FormLabel>Base Unit Price</FormLabel>
+                    <FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? 0.00}/></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -330,90 +365,26 @@ export default function EditProductPage() {
               />
             </CardContent>
           </Card>
-
-          <Card className="shadow-md">
-            <CardHeader>
-              <CardTitle>Organization (Hardcoded)</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 md:gap-6">
-              <FormField control={form.control} name="categoryId" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Category</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger></FormControl>
-                    <SelectContent>{categories.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>)}
-              />
-              <FormField control={form.control} name="brandId" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Brand</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select brand" /></SelectTrigger></FormControl>
-                    <SelectContent>{brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>)}
-              />
-              <FormField control={form.control} name="supplierId" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Supplier</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger></FormControl>
-                    <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>)}
-              />
-              <FormField control={form.control} name="unitId" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Unit</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger></FormControl>
-                    <SelectContent>{units.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>)}
-              />
-              <FormField control={form.control} name="status" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Status</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger></FormControl>
-                    <SelectContent>{productStatuses.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>)}
-              />
-            </CardContent>
-          </Card>
           
           <Card className="shadow-md">
             <CardHeader>
                 <CardTitle>Generate New Variants</CardTitle>
-                <CardDescription>Enter comma-separated color and size values to generate new variant combinations upon saving.</CardDescription>
+                <CardDescription>Enter comma-separated color and size names to generate new variant combinations upon saving. Backend will create these.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
-                <FormField
-                    control={form.control}
-                    name="newColorValues"
-                    render={({ field }) => (
+                <FormField control={form.control} name="newColorValues" render={({ field }) => (
                         <FormItem>
-                            <FormLabel>New Color Values</FormLabel>
-                            <FormControl><Input {...field} placeholder="e.g., Red, Blue, Green" /></FormControl>
+                            <FormLabel>New Color Names</FormLabel>
+                            <FormControl><Input {...field} placeholder="e.g., Red, Blue, Green" value={field.value ?? ""} /></FormControl>
                             <FormDescription>Comma-separated. Variants will be generated for each color combined with each size.</FormDescription>
                             <FormMessage />
                         </FormItem>
                     )}
                 />
-                <FormField
-                    control={form.control}
-                    name="newSizeValues"
-                    render={({ field }) => (
+                <FormField control={form.control} name="newSizeValues" render={({ field }) => (
                         <FormItem>
-                            <FormLabel>New Size Values</FormLabel>
-                            <FormControl><Input {...field} placeholder="e.g., S, M, L" /></FormControl>
+                            <FormLabel>New Size Names</FormLabel>
+                            <FormControl><Input {...field} placeholder="e.g., S, M, L" value={field.value ?? ""}/></FormControl>
                             <FormDescription>Comma-separated.</FormDescription>
                             <FormMessage />
                         </FormItem>
@@ -448,11 +419,11 @@ export default function EditProductPage() {
                         <TableCell>{variant.sku || 'N/A'}</TableCell>
                         <TableCell>{variant.colorValue || 'N/A'}</TableCell>
                         <TableCell>{variant.sizeValue || 'N/A'}</TableCell>
-                        <TableCell>{variant.price !== null ? `$${variant.price.toFixed(2)}` : 'N/A'}</TableCell>
+                        <TableCell>{variant.price !== null && variant.price !== undefined ? `$${variant.price.toFixed(2)}` : 'N/A'}</TableCell>
                         <TableCell>{variant.quantity}</TableCell>
                         <TableCell className="text-right">
-                          <Button type="button" variant="outline" size="sm" onClick={() => alert(`Edit variant ${variant.id} - TBD`)}>Edit</Button>
-                           <Button type="button" variant="destructive" size="sm" className="ml-2" onClick={() => alert(`Delete variant ${variant.id} - TBD`)}>Delete</Button>
+                          <Button type="button" variant="outline" size="sm" onClick={() => alert(`Edit variant ${variant.id} - TBD: Implement variant edit modal/form using updateProductVariant API.`)}>Edit</Button>
+                           <Button type="button" variant="destructive" size="sm" className="ml-2" onClick={() => alert(`Delete variant ${variant.id} - TBD: Implement deleteProductVariant API call.`)}>Delete</Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -460,14 +431,94 @@ export default function EditProductPage() {
                 </Table>
               )}
               <div className="mt-4">
-                <Button type="button" variant="outline" onClick={() => alert("Add specific variant - TBD")}>
+                <Button type="button" variant="outline" onClick={() => alert("Add specific variant - TBD: Implement form and addProductVariant API call.")}>
                   <PlusCircle className="mr-2 h-4 w-4" /> Add Specific Variant
                 </Button>
               </div>
             </CardContent>
           </Card>
           
-          {/* Other sections like Media, SEO, etc. can be added similarly to the create page */}
+          <Card className="shadow-md">
+            <CardHeader>
+              <CardTitle>Media, Status & Other Details</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
+              <FormField control={form.control} name="tagsInput" render={({ field }) => (
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>Tags</FormLabel>
+                    <FormControl><Input placeholder="e.g., electronics, new, featured" {...field} value={field.value ?? ""}/></FormControl>
+                    <FormDescription>Comma-separated tags.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField control={form.control} name="imageUrlsInput" render={({ field }) => (
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>Image URLs</FormLabel>
+                    <FormControl><Textarea rows={3} placeholder="e.g., https://example.com/image1.jpg" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormDescription>Comma-separated.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField control={form.control} name="weight" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Weight (kg)</FormLabel>
+                    <FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField control={form.control} name="dimensions" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Dimensions (LxWxH cm)</FormLabel>
+                    <FormControl><Input {...field} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+               <FormField control={form.control} name="status" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Status</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger></FormControl>
+                    <SelectContent>{productStatuses.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>)}
+              />
+              <FormField control={form.control} name="isFeatured" render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2">
+                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Featured Product</FormLabel>
+                      <FormDescription>Mark this product as featured.</FormDescription>
+                    </div>
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-md">
+            <CardHeader><CardTitle>SEO Information</CardTitle></CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <FormField control={form.control} name="metaTitle" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Meta Title</FormLabel>
+                  <FormControl><Input {...field} value={field.value ?? ""} /></FormControl>
+                  <FormMessage />
+                </FormItem>)}
+              />
+              <FormField control={form.control} name="metaDescription" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Meta Description</FormLabel>
+                  <FormControl><Textarea rows={3} {...field} value={field.value ?? ""} /></FormControl>
+                  <FormMessage />
+                </FormItem>)}
+              />
+            </CardContent>
+          </Card>
 
 
           <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 pt-6">

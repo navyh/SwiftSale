@@ -99,19 +99,26 @@ export interface Product {
   unitPrice: number; // Base product unit price (might be deprecated if variants handle all pricing)
   costPrice?: number | null; // Base product cost price
 
-  categoryId?: number | null;
-  brandId?: number | null;
+  categoryId?: number | null; // For GET requests, might be ID
+  brandId?: number | null;   // For GET requests, might be ID
   supplierId?: number | null;
   unitId?: number | null;
 
-  category?: Category | null;
-  brand?: Brand | null;
+  category?: Category | null; // For GET /products/{id}, might be object
+  brand?: Brand | null;     // For GET /products/{id}, might be object
   supplier?: Supplier | null;
   unit?: ProductUnit | null;
 
+  // Fields matching the user-provided create schema
+  hsnCode?: string | null;
+  gstTaxRate?: number | null;
+  subCategory?: string | null;
+  // colorVariant and sizeVariant are for creation payload, not typically part of Product model
+  // Variants array below will hold the actual generated variants
+
   imageUrls?: string[] | null;
   tags?: string[] | null;
-  status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | null;
+  status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null; // Allow string for API flexibility
   weight?: number | null;
   dimensions?: string | null;
   isFeatured?: boolean | null;
@@ -122,41 +129,62 @@ export interface Product {
   updatedAt: string;
 }
 
-export interface VariantDefinitionDTO {
-  colorValue: string;
-  sizeValue: string;
-  // Potentially other defining attributes like SKU, price for initial generation
-  sku?: string | null;
-  price?: number | null;
-  quantity?: number;
-}
-
 export interface CreateProductRequest {
   name: string;
+  brand: string; // Name of the brand
+  hsnCode?: string | null;
   description?: string | null;
-  sku?: string | null;
-  barcode?: string | null;
-  quantity: number; // This might be overall or ignored if variants define it
-  unitPrice: number; // This might be overall or ignored if variants define it
-  costPrice?: number | null;
-  categoryId?: number | null;
-  brandId?: number | null;
-  supplierId?: number | null;
-  unitId?: number | null;
-  imageUrls?: string[] | null;
+  gstTaxRate?: number | null;
+  category: string; // Name of the category
+  subCategory?: string | null;
+  colorVariant?: string[] | null; // Array of color names
+  sizeVariant?: string[] | null;  // Array of size names
   tags?: string[] | null;
-  status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | null;
+  status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null; // Allow string for API flexibility
+  
+  // These fields were in original form, keeping them as optional if API supports them
+  sku?: string | null; // Base SKU
+  barcode?: string | null; // Base Barcode
+  quantity?: number; // Overall quantity
+  unitPrice?: number; // Overall price
+  costPrice?: number | null;
+  // supplierId?: number | null; // Using string names for brand/category, supplier might follow or be omitted if not in schema
+  // unitId?: number | null;
+  imageUrls?: string[] | null;
   weight?: number | null;
   dimensions?: string | null;
   isFeatured?: boolean | null;
   metaTitle?: string | null;
   metaDescription?: string | null;
-  variantDefinitions?: VariantDefinitionDTO[] | null; // For generating variants
 }
 
-export interface UpdateProductRequest extends Partial<Omit<CreateProductRequest, 'variantDefinitions'>> {
-  // variantDefinitions can also be part of update to generate new variants
-  variantDefinitions?: VariantDefinitionDTO[] | null;
+
+export interface UpdateProductRequest {
+  name?: string;
+  brand?: string;
+  hsnCode?: string | null;
+  description?: string | null;
+  gstTaxRate?: number | null;
+  category?: string;
+  subCategory?: string | null;
+  colorVariant?: string[] | null; // For generating NEW variants during update
+  sizeVariant?: string[] | null;  // For generating NEW variants during update
+  tags?: string[] | null;
+  status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
+
+  sku?: string | null;
+  barcode?: string | null;
+  quantity?: number;
+  unitPrice?: number;
+  costPrice?: number | null;
+  // supplierId?: number | null;
+  // unitId?: number | null;
+  imageUrls?: string[] | null;
+  weight?: number | null;
+  dimensions?: string | null;
+  isFeatured?: boolean | null;
+  metaTitle?: string | null;
+  metaDescription?: string | null;
 }
 
 
@@ -180,7 +208,6 @@ export interface UpdateVariantRequest { // For PATCH /products/{productId}/varia
   quantity?: number;
   barcode?: string | null;
   imageUrls?: string[] | null;
-  // colorValue and sizeValue are usually not updatable on an existing variant, but for completeness:
   colorValue?: string | null;
   sizeValue?: string | null;
 }
@@ -272,7 +299,7 @@ export async function deleteProductVariant(productId: number, variantId: number)
 }
 
 
-// V2 Meta endpoints (Only GET for now as per user instruction to skip meta API usage for CRUD forms)
+// V2 Meta endpoints
 export async function fetchProductBrands(): Promise<Brand[]> {
   const data = await fetchAPI<Brand[] | undefined>('/meta/product/brands');
   return Array.isArray(data) ? data : [];
@@ -354,22 +381,22 @@ export async function deleteNotificationTemplate(id: number): Promise<void> {
 }
 
 // Meta endpoints that were not in the V2 list, keeping generic handlers for Settings page
-export async function fetchSuppliers(): Promise<Supplier[]> { // This was used by product form, but now product form hardcodes. Settings page might still use it.
+export async function fetchSuppliers(): Promise<Supplier[]> {
   const data = await fetchAPI<Supplier[] | undefined>('/meta/suppliers');
   return Array.isArray(data) ? data : [];
 }
 
-export async function fetchProductStatuses(): Promise<string[]> { // Used by product form (hardcoded now) and product list page
+export async function fetchProductStatuses(): Promise<string[]> {
   const response = await fetchAPI<string[] | undefined>('/meta/product-statuses');
   return Array.isArray(response) ? response : [];
 }
 
-export async function fetchSizes(): Promise<MetaItem[]> { // Used by Settings page
+export async function fetchSizes(): Promise<MetaItem[]> {
   const data = await fetchAPI<MetaItem[] | undefined>('/meta/sizes');
   return Array.isArray(data) ? data : [];
 }
 
-export async function fetchColors(): Promise<MetaColorItem[]> { // Used by Settings page
+export async function fetchColors(): Promise<MetaColorItem[]> {
   const data = await fetchAPI<MetaColorItem[] | undefined>('/meta/colors');
   return Array.isArray(data) ? data : [];
 }
