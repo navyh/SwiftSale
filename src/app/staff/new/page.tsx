@@ -7,7 +7,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription as PageCardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
@@ -77,13 +77,15 @@ export default function CreateStaffPage() {
     try {
       const permissions = data.permissionsInput?.split(',').map(p => p.trim()).filter(Boolean) || undefined;
       
+      // The API for creating staff is POST /api/v2/users/{userId}/staff
+      // The payload for this API does not include userId itself, as it's in the path.
       const payload: Omit<CreateStaffRequest, 'userId'> = { 
         roles: data.roles,
         permissions: permissions,
         status: data.status,
       };
       
-      await createStaffMember(data.userId, payload);
+      await createStaffMember(data.userId, payload); // Pass userId as the first argument
       toast({
         title: "Success",
         description: "Staff member created successfully.",
@@ -129,7 +131,21 @@ export default function CreateStaffPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>User *</FormLabel>
-                    <Select onValueChange={(value) => field.onChange(Number(value))} value={field.value?.toString()}>
+                    <Select
+                      onValueChange={(selectedValue: string) => {
+                        if (selectedValue && selectedValue.length > 0) {
+                          const numericValue = parseInt(selectedValue, 10);
+                          if (!isNaN(numericValue)) {
+                            field.onChange(numericValue);
+                          } else {
+                            field.onChange(undefined);
+                          }
+                        } else {
+                          field.onChange(undefined);
+                        }
+                      }}
+                      value={field.value !== undefined ? field.value.toString() : ""}
+                    >
                       <FormControl>
                         <SelectTrigger disabled={isLoadingUsers}>
                           <SelectValue placeholder={isLoadingUsers ? "Loading users..." : "Select a user"} />
@@ -137,7 +153,7 @@ export default function CreateStaffPage() {
                       </FormControl>
                       <SelectContent>
                         {isLoadingUsers ? (
-                           <SelectItem value="loading" disabled>Loading...</SelectItem>
+                           <SelectItem value="loading_placeholder" disabled>Loading...</SelectItem>
                         ) : allUsers.length > 0 ? (
                           allUsers.map(user => (
                             <SelectItem key={user.id} value={user.id.toString()}>
@@ -145,7 +161,7 @@ export default function CreateStaffPage() {
                             </SelectItem>
                           ))
                         ) : (
-                           <SelectItem value="no_users" disabled>No users available</SelectItem>
+                           <SelectItem value="no_users_placeholder" disabled>No users available</SelectItem>
                         )}
                       </SelectContent>
                     </Select>
@@ -252,5 +268,3 @@ export default function CreateStaffPage() {
     </div>
   );
 }
-
-    
