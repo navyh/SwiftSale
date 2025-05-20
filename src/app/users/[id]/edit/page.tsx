@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { fetchUserById, updateUser, type UpdateUserRequest, type UserDto, type AddressDto, type AddressCreateDto } from "@/lib/apiClient";
 import { ChevronLeft, Save, Trash2, PlusCircle, UserCog } from "lucide-react";
@@ -31,8 +31,6 @@ const addressSchema = z.object({
 
 const userFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  // Phone is often not directly updatable or has special verification, so it's omitted from the edit form
-  // If your API supports updating phone, you can add it back.
   email: z.string().email("Invalid email address").optional().nullable(),
   type: z.enum(["B2C", "B2B"], { required_error: "User type is required" }),
   gstin: z.string().optional().nullable(),
@@ -76,7 +74,7 @@ export default function EditUserPage() {
     },
   });
 
-  const { fields: addressFields, append: appendAddress, remove: removeAddress, update: updateAddress } = useFieldArray({
+  const { fields: addressFields, append: appendAddress, remove: removeAddress } = useFieldArray({
     control: form.control,
     name: "addresses",
   });
@@ -99,7 +97,7 @@ export default function EditUserPage() {
           type: fetchedUser.type as "B2C" | "B2B",
           gstin: fetchedUser.gstin ?? "",
           status: (fetchedUser.status as "ACTIVE" | "INACTIVE") ?? "ACTIVE",
-          addresses: fetchedUser.addresses?.map(addr => ({ ...addr })) ?? [],
+          addresses: fetchedUser.addresses?.map(addr => ({ ...addr, type: addr.type as "SHIPPING" | "BILLING" | undefined })) ?? [],
         });
       } catch (error: any) {
         toast({
@@ -227,7 +225,7 @@ export default function EditUserPage() {
               {form.watch("type") === "B2B" && (
                 <FormField control={form.control} name="gstin" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>GSTIN *</FormLabel>
+                    <FormLabel>GSTIN {form.getValues("type") === "B2B" ? "*" : ""}</FormLabel>
                     <FormControl><Input placeholder="Enter GSTIN" {...field} value={field.value ?? ""} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -263,7 +261,6 @@ export default function EditUserPage() {
                     </Button>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
-                    {/* Hidden ID field for existing addresses */}
                     {field.id && <input type="hidden" {...form.register(`addresses.${index}.id`)} />}
                     
                     <FormField control={form.control} name={`addresses.${index}.line1`} render={({ field: f }) => (
@@ -306,7 +303,6 @@ export default function EditUserPage() {
                                     type="button"
                                     variant={f.value ? "default" : "outline"}
                                     onClick={() => {
-                                      // Ensure only one address is default
                                       if (!f.value) {
                                         form.getValues("addresses").forEach((_, addrIdx) => {
                                           if (index !== addrIdx) {
@@ -346,4 +342,3 @@ export default function EditUserPage() {
     </div>
   );
 }
-
