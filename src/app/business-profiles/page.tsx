@@ -224,9 +224,11 @@ export default function BusinessProfilesListPage() {
                     <TableCell className="hidden lg:table-cell">{profile.paymentTerms || "N/A"}</TableCell>
                     <TableCell>{profile.userIds?.length || 0}</TableCell>
                     <TableCell>
-                      <Badge variant={profile.status.toUpperCase() === "ACTIVE" ? "default" : "outline"}
-                             className={profile.status.toUpperCase() === "ACTIVE" ? "bg-green-500/20 text-green-700 border-green-500/30" : "bg-gray-500/20 text-gray-700 border-gray-500/30"}>
-                        {profile.status}
+                      <Badge 
+                        variant={(profile.status || "").toUpperCase() === "ACTIVE" ? "default" : "outline"}
+                        className={(profile.status || "").toUpperCase() === "ACTIVE" ? "bg-green-500/20 text-green-700 border-green-500/30" : "bg-gray-500/20 text-gray-700 border-gray-500/30"}
+                      >
+                        {profile.status || "N/A"}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
