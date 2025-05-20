@@ -17,31 +17,27 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   createProduct,
   type CreateProductRequest,
-  // Meta API calls are skipped for this form based on user instruction
 } from "@/lib/apiClient";
 import { PackagePlus, ChevronLeft } from "lucide-react";
 import Link from "next/link";
-import { Skeleton } from "@/components/ui/skeleton";
 
-
-// Hardcoded data as meta APIs are skipped for forms
-const hardcodedStatuses = ["ACTIVE", "DRAFT", "ARCHIVED", "OUT_OF_STOCK"];
+// Hardcoded product statuses as meta API for product statuses is not available
+const hardcodedProductStatuses = ["ACTIVE", "DRAFT", "ARCHIVED", "OUT_OF_STOCK"];
 
 
 const productFormSchema = z.object({
   name: z.string().min(1, "Product name is required"),
-  brand: z.string().min(1, "Brand name is required"),
+  brand: z.string().min(1, "Brand name is required"), // Expects string name
   hsnCode: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   gstTaxRate: z.coerce.number({invalid_type_error: "GST Tax Rate must be a number"}).min(0).optional().nullable(),
-  category: z.string().min(1, "Category name is required"),
+  category: z.string().min(1, "Category name is required"), // Expects string name
   subCategory: z.string().optional().nullable(),
   colorVariantInput: z.string().optional().nullable().describe("Comma-separated color names"),
   sizeVariantInput: z.string().optional().nullable().describe("Comma-separated size names"),
   tagsInput: z.string().optional().nullable().describe("Comma-separated tags"),
   status: z.string().optional().nullable(),
 
-  // Optional fields from original form, retained if API might support them
   sku: z.string().optional().nullable(),
   barcode: z.string().optional().nullable(),
   quantity: z.coerce.number({invalid_type_error: "Quantity must be a number"}).int().min(0, "Quantity must be non-negative").optional().nullable(),
@@ -64,17 +60,17 @@ export default function CreateProductPage() {
   const { toast } = useToast();
   
   const initialStatusQueryParam = searchParams.get('status');
-  const productStatuses = hardcodedStatuses; // Using hardcoded statuses
+  const productStatuses = hardcodedProductStatuses; 
   
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
       name: "",
-      brand: "",
+      brand: "", // Text input for brand name
       hsnCode: "",
       description: "",
       gstTaxRate: undefined,
-      category: "",
+      category: "", // Text input for category name
       subCategory: "",
       colorVariantInput: "",
       sizeVariantInput: "",
@@ -84,8 +80,8 @@ export default function CreateProductPage() {
               : (productStatuses.includes('DRAFT') ? 'DRAFT' : productStatuses[0]),
       sku: "",
       barcode: "",
-      quantity: 0, // Defaulting to 0 as it might be handled by variants
-      unitPrice: 0, // Defaulting to 0
+      quantity: 0, 
+      unitPrice: 0, 
       costPrice: undefined,
       imageUrlsInput: "",
       weight: undefined,
@@ -97,7 +93,6 @@ export default function CreateProductPage() {
   });
 
   React.useEffect(() => {
-    // If initialStatusQueryParam is present and valid, ensure it's set
     const validInitialStatus = initialStatusQueryParam && productStatuses.includes(initialStatusQueryParam.toUpperCase())
       ? initialStatusQueryParam.toUpperCase()
       : (productStatuses.includes('DRAFT') ? 'DRAFT' : productStatuses[0]);
@@ -109,36 +104,35 @@ export default function CreateProductPage() {
 
   async function onSubmit(data: ProductFormValues) {
     try {
-      const colorVariants = data.colorVariantInput?.split(',').map(c => c.trim()).filter(Boolean) || null;
-      const sizeVariants = data.sizeVariantInput?.split(',').map(s => s.trim()).filter(Boolean) || null;
-      const tags = data.tagsInput?.split(',').map(t => t.trim()).filter(Boolean) || null;
-      const imageUrls = data.imageUrlsInput?.split(',').map(url => url.trim()).filter(Boolean) || null;
+      const colorVariants = data.colorVariantInput?.split(',').map(c => c.trim()).filter(Boolean) || undefined;
+      const sizeVariants = data.sizeVariantInput?.split(',').map(s => s.trim()).filter(Boolean) || undefined;
+      const tags = data.tagsInput?.split(',').map(t => t.trim()).filter(Boolean) || undefined;
+      const imageUrls = data.imageUrlsInput?.split(',').map(url => url.trim()).filter(Boolean) || undefined;
 
       const productPayload: CreateProductRequest = {
         name: data.name,
-        brand: data.brand,
-        hsnCode: data.hsnCode || null,
-        description: data.description || null,
-        gstTaxRate: data.gstTaxRate === undefined || data.gstTaxRate === null ? null : Number(data.gstTaxRate),
-        category: data.category,
-        subCategory: data.subCategory || null,
+        brand: data.brand, // Send brand name as string
+        hsnCode: data.hsnCode || undefined,
+        description: data.description || undefined,
+        gstTaxRate: data.gstTaxRate === undefined || data.gstTaxRate === null ? undefined : Number(data.gstTaxRate),
+        category: data.category, // Send category name as string
+        subCategory: data.subCategory || undefined,
         colorVariant: colorVariants,
         sizeVariant: sizeVariants,
         tags: tags,
         status: data.status as CreateProductRequest['status'] || 'DRAFT',
         
-        // Optional fields
-        sku: data.sku || null,
-        barcode: data.barcode || null,
-        quantity: data.quantity === undefined || data.quantity === null ? undefined : Number(data.quantity), // API might ignore if variants exist
-        unitPrice: data.unitPrice === undefined || data.unitPrice === null ? undefined : Number(data.unitPrice), // API might ignore
-        costPrice: data.costPrice === undefined || data.costPrice === null ? null : Number(data.costPrice),
+        sku: data.sku || undefined,
+        barcode: data.barcode || undefined,
+        quantity: data.quantity === undefined || data.quantity === null ? undefined : Number(data.quantity), 
+        unitPrice: data.unitPrice === undefined || data.unitPrice === null ? undefined : Number(data.unitPrice), 
+        costPrice: data.costPrice === undefined || data.costPrice === null ? undefined : Number(data.costPrice),
         imageUrls: imageUrls,
-        weight: data.weight === undefined || data.weight === null ? null : Number(data.weight),
-        dimensions: data.dimensions || null,
+        weight: data.weight === undefined || data.weight === null ? undefined : Number(data.weight),
+        dimensions: data.dimensions || undefined,
         isFeatured: data.isFeatured,
-        metaTitle: data.metaTitle || null,
-        metaDescription: data.metaDescription || null,
+        metaTitle: data.metaTitle || undefined,
+        metaDescription: data.metaDescription || undefined,
       };
       
       await createProduct(productPayload);
@@ -157,9 +151,6 @@ export default function CreateProductPage() {
     }
   }
   
-  // No async data loading for dropdowns in this version as per instruction
-  const isLoadingData = false; 
-
   return (
     <div className="space-y-6 pb-8">
       <div className="flex items-center gap-2 md:gap-4">
@@ -192,23 +183,23 @@ export default function CreateProductPage() {
               />
               <FormField control={form.control} name="brand" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Brand *</FormLabel>
-                    <FormControl><Input placeholder="e.g., Nike" {...field} /></FormControl>
+                    <FormLabel>Brand Name *</FormLabel>
+                    <FormControl><Input placeholder="e.g., Nike (Type brand name)" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
               <FormField control={form.control} name="category" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Category *</FormLabel>
-                    <FormControl><Input placeholder="e.g., Apparel" {...field} /></FormControl>
+                    <FormLabel>Category Name *</FormLabel>
+                    <FormControl><Input placeholder="e.g., Apparel (Type category name)" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
               <FormField control={form.control} name="subCategory" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Sub-Category</FormLabel>
+                    <FormLabel>Sub-Category Name</FormLabel>
                     <FormControl><Input placeholder="e.g., T-Shirts" {...field} value={field.value ?? ""} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -422,7 +413,7 @@ export default function CreateProductPage() {
             <Button type="button" variant="outline" onClick={() => router.back()} className="w-full sm:w-auto">
               Cancel
             </Button>
-            <Button type="submit" disabled={form.formState.isSubmitting || isLoadingData} className="w-full sm:w-auto">
+            <Button type="submit" disabled={form.formState.isSubmitting} className="w-full sm:w-auto">
               {form.formState.isSubmitting ? "Creating..." : <><PackagePlus className="mr-2 h-4 w-4" /> Create Product</>}
             </Button>
           </CardFooter>
@@ -431,3 +422,6 @@ export default function CreateProductPage() {
     </div>
   );
 }
+
+
+    

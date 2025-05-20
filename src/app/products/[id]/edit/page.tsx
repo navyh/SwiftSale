@@ -21,34 +21,30 @@ import {
   updateProduct,
   type UpdateProductRequest,
   type Product,
-  // type VariantDefinitionDTO, // Replaced by colorVariant/sizeVariant arrays
-  // Hardcoded data for dropdowns as meta APIs are skipped for forms
 } from "@/lib/apiClient";
-import { ChevronLeft, Package, Save, PlusCircle, Trash2 } from "lucide-react";
+import { ChevronLeft, Save, PlusCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// Hardcoded data (as per instruction to skip meta APIs for forms)
+// Hardcoded product statuses as meta API for product statuses is not available
 const hardcodedProductStatuses = ["ACTIVE", "DRAFT", "ARCHIVED", "OUT_OF_STOCK"];
 
 
 const productFormSchema = z.object({
   name: z.string().min(1, "Product name is required"),
-  brand: z.string().min(1, "Brand name is required"), // Changed from brandId
+  brand: z.string().min(1, "Brand name is required"), // Changed to string input
   hsnCode: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   gstTaxRate: z.coerce.number({invalid_type_error: "GST Tax Rate must be a number"}).min(0).optional().nullable(),
-  category: z.string().min(1, "Category name is required"), // Changed from categoryId
+  category: z.string().min(1, "Category name is required"), // Changed to string input
   subCategory: z.string().optional().nullable(),
   
   status: z.string().optional().nullable(),
   
-  // For generating new variants via color/size name arrays
-  newColorValues: z.string().optional().nullable().describe("Comma-separated new color names"),
-  newSizeValues: z.string().optional().nullable().describe("Comma-separated new size names"),
+  newColorValues: z.string().optional().nullable().describe("Comma-separated new color names for variant generation"),
+  newSizeValues: z.string().optional().nullable().describe("Comma-separated new size names for variant generation"),
   
   tagsInput: z.string().optional().nullable(),
 
-  // Optional base product fields
   sku: z.string().optional().nullable(), 
   barcode: z.string().optional().nullable(), 
   quantity: z.coerce.number({invalid_type_error: "Quantity must be a number"}).int().min(0).optional().nullable(),
@@ -64,7 +60,8 @@ const productFormSchema = z.object({
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
 
-// Mock maps for displaying brand/category names if API returns IDs but form needs names
+// If API returns brandId/categoryId, these maps help display names.
+// For editing, brand/category are text inputs.
 const hardcodedCategoriesMap: { [key: string]: string } = { "1": "Electronics", "2": "Books", "3": "Clothing", "4": "Home Goods" };
 const hardcodedBrandsMap: { [key: string]: string } = { "1": "BrandA", "2": "BrandB", "3": "BrandC" };
 
@@ -85,11 +82,11 @@ export default function EditProductPage() {
     resolver: zodResolver(productFormSchema),
     defaultValues: {
       name: "",
-      brand: "",
+      brand: "", // Text input now
       hsnCode: "",
       description: "",
       gstTaxRate: undefined,
-      category: "",
+      category: "", // Text input now
       subCategory: "",
       status: "DRAFT",
       newColorValues: "",
@@ -123,9 +120,8 @@ export default function EditProductPage() {
         setProduct(fetchedProduct);
         form.reset({
           name: fetchedProduct.name,
-          // If API returns brand/category objects with names, use those.
-          // If API returns brandId/categoryId, map them using hardcoded maps for display,
-          // but the form field 'brand' and 'category' will be string inputs.
+          // API might return brand/category objects with names, or just IDs.
+          // Form uses text input for brand/category names for update.
           brand: fetchedProduct.brand?.name || (fetchedProduct.brandId ? hardcodedBrandsMap[fetchedProduct.brandId.toString()] : "") || "",
           category: fetchedProduct.category?.name || (fetchedProduct.categoryId ? hardcodedCategoriesMap[fetchedProduct.categoryId.toString()] : "") || "",
           subCategory: fetchedProduct.subCategory ?? "",
@@ -146,8 +142,8 @@ export default function EditProductPage() {
           isFeatured: fetchedProduct.isFeatured ?? false,
           metaTitle: fetchedProduct.metaTitle ?? "",
           metaDescription: fetchedProduct.metaDescription ?? "",
-          newColorValues: "", // Reset for new additions
-          newSizeValues: "", // Reset for new additions
+          newColorValues: "", 
+          newSizeValues: "", 
         });
       } catch (error: any) {
         toast({
@@ -167,21 +163,21 @@ export default function EditProductPage() {
   async function onSubmit(data: ProductFormValues) {
     setIsSubmitting(true);
     try {
-      const colorVariant = data.newColorValues?.split(',').map(c => c.trim()).filter(Boolean) || undefined; // undefined if empty, so API can ignore
-      const sizeVariant = data.newSizeValues?.split(',').map(s => s.trim()).filter(Boolean) || undefined;   // undefined if empty
+      const colorVariant = data.newColorValues?.split(',').map(c => c.trim()).filter(Boolean) || undefined;
+      const sizeVariant = data.newSizeValues?.split(',').map(s => s.trim()).filter(Boolean) || undefined;
       const tags = data.tagsInput?.split(',').map(t => t.trim()).filter(Boolean) || undefined;
       const imageUrls = data.imageUrlsInput?.split(',').map(url => url.trim()).filter(Boolean) || undefined;
 
       const payload: UpdateProductRequest = {
         name: data.name,
-        brand: data.brand,
+        brand: data.brand, // Send brand name as string
         hsnCode: data.hsnCode || undefined,
         description: data.description || undefined,
         gstTaxRate: data.gstTaxRate === undefined || data.gstTaxRate === null ? undefined : Number(data.gstTaxRate),
-        category: data.category,
+        category: data.category, // Send category name as string
         subCategory: data.subCategory || undefined,
-        colorVariant: (colorVariant && colorVariant.length > 0) ? colorVariant : undefined,
-        sizeVariant: (sizeVariant && sizeVariant.length > 0) ? sizeVariant : undefined,
+        colorVariant: (colorVariant && colorVariant.length > 0) ? colorVariant : undefined, // For new variant generation
+        sizeVariant: (sizeVariant && sizeVariant.length > 0) ? sizeVariant : undefined,   // For new variant generation
         tags: tags,
         status: data.status as UpdateProductRequest['status'] || undefined,
         
@@ -203,7 +199,7 @@ export default function EditProductPage() {
         title: "Success",
         description: "Product updated successfully.",
       });
-      router.push("/products"); // Or router.refresh() if staying on page
+      router.push("/products"); 
     } catch (error: any) {
       toast({
         title: "Error Updating Product",
@@ -260,23 +256,23 @@ export default function EditProductPage() {
               />
               <FormField control={form.control} name="brand" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Brand *</FormLabel>
-                    <FormControl><Input placeholder="e.g., Nike" {...field} /></FormControl>
+                    <FormLabel>Brand Name *</FormLabel>
+                    <FormControl><Input placeholder="e.g., Nike (Type brand name)" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
               <FormField control={form.control} name="category" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Category *</FormLabel>
-                    <FormControl><Input placeholder="e.g., Apparel" {...field} /></FormControl>
+                    <FormLabel>Category Name *</FormLabel>
+                    <FormControl><Input placeholder="e.g., Apparel (Type category name)" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
               <FormField control={form.control} name="subCategory" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Sub-Category</FormLabel>
+                    <FormLabel>Sub-Category Name</FormLabel>
                     <FormControl><Input placeholder="e.g., T-Shirts" {...field} value={field.value ?? ""} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -417,8 +413,8 @@ export default function EditProductPage() {
                     {product.variants.map(variant => (
                       <TableRow key={variant.id}>
                         <TableCell>{variant.sku || 'N/A'}</TableCell>
-                        <TableCell>{variant.colorValue || 'N/A'}</TableCell>
-                        <TableCell>{variant.sizeValue || 'N/A'}</TableCell>
+                        <TableCell>{variant.colorValue || 'N/A'}</TableCell> {/* API VariantDto uses 'color' */}
+                        <TableCell>{variant.sizeValue || 'N/A'}</TableCell>   {/* API VariantDto uses 'size' */}
                         <TableCell>{variant.price !== null && variant.price !== undefined ? `$${variant.price.toFixed(2)}` : 'N/A'}</TableCell>
                         <TableCell>{variant.quantity}</TableCell>
                         <TableCell className="text-right">
@@ -534,3 +530,6 @@ export default function EditProductPage() {
     </div>
   );
 }
+
+
+    

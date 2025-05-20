@@ -1,3 +1,4 @@
+
 // src/lib/apiClient.ts
 "use client"; // To be used in client components
 
@@ -80,10 +81,10 @@ export interface UserDto {
   name: string;
   phone: string;
   email?: string | null;
-  type: 'B2C' | 'B2B' | string;
+  type: 'B2C' | 'B2B' | string; // B2C_USER, B2B_USER as per API
   gstin?: string | null;
   addresses?: AddressDto[] | null;
-  status?: string | null;
+  status?: string | null; // e.g. ACTIVE, INACTIVE from API spec
   createdAt?: string;
   updatedAt?: string;
 }
@@ -92,26 +93,26 @@ export interface CreateUserRequest {
   name: string;
   phone: string;
   email?: string | null;
-  password?: string | null; // Should be handled securely
-  type: 'B2C' | 'B2B' | string;
-  gstin?: string | null; // Required if type is B2B
+  password?: string | null;
+  type: 'B2C_USER' | 'B2B_USER' | string; // Updated to API spec values
+  gstin?: string | null; 
   addresses?: AddressCreateDto[] | null;
 }
 
 export interface UpdateUserRequest {
   name?: string;
-  phone?: string;
+  phone?: string; // API spec says phone is not in UpdateUserRequest, but often it is. Keeping for now, verify.
   email?: string | null;
-  type?: 'B2C' | 'B2B' | string;
+  type?: 'B2C_USER' | 'B2B_USER' | string; // API spec says type is not in UpdateUserRequest
   gstin?: string | null;
-  addresses?: (AddressCreateDto | AddressDto)[] | null; // Can send full AddressDto for updates if API supports it or only AddressCreateDto
-  status?: string | null;
+  addresses?: (AddressCreateDto | AddressDto)[] | null;
+  status?: string | null; //  e.g. ACTIVE, INACTIVE
 }
 
 export async function fetchUsers(params?: { type?: string; search?: string; page?: number; size?: number }): Promise<Page<UserDto>> {
   const queryParams = new URLSearchParams();
   if (params?.type) queryParams.append('type', params.type);
-  if (params?.search) queryParams.append('search', params.search); // Assuming backend supports generic search
+  if (params?.search) queryParams.append('search', params.search);
   if (params?.page !== undefined) queryParams.append('page', params.page.toString());
   if (params?.size !== undefined) queryParams.append('size', params.size.toString());
   
@@ -132,7 +133,7 @@ export async function createUser(userData: CreateUserRequest): Promise<UserDto> 
 
 export async function updateUser(userId: number, userData: UpdateUserRequest): Promise<UserDto> {
   return fetchAPI<UserDto>(`/users/${userId}`, {
-    method: 'PUT', // As per spec
+    method: 'PUT', 
     body: JSON.stringify(userData),
   });
 }
@@ -149,10 +150,10 @@ export interface BusinessProfileDto {
   id: number;
   name: string;
   gstin: string;
-  status: 'ACTIVE' | 'INACTIVE' | string;
+  status: 'ACTIVE' | 'INACTIVE' | string; // From API
   paymentTerms?: string | null;
   addresses?: AddressDto[] | null;
-  userIds?: number[] | null; // Array of User IDs
+  userIds?: number[] | null; 
   createdAt?: string;
   updatedAt?: string;
 }
@@ -162,12 +163,12 @@ export interface CreateBusinessProfileRequest {
   gstin: string;
   addresses?: AddressCreateDto[] | null;
   paymentTerms?: string | null;
-  userIds?: number[] | null;
+  userIds?: number[] | null; // API indicates this is for linking users
 }
 
 export interface UpdateBusinessProfileRequest {
   name?: string;
-  gstin?: string;
+  gstin?: string; // API spec says gstin not in update, verify if needed
   status?: 'ACTIVE' | 'INACTIVE' | string;
   addresses?: (AddressCreateDto | AddressDto)[] | null;
   paymentTerms?: string | null;
@@ -176,7 +177,7 @@ export interface UpdateBusinessProfileRequest {
 
 export async function fetchBusinessProfiles(params?: { search?: string; status?: string; page?: number; size?: number }): Promise<Page<BusinessProfileDto>> {
   const queryParams = new URLSearchParams();
-  if (params?.search) queryParams.append('search', params.search); // Assuming backend supports name search
+  if (params?.search) queryParams.append('search', params.search);
   if (params?.status) queryParams.append('status', params.status);
   if (params?.page !== undefined) queryParams.append('page', params.page.toString());
   if (params?.size !== undefined) queryParams.append('size', params.size.toString());
@@ -212,17 +213,17 @@ export async function deleteBusinessProfile(profileId: number): Promise<void> {
 // === STAFF MANAGEMENT ===
 export interface StaffDto {
   id: number;
-  userId: number; // Refers to UserDto.id
-  user?: UserDto; // Optional: to hold fetched user details
+  userId: number; 
+  user?: UserDto; // Optional for client-side enrichment
   roles: string[];
   permissions?: string[] | null;
-  status: 'ACTIVE' | 'INACTIVE' | string;
+  status: 'ACTIVE' | 'INACTIVE' | string; // From API
   createdAt?: string;
   updatedAt?: string;
 }
 
 export interface CreateStaffRequest {
-  userId: number;
+  // userId is part of the path POST /api/v2/users/{userId}/staff
   roles: string[];
   permissions?: string[] | null;
 }
@@ -248,17 +249,13 @@ export async function fetchStaffById(staffId: number): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/staff/${staffId}`);
 }
 
-// POST /api/v2/users/{userId}/staff
 export async function createStaffMember(userId: number, staffData: CreateStaffRequest): Promise<StaffDto> {
-  // Ensure staffData itself doesn't also contain userId if API expects it only in path
-  const payload = { roles: staffData.roles, permissions: staffData.permissions };
   return fetchAPI<StaffDto>(`/users/${userId}/staff`, {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(staffData), // Payload only has roles and permissions
   });
 }
 
-// PUT /api/v2/staff/{id}
 export async function updateStaffMember(staffId: number, staffData: UpdateStaffRequest): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/staff/${staffId}`, {
     method: 'PUT',
@@ -273,64 +270,26 @@ export async function deleteStaffMember(staffId: number): Promise<void> {
 }
 
 
-// === PRODUCT MANAGEMENT (existing, ensure up-to-date) ===
-export interface Category {
+// === PRODUCT MANAGEMENT ===
+export interface MetaItem { // Base for many meta DTOs
   id: number;
   name: string;
   description?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Brand extends MetaItem {}
+
+export interface Category extends MetaItem { // Flat category structure
   parentId?: number | null;
-  children?: Category[];
-  createdAt?: string;
-  updatedAt?: string;
 }
-
-export interface ProductCategoryNode {
-  id: number;
-  name: string;
-  description?: string | null;
+export interface ProductCategoryNode extends MetaItem { // Tree structure
   parentId?: number | null;
-  children?: ProductCategoryNode[];
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface Brand {
-  id: number;
-  name: string;
-  description?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface MetaItem {
-  id: number;
-  name: string;
-  description?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface MetaColorItem extends MetaItem {
-  hexCode?: string | null;
+  children?: ProductCategoryNode[] | null;
 }
 
 export interface ProductUnit extends MetaItem {}
-export interface OrderStatus extends MetaItem {}
-export interface PaymentType extends MetaItem {}
-export interface InventoryAdjustmentReason extends MetaItem {}
-export interface UserRole extends MetaItem { // This is a generic meta item, StaffDto.roles is string[]
-  permissions?: string[];
-}
-
-export interface NotificationTemplate {
-  id: number;
-  name: string;
-  subject: string;
-  body: string;
-  type: string; // e.g., EMAIL, SMS
-  createdAt?: string;
-  updatedAt?: string;
-}
 
 export interface ProductVariant {
   id: number;
@@ -341,39 +300,32 @@ export interface ProductVariant {
   costPrice?: number | null;
   quantity: number;
   barcode?: string | null;
-  colorValue?: string | null;
-  sizeValue?: string | null;
+  colorValue?: string | null; // API uses 'color' and 'size' in Variant DTO
+  sizeValue?: string | null;   // API uses 'color' and 'size' in Variant DTO
   imageUrls?: string[] | null;
   createdAt?: string;
   updatedAt?: string;
 }
-export interface VariantDefinitionDTO { // For older variant creation, may not be used if using colorVariant/sizeVariant string arrays
-  color: string;
-  size: string;
-  sku?: string;
-  price?: number;
-  quantity?: number;
-}
+
 export interface Product {
   id: number;
   name:string;
   description?: string | null;
   sku?: string | null;
   barcode?: string | null;
-  quantity?: number; // If no variants, this is used. API docs suggest variants handle inventory primarily.
-  unitPrice?: number; // Base price if no variants.
+  quantity?: number; 
+  unitPrice?: number; 
   costPrice?: number | null;
 
+  // For GET /products list, these might be IDs
   categoryId?: number | null;
   brandId?: number | null;
-  supplierId?: number | null; // Note: Supplier meta endpoint not listed in V2, may need separate handling
-  unitId?: number | null;
-
-  // Expanded objects for GET /products/{id}
-  category?: Category | null;
-  brand?: Brand | null;
-  // supplier?: Supplier | null; // Supplier DTO not fully defined from new spec
-  unit?: ProductUnit | null;
+  // For GET /products/{id}, these are nested objects
+  category?: Category | null; // The API returns CategoryDto (flat) not ProductCategoryNode
+  brand?: Brand | null; 
+  
+  unitId?: number | null; // API does not explicitly show unitId on Product, but good to have if used
+  unit?: ProductUnit | null; // API does not explicitly show unit on Product
 
   hsnCode?: string | null;
   gstTaxRate?: number | null;
@@ -394,18 +346,17 @@ export interface Product {
 
 export interface CreateProductRequest {
   name: string;
-  brand: string; // Name of the brand
+  brand: string; 
   hsnCode?: string | null;
   description?: string | null;
   gstTaxRate?: number | null;
-  category: string; // Name of the category
+  category: string; 
   subCategory?: string | null;
-  colorVariant?: string[] | null; // Array of color names for variant generation
-  sizeVariant?: string[] | null;  // Array of size names for variant generation
+  colorVariant?: string[] | null; 
+  sizeVariant?: string[] | null;  
   tags?: string[] | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
   
-  // Optional base product details (if no variants or as defaults)
   sku?: string | null;
   barcode?: string | null;
   quantity?: number; 
@@ -419,16 +370,16 @@ export interface CreateProductRequest {
   metaDescription?: string | null;
 }
 
-export interface UpdateProductRequest {
+export interface UpdateProductRequest { // Based on PATCH /api/v2/products/{id}
   name?: string;
-  brand?: string;
+  brand?: string; // API spec says product attributes like brand/category are not directly updatable via this PATCH
   hsnCode?: string | null;
   description?: string | null;
   gstTaxRate?: number | null;
-  category?: string;
+  category?: string; // API spec says product attributes like brand/category are not directly updatable via this PATCH
   subCategory?: string | null;
-  colorVariant?: string[] | null; // For generating NEW variants
-  sizeVariant?: string[] | null;  // For generating NEW variants
+  colorVariant?: string[] | null; 
+  sizeVariant?: string[] | null;  
   tags?: string[] | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
 
@@ -447,27 +398,30 @@ export interface UpdateProductRequest {
 
 
 export interface AddVariantRequest { // For POST /products/{productId}/variants
-  sku: string; // This seems to be the primary identifier for a new variant rather than color/size values
+  // The API schema for POST /products/{productId}/variants is VariantDto but id, productId, createdAt, updatedAt are ignored.
+  // Assuming we send the properties that make sense for creation.
+  sku: string; 
   price?: number | null;
   compareAtPrice?: number | null;
   costPrice?: number | null;
   quantity: number;
   barcode?: string | null;
-  // If API auto-assigns color/size based on SKU pattern or if they are separate:
-  colorValue?: string | null; // Assuming these can be part of add specific variant
-  sizeValue?: string | null;
+  color?: string | null; // API uses 'color' not 'colorValue' for VariantDto
+  size?: string | null;  // API uses 'size' not 'sizeValue' for VariantDto
   imageUrls?: string[] | null;
 }
 
 export interface UpdateVariantRequest { // For PATCH /products/{productId}/variants/{variantId}
-  sku?: string | null; // Usually SKU is not updatable, but API might allow
+  // API schema for PATCH is also VariantDto, properties are optional
+  sku?: string | null; 
   price?: number | null;
   compareAtPrice?: number | null;
   costPrice?: number | null;
   quantity?: number;
   barcode?: string | null;
+  color?: string | null; // API uses 'color'
+  size?: string | null;  // API uses 'size'
   imageUrls?: string[] | null;
-  // colorValue and sizeValue might not be updatable directly on existing variant if they form part of its identity
 }
 
 
@@ -494,7 +448,7 @@ export async function createProduct(productData: CreateProductRequest): Promise<
 
 export async function updateProduct(id: number, productData: UpdateProductRequest): Promise<Product> {
   return fetchAPI<Product>(`/products/${id}`, {
-    method: 'PATCH', // Or PUT if API spec implies full replacement
+    method: 'PATCH', 
     body: JSON.stringify(productData),
   });
 }
@@ -525,7 +479,7 @@ export async function deleteProductVariant(productId: number, variantId: number)
   }, false);
 }
 
-// V2 Meta endpoints (as per new instructions)
+// === V2 META ENDPOINTS ===
 export async function fetchProductBrands(): Promise<Brand[]> {
   const data = await fetchAPI<Brand[] | undefined>('/meta/product/brands');
   return Array.isArray(data) ? data : [];
@@ -544,14 +498,14 @@ export async function fetchProductCategoriesTree(): Promise<ProductCategoryNode[
   const data = await fetchAPI<ProductCategoryNode[] | undefined>('/meta/product/categories/tree');
   return Array.isArray(data) ? data : [];
 }
-export async function fetchProductCategoriesFlat(): Promise<Category[]> { // For simple list displays
+export async function fetchProductCategoriesFlat(): Promise<Category[]> {
   const data = await fetchAPI<Category[] | undefined>('/meta/product/categories');
   return Array.isArray(data) ? data : [];
 }
-export async function createProductCategory(data: Omit<Category, 'id' | 'children' | 'createdAt' | 'updatedAt'>): Promise<Category> {
+export async function createProductCategory(data: Omit<Category, 'id' | 'createdAt' | 'updatedAt'>): Promise<Category> { // Category DTO for flat creation
   return fetchAPI<Category>('/meta/product/categories', { method: 'POST', body: JSON.stringify(data) });
 }
-export async function updateProductCategory(id: number, data: Partial<Omit<Category, 'id' | 'children' | 'createdAt' | 'updatedAt'>>): Promise<Category> {
+export async function updateProductCategory(id: number, data: Partial<Omit<Category, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Category> {
   return fetchAPI<Category>(`/meta/product/categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 }
 export async function deleteProductCategory(id: number): Promise<void> {
@@ -572,26 +526,41 @@ export async function deleteProductUnit(id: number): Promise<void> {
   return fetchAPI<void>(`/meta/product/units/${id}`, { method: 'DELETE' }, false);
 }
 
+export interface OrderStatus extends MetaItem {}
 export async function fetchOrderStatuses(): Promise<OrderStatus[]> {
   const data = await fetchAPI<OrderStatus[] | undefined>('/meta/order/statuses');
   return Array.isArray(data) ? data : [];
 }
 
+export interface PaymentType extends MetaItem {}
 export async function fetchPaymentTypes(): Promise<PaymentType[]> {
   const data = await fetchAPI<PaymentType[] | undefined>('/meta/order/payment-types');
   return Array.isArray(data) ? data : [];
 }
 
+export interface InventoryAdjustmentReason extends MetaItem {}
 export async function fetchInventoryAdjustmentReasons(): Promise<InventoryAdjustmentReason[]> {
   const data = await fetchAPI<InventoryAdjustmentReason[] | undefined>('/meta/inventory/adjustment-reasons');
   return Array.isArray(data) ? data : [];
 }
 
-export async function fetchUserRolesMeta(): Promise<UserRole[]> { // Renamed to avoid conflict if a User DTO has 'roles'
+export interface UserRole extends MetaItem { 
+  permissions?: string[];
+}
+export async function fetchUserRolesMeta(): Promise<UserRole[]> {
   const data = await fetchAPI<UserRole[] | undefined>('/meta/user/roles');
   return Array.isArray(data) ? data : [];
 }
 
+export interface NotificationTemplate {
+  id: number;
+  name: string;
+  subject: string;
+  body: string;
+  type: string; 
+  createdAt?: string;
+  updatedAt?: string;
+}
 export async function fetchNotificationTemplates(): Promise<NotificationTemplate[]> {
   const data = await fetchAPI<NotificationTemplate[] | undefined>('/meta/notification/templates');
   return Array.isArray(data) ? data : [];
@@ -607,61 +576,21 @@ export async function deleteNotificationTemplate(id: number): Promise<void> {
 }
 
 
-// FOR SETTINGS PAGE - Generic Meta for items not covered by new V2 spec (Sizes, Colors, Suppliers)
-// These might be deprecated or replaced if V2 provides specific endpoints later.
-export interface Supplier extends MetaItem { // Explicitly defining Supplier if used generically
-  contactName?: string | null;
-  email?: string | null;
-  phone?: string | null;
-  address?: string | null;
-}
-export async function fetchSuppliers(): Promise<Supplier[]> { // Path assumed based on previous context
-  const data = await fetchAPI<Supplier[] | undefined>('/meta/suppliers');
-  return Array.isArray(data) ? data : [];
-}
-export async function fetchProductStatuses(): Promise<string[]> { // Path assumed based on previous context
-  const response = await fetchAPI<string[] | undefined>('/meta/product-statuses'); // Assuming this returns array of strings
-  return Array.isArray(response) ? response : [];
-}
-export async function fetchSizes(): Promise<MetaItem[]> { // Path assumed based on previous context
-  const data = await fetchAPI<MetaItem[] | undefined>('/meta/sizes');
-  return Array.isArray(data) ? data : [];
-}
-export async function fetchColors(): Promise<MetaColorItem[]> { // Path assumed based on previous context
-  const data = await fetchAPI<MetaColorItem[] | undefined>('/meta/colors');
-  return Array.isArray(data) ? data : [];
-}
-type GenericMetaType = 'sizes' | 'colors' | 'suppliers'; // Keep for settings page that might use these paths
-
-export async function createGenericMetaItem(metaType: GenericMetaType, data: Partial<MetaItem & MetaColorItem & Supplier>): Promise<MetaItem | MetaColorItem | Supplier> {
-  return fetchAPI<MetaItem | MetaColorItem | Supplier>(`/meta/${metaType}`, { // Path assumed
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
-export async function updateGenericMetaItem(metaType: GenericMetaType, id: number, data: Partial<MetaItem & MetaColorItem & Supplier>): Promise<MetaItem | MetaColorItem | Supplier> {
-  return fetchAPI<MetaItem | MetaColorItem | Supplier>(`/meta/${metaType}/${id}`, { // Path assumed
-    method: 'PATCH',
-    body: JSON.stringify(data),
-  });
-}
-export async function deleteGenericMetaItem(metaType: GenericMetaType, id: number): Promise<void> {
-  return fetchAPI<void>(`/meta/${metaType}/${id}`, { // Path assumed
-    method: 'DELETE',
-  }, false);
-}
-
+// === OTHER API FUNCTIONS ===
 // Placeholder for CurrentUser related API calls (if /users/me is different from UserDto)
 export interface CurrentUserDto extends UserDto { // Assuming it's similar to UserDto
   // any specific fields for /users/me
 }
 export async function fetchCurrentUser(): Promise<CurrentUserDto> {
-  return fetchAPI<CurrentUserDto>('/users/me'); // Assuming /users/me endpoint
+  return fetchAPI<CurrentUserDto>('/users/me'); // Assuming /users/me endpoint exists and returns CurrentUserDto
 }
-export async function updateCurrentUser(data: UpdateUserRequest): Promise<CurrentUserDto> {
-  return fetchAPI<CurrentUserDto>('/users/me', { // Assuming /users/me endpoint
+export async function updateCurrentUser(data: UpdateUserRequest): Promise<CurrentUserDto> { // Assuming UpdateUserRequest is appropriate
+  return fetchAPI<CurrentUserDto>('/users/me', { 
     method: 'PATCH', // Or PUT
     body: JSON.stringify(data),
   });
 }
+
 // (End of apiClient.ts)
+
+    

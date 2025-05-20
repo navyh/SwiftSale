@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -10,20 +11,15 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
-import { PlusCircle, Edit3, Trash2, Palette, Tag, Ruler, Scale, Settings as SettingsIcon, FolderTree, BellRing, UsersRound } from "lucide-react"; // Added UsersRound
+import { PlusCircle, Edit3, Trash2, Palette, Tag, Ruler, Scale, Settings as SettingsIcon, FolderTree, BellRing, UsersRound, ListChecks, CreditCard, FileText as InventoryIcon } from "lucide-react";
 import { 
-  // Product Meta
   fetchProductBrands, createProductBrand, updateProductBrand, deleteProductBrand, type Brand,
   fetchProductCategoriesTree, createProductCategory, updateProductCategory, deleteProductCategory, type Category, type ProductCategoryNode,
   fetchProductUnits, createProductUnit, updateProductUnit, deleteProductUnit, type ProductUnit,
-  // Other Meta (V2 specified)
   fetchNotificationTemplates, createNotificationTemplate, updateNotificationTemplate, deleteNotificationTemplate, type NotificationTemplate,
-  // Generic Meta (for sizes, colors, suppliers - paths might differ from V2)
-  fetchSizes, fetchColors, fetchSuppliers,
-  createGenericMetaItem, updateGenericMetaItem, deleteGenericMetaItem, 
-  type MetaItem, type MetaColorItem, type Supplier,
-  // Order Statuses, Payment Types, etc. - fetch functions only for now
-  fetchOrderStatuses, fetchPaymentTypes, fetchInventoryAdjustmentReasons, fetchUserRolesMeta, type OrderStatus, type PaymentType, type InventoryAdjustmentReason, type UserRole
+  fetchOrderStatuses, fetchPaymentTypes, fetchInventoryAdjustmentReasons, fetchUserRolesMeta, 
+  type OrderStatus, type PaymentType, type InventoryAdjustmentReason, type UserRole,
+  type MetaItem
 } from "@/lib/apiClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,16 +30,13 @@ type SettingCategoryKey =
   | 'productBrands' 
   | 'productCategories' 
   | 'productUnits' 
-  | 'sizes' 
-  | 'colors' 
-  | 'suppliers'
   | 'notificationTemplates'
-  | 'orderStatuses' // Added for display-only sections
-  | 'paymentTypes'  // Added
-  | 'inventoryAdjustmentReasons' // Added
-  | 'userRolesMeta'; // Added, distinct from staff roles
+  | 'orderStatuses'
+  | 'paymentTypes'
+  | 'inventoryAdjustmentReasons'
+  | 'userRolesMeta';
 
-type SettingItemUnion = Brand | Category | ProductUnit | MetaItem | MetaColorItem | Supplier | NotificationTemplate | ProductCategoryNode | OrderStatus | PaymentType | InventoryAdjustmentReason | UserRole;
+type SettingItemUnion = Brand | Category | ProductUnit | NotificationTemplate | ProductCategoryNode | OrderStatus | PaymentType | InventoryAdjustmentReason | UserRole | MetaItem;
 
 interface EditDialogState {
   isOpen: boolean;
@@ -52,36 +45,28 @@ interface EditDialogState {
   mode: 'add' | 'edit';
 }
 
-// Ensure all categoryKeys have an icon
 const categoryIcons: Record<SettingCategoryKey, React.ElementType> = {
   productBrands: Tag,
   productCategories: FolderTree,
   productUnits: Scale,
-  sizes: Ruler,
-  colors: Palette,
-  suppliers: UsersRound, // Using UsersRound for suppliers
   notificationTemplates: BellRing,
-  orderStatuses: SettingsIcon, // Placeholder
-  paymentTypes: SettingsIcon, // Placeholder
-  inventoryAdjustmentReasons: SettingsIcon, // Placeholder
-  userRolesMeta: SettingsIcon, // Placeholder
+  orderStatuses: ListChecks, 
+  paymentTypes: CreditCard, 
+  inventoryAdjustmentReasons: InventoryIcon, 
+  userRolesMeta: UsersRound, 
 };
 
 const categoryDisplayNames: Record<SettingCategoryKey, string> = {
   productBrands: "Brand",
   productCategories: "Category",
   productUnits: "Unit",
-  sizes: "Size",
-  colors: "Color",
-  suppliers: "Supplier",
   notificationTemplates: "Notification Template",
   orderStatuses: "Order Status",
   paymentTypes: "Payment Type",
-  inventoryAdjustmentReasons: "Inventory Adjustment Reason",
-  userRolesMeta: "User Role (Meta)",
+  inventoryAdjustmentReasons: "Inventory Adj. Reason",
+  userRolesMeta: "User Role (System)",
 };
 
-// Helper to flatten category tree for table display
 const flattenCategoriesForTable = (nodes: ProductCategoryNode[], parentName: string | null = null): (ProductCategoryNode & { displayName: string })[] => {
   let flatList: (ProductCategoryNode & { displayName: string })[] = [];
   nodes.forEach(node => {
@@ -100,7 +85,7 @@ const SettingSection = ({
   categoryKey,
   onEdit,
   forceRefreshKey,
-  isEditable = true, // New prop to control edit/delete functionality
+  isEditable = true,
 }: { 
   title: string; 
   categoryKey: SettingCategoryKey;
@@ -126,16 +111,12 @@ const SettingSection = ({
           data = flattenCategoriesForTable(treeData);
           break;
         case 'productUnits': data = await fetchProductUnits(); break;
-        case 'sizes': data = await fetchSizes(); break;
-        case 'colors': data = await fetchColors(); break;
-        case 'suppliers': data = await fetchSuppliers(); break;
         case 'notificationTemplates': data = await fetchNotificationTemplates(); break;
-        // Read-only meta types
         case 'orderStatuses': data = await fetchOrderStatuses(); break;
         case 'paymentTypes': data = await fetchPaymentTypes(); break;
         case 'inventoryAdjustmentReasons': data = await fetchInventoryAdjustmentReasons(); break;
         case 'userRolesMeta': data = await fetchUserRolesMeta(); break;
-        default: throw new Error("Invalid category key");
+        default: throw new Error("Invalid category key: " + categoryKey);
       }
       setItems(Array.isArray(data) ? data : []);
     } catch (err: any) {
@@ -157,9 +138,6 @@ const SettingSection = ({
         case 'productBrands': await deleteProductBrand(itemId); break;
         case 'productCategories': await deleteProductCategory(itemId); break;
         case 'productUnits': await deleteProductUnit(itemId); break;
-        case 'sizes': await deleteGenericMetaItem('sizes', itemId); break;
-        case 'colors': await deleteGenericMetaItem('colors', itemId); break;
-        case 'suppliers': await deleteGenericMetaItem('suppliers', itemId); break;
         case 'notificationTemplates': await deleteNotificationTemplate(itemId); break;
         default: throw new Error("Invalid category key for delete or non-deletable item");
       }
@@ -171,20 +149,12 @@ const SettingSection = ({
   };
 
   const renderAdditionalHeaders = () => {
-    if (categoryKey === 'colors') return <TableHead>Preview</TableHead>;
     if (categoryKey === 'notificationTemplates') return <TableHead className="hidden md:table-cell">Type</TableHead>;
     if (categoryKey === 'userRolesMeta') return <TableHead className="hidden md:table-cell">Permissions</TableHead>;
     return null;
   };
 
   const renderAdditionalCells = (item: SettingItemUnion) => {
-    if (categoryKey === 'colors' && (item as MetaColorItem).hexCode) {
-      return (
-        <TableCell>
-          <div style={{ backgroundColor: (item as MetaColorItem).hexCode! }} className="h-5 w-5 rounded-full border"></div>
-        </TableCell>
-      );
-    }
     if (categoryKey === 'notificationTemplates' && (item as NotificationTemplate).type) {
        return <TableCell className="hidden md:table-cell">{(item as NotificationTemplate).type}</TableCell>;
     }
@@ -195,9 +165,7 @@ const SettingSection = ({
   };
 
   const getDescriptionOrEquivalent = (item: SettingItemUnion) => {
-    if (categoryKey === 'colors') return (item as MetaColorItem).hexCode || 'N/A';
     if (categoryKey === 'notificationTemplates') return (item as NotificationTemplate).subject || 'N/A';
-    if (categoryKey === 'productCategories') return (item as ProductCategoryNode).description || 'N/A';
     // For UserRole, description might be primary info along with permissions
     if (categoryKey === 'userRolesMeta') return (item as UserRole).description || 'N/A';
     return (item as MetaItem).description || 'N/A';
@@ -218,7 +186,7 @@ const SettingSection = ({
             </Button>
           )}
         </div>
-        <CardDescription>Manage all {title.toLowerCase()} for your products or system.</CardDescription>
+        <CardDescription>Manage all {title.toLowerCase()} for your system.</CardDescription>
       </CardHeader>
       <CardContent>
         {error && <p className="text-destructive text-center py-4">{error}</p>}
@@ -233,9 +201,8 @@ const SettingSection = ({
                 <TableHead>Name</TableHead>
                 {renderAdditionalHeaders()}
                 <TableHead className="hidden md:table-cell">
-                    {categoryKey === 'colors' ? 'Hex Code' : 
-                     categoryKey === 'notificationTemplates' ? 'Subject' : 
-                     categoryKey === 'userRolesMeta' ? 'Description' : // Permissions shown in extra col
+                    {categoryKey === 'notificationTemplates' ? 'Subject' : 
+                     categoryKey === 'userRolesMeta' ? 'Description' : 
                      'Description'}
                 </TableHead>
                 {isEditable && <TableHead className="text-right">Actions</TableHead>}
@@ -299,13 +266,11 @@ export default function SettingsPage() {
   
   const [itemName, setItemName] = React.useState('');
   const [itemDescription, setItemDescription] = React.useState('');
-  const [itemHexCode, setItemHexCode] = React.useState('');
-  const [itemSubject, setItemSubject] = React.useState('');
-  const [itemBody, setItemBody] = React.useState('');
-  const [itemType, setItemType] = React.useState('');
-  const [itemParentId, setItemParentId] = React.useState<number | null>(null);
-  const [itemPermissions, setItemPermissions] = React.useState(''); // For User Roles (Meta)
-
+  const [itemSubject, setItemSubject] = React.useState(''); // For Notification Templates
+  const [itemBody, setItemBody] = React.useState('');       // For Notification Templates
+  const [itemType, setItemType] = React.useState('');         // For Notification Templates
+  const [itemParentId, setItemParentId] = React.useState<number | null>(null); // For Categories
+  const [itemPermissions, setItemPermissions] = React.useState(''); // For User Roles (Meta) - not editable in dialog yet
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
@@ -314,8 +279,6 @@ export default function SettingsPage() {
     const desc = (item as MetaItem)?.description || '';
     setItemDescription(desc);
     
-    setItemHexCode((item as MetaColorItem)?.hexCode || '');
-    
     const ntItem = item as NotificationTemplate | null;
     setItemSubject(ntItem?.subject || '');
     setItemBody(ntItem?.body || '');
@@ -323,25 +286,22 @@ export default function SettingsPage() {
     
     setItemParentId((item as Category)?.parentId || null);
 
-    setItemPermissions((item as UserRole)?.permissions?.join(', ') || '');
+    // Permissions are display-only for userRolesMeta for now
+    // setItemPermissions((item as UserRole)?.permissions?.join(', ') || '');
 
     setDialogState({ isOpen: true, item, categoryKey, mode });
   };
 
   const handleDialogClose = () => {
     setDialogState({ isOpen: false, item: null, categoryKey: null, mode: 'add' });
-    setItemName(''); setItemDescription(''); setItemHexCode('');
-    setItemSubject(''); setItemBody(''); setItemType(''); setItemParentId(null); setItemPermissions('');
+    setItemName(''); setItemDescription(''); 
+    setItemSubject(''); setItemBody(''); setItemType(''); setItemParentId(null); // setItemPermissions('');
   };
 
   const handleDialogSubmit = async () => {
     if (!dialogState.categoryKey || !itemName.trim()) {
       toast({ title: "Validation Error", description: "Name is required.", variant: "destructive" });
       return;
-    }
-    if (dialogState.categoryKey === 'colors' && !itemHexCode.match(/^#[0-9A-Fa-f]{3,6}$/)) { // Allow 3 or 6 hex chars
-       toast({ title: "Validation Error", description: "Hex code must be in #RGB or #RRGGBB format.", variant: "destructive" });
-       return;
     }
     if (dialogState.categoryKey === 'notificationTemplates' && (!itemSubject.trim() || !itemBody.trim() || !itemType.trim())) {
        toast({ title: "Validation Error", description: "For Notification Templates, Name, Subject, Body, and Type are required.", variant: "destructive" });
@@ -351,26 +311,24 @@ export default function SettingsPage() {
     setIsSubmitting(true);
     let payload: any = { name: itemName.trim() };
     
-    // Common fields (description)
-    if (dialogState.categoryKey !== 'colors' && dialogState.categoryKey !== 'notificationTemplates' && dialogState.categoryKey !== 'userRolesMeta') {
+    if (dialogState.categoryKey !== 'notificationTemplates') { // Most meta items have a description
       if (itemDescription.trim()) payload.description = itemDescription.trim();
     }
-    if (dialogState.categoryKey === 'userRolesMeta') { // User Roles (Meta) also has description
-        if (itemDescription.trim()) payload.description = itemDescription.trim();
-        if (itemPermissions.trim()) payload.permissions = itemPermissions.split(',').map(p => p.trim()).filter(Boolean);
-    }
 
-
-    if (dialogState.categoryKey === 'colors') payload.hexCode = itemHexCode.trim();
-    
     if (dialogState.categoryKey === 'productCategories') {
-        if (itemDescription.trim()) payload.description = itemDescription.trim(); // Categories also have description
+        if (itemDescription.trim()) payload.description = itemDescription.trim();
         if (itemParentId) payload.parentId = itemParentId;
     }
 
     if (dialogState.categoryKey === 'notificationTemplates') {
       payload = { ...payload, subject: itemSubject.trim(), body: itemBody.trim(), type: itemType.trim() };
     }
+
+    // Note: UserRolesMeta are not editable via this dialog currently.
+    // if (dialogState.categoryKey === 'userRolesMeta') { 
+    //     if (itemDescription.trim()) payload.description = itemDescription.trim();
+    //     if (itemPermissions.trim()) payload.permissions = itemPermissions.split(',').map(p => p.trim()).filter(Boolean);
+    // }
 
     try {
       if (dialogState.mode === 'add') {
@@ -379,13 +337,6 @@ export default function SettingsPage() {
           case 'productCategories': await createProductCategory(payload); break;
           case 'productUnits': await createProductUnit(payload); break;
           case 'notificationTemplates': await createNotificationTemplate(payload); break;
-          // Generic for sizes, colors, suppliers
-          case 'sizes': await createGenericMetaItem('sizes', payload); break;
-          case 'colors': await createGenericMetaItem('colors', payload); break;
-          case 'suppliers': await createGenericMetaItem('suppliers', payload); break;
-          // User Roles (Meta) might need its own create function if API differs greatly
-          // For now, assuming it fits createGenericMetaItem or a new specific one.
-          // case 'userRolesMeta': await createUserRoleMeta(payload); break; 
           default: throw new Error("Invalid category key for create or non-creatable item");
         }
         toast({ title: "Success", description: `${categoryDisplayNames[dialogState.categoryKey]} added successfully.` });
@@ -396,16 +347,11 @@ export default function SettingsPage() {
           case 'productCategories': await updateProductCategory(currentItemId, payload); break;
           case 'productUnits': await updateProductUnit(currentItemId, payload); break;
           case 'notificationTemplates': await updateNotificationTemplate(currentItemId, payload); break;
-          // Generic for sizes, colors, suppliers
-          case 'sizes': await updateGenericMetaItem('sizes', currentItemId, payload); break;
-          case 'colors': await updateGenericMetaItem('colors', currentItemId, payload); break;
-          case 'suppliers': await updateGenericMetaItem('suppliers', currentItemId, payload); break;
-          // case 'userRolesMeta': await updateUserRoleMeta(currentItemId, payload); break;
           default: throw new Error("Invalid category key for update or non-updatable item");
         }
         toast({ title: "Success", description: `${categoryDisplayNames[dialogState.categoryKey]} updated successfully.` });
       }
-      setForceRefreshKey(prev => prev + 1); // Trigger re-fetch in sections
+      setForceRefreshKey(prev => prev + 1); 
       handleDialogClose();
     } catch (err: any) {
       toast({ title: "Error", description: err.message || `Failed to save ${categoryDisplayNames[dialogState.categoryKey!].toLowerCase()}.`, variant: "destructive" });
@@ -414,9 +360,9 @@ export default function SettingsPage() {
     }
   };
 
-  const isDialogCategoryEditable = dialogState.categoryKey ? 
-    ['productBrands', 'productCategories', 'productUnits', 'sizes', 'colors', 'suppliers', 'notificationTemplates'].includes(dialogState.categoryKey)
-    : false;
+  const editableCategories: SettingCategoryKey[] = ['productBrands', 'productCategories', 'productUnits', 'notificationTemplates'];
+  const isDialogCategoryEditable = dialogState.categoryKey ? editableCategories.includes(dialogState.categoryKey) : false;
+
 
   return (
     <div className="space-y-8 pb-8">
@@ -425,7 +371,7 @@ export default function SettingsPage() {
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center">
             <SettingsIcon className="mr-3 h-7 w-7" /> Application Settings
           </h1>
-          <p className="text-muted-foreground">Centralized configuration for product attributes and system options.</p>
+          <p className="text-muted-foreground">Centralized configuration for system metadata.</p>
         </div>
       </div>
 
@@ -435,17 +381,10 @@ export default function SettingsPage() {
         <SettingSection title="Product Units" categoryKey="productUnits" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
         <SettingSection title="Notification Templates" categoryKey="notificationTemplates" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
         
-        {/* Generic Meta Sections (using older setup for now) */}
-        <SettingSection title="Sizes" categoryKey="sizes" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
-        <SettingSection title="Colors" categoryKey="colors" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
-        <SettingSection title="Suppliers" categoryKey="suppliers" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
-        
-        {/* Read-only sections for V2 meta not typically CRUD managed by general users here */}
         <SettingSection title="Order Statuses" categoryKey="orderStatuses" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} isEditable={false} />
         <SettingSection title="Payment Types" categoryKey="paymentTypes" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} isEditable={false} />
-        <SettingSection title="Inv. Adj. Reasons" categoryKey="inventoryAdjustmentReasons" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} isEditable={false} />
+        <SettingSection title="Inventory Adj. Reasons" categoryKey="inventoryAdjustmentReasons" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} isEditable={false} />
         <SettingSection title="User Roles (System)" categoryKey="userRolesMeta" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} isEditable={false} />
-
       </div>
        <p className="text-xs text-muted-foreground mt-8 text-center">
         Settings are managed via API endpoints. Changes reflect across the application.
@@ -465,27 +404,13 @@ export default function SettingsPage() {
               <Input id="name" value={itemName} onChange={(e) => setItemName(e.target.value)} className="col-span-3" placeholder={`${dialogState.categoryKey ? categoryDisplayNames[dialogState.categoryKey] : ''} name`} />
             </div>
             
-            {dialogState.categoryKey && !['colors', 'notificationTemplates', 'userRolesMeta'].includes(dialogState.categoryKey) && (
+            {dialogState.categoryKey && ['productBrands', 'productCategories', 'productUnits'].includes(dialogState.categoryKey) && (
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="description" className="text-right">Description</Label>
                 <Textarea id="description" value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} className="col-span-3" placeholder="Optional description" />
               </div>
             )}
-             {dialogState.categoryKey === 'productCategories' && ( // Description for categories
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="description" className="text-right">Description</Label>
-                <Textarea id="description" value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} className="col-span-3" placeholder="Optional category description" />
-              </div>
-            )}
 
-
-            {dialogState.categoryKey === 'colors' && (
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="hexCode" className="text-right">Hex Code*</Label>
-                <Input id="hexCode" value={itemHexCode} onChange={(e) => setItemHexCode(e.target.value)} className="col-span-3" placeholder="#RRGGBB" />
-              </div>
-            )}
-            
             {dialogState.categoryKey === 'notificationTemplates' && (
               <>
                 <div className="grid grid-cols-4 items-center gap-4">
@@ -504,10 +429,9 @@ export default function SettingsPage() {
             )}
             {dialogState.categoryKey === 'productCategories' && (
                  <p className="text-xs text-muted-foreground col-span-4 text-center pt-2">
-                    Parent category selection will be added later. New categories are created as top-level.
+                    Parent category selection for creating sub-categories will be added later. New categories are created as top-level.
                  </p>
             )}
-             {/* Future: Add parentId selector for categories, permissions for userRolesMeta */}
           </div>
           <DialogFooter>
             <DialogClose asChild>
@@ -522,3 +446,6 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+
+    
