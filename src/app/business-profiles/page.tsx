@@ -3,9 +3,9 @@
 import * as React from "react";
 import Link from "next/link";
 import {
-  fetchUsers,
-  deleteUser,
-  type UserDto,
+  fetchBusinessProfiles,
+  deleteBusinessProfile,
+  type BusinessProfileDto,
   type Page,
 } from "@/lib/apiClient";
 import { useToast } from "@/hooks/use-toast";
@@ -51,39 +51,39 @@ import {
   Edit3,
   Trash2,
   Eye,
-  UsersRound as UsersIcon, // Changed from UserCircle
+  Building2 as BusinessProfilesIcon,
   ChevronLeft,
   ChevronRight
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const USER_TYPES = ["B2C", "B2B"]; // Hardcoded as per instruction
+const PROFILE_STATUSES = ["ACTIVE", "INACTIVE"]; // Hardcoded
 
-export default function UsersListPage() {
+export default function BusinessProfilesListPage() {
   const { toast } = useToast();
-  const [usersPage, setUsersPage] = React.useState<Page<UserDto> | null>(null);
+  const [profilesPage, setProfilesPage] = React.useState<Page<BusinessProfileDto> | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   
   const [searchTerm, setSearchTerm] = React.useState("");
-  const [filterType, setFilterType] = React.useState<string>("");
+  const [filterStatus, setFilterStatus] = React.useState<string>("");
   const [currentPage, setCurrentPage] = React.useState(0);
   const [pageSize, setPageSize] = React.useState(10);
 
-  const loadUsers = React.useCallback(async (page: number, size: number, search: string, type: string) => {
+  const loadProfiles = React.useCallback(async (page: number, size: number, search: string, status: string) => {
     setIsLoading(true);
     setError(null);
     try {
-      const params: { page: number; size: number; search?: string; type?: string } = { page, size };
+      const params: { page: number; size: number; search?: string; status?: string } = { page, size };
       if (search) params.search = search;
-      if (type) params.type = type;
-      const data = await fetchUsers(params);
-      setUsersPage(data);
+      if (status) params.status = status;
+      const data = await fetchBusinessProfiles(params);
+      setProfilesPage(data);
     } catch (err: any) {
-      setError(err.message || "Failed to fetch users.");
+      setError(err.message || "Failed to fetch business profiles.");
       toast({
         title: "Error",
-        description: err.message || "Failed to fetch users.",
+        description: err.message || "Failed to fetch business profiles.",
         variant: "destructive",
       });
     } finally {
@@ -92,41 +92,40 @@ export default function UsersListPage() {
   }, [toast]);
 
   React.useEffect(() => {
-    loadUsers(currentPage, pageSize, searchTerm, filterType);
-  }, [loadUsers, currentPage, pageSize, searchTerm, filterType]);
+    loadProfiles(currentPage, pageSize, searchTerm, filterStatus);
+  }, [loadProfiles, currentPage, pageSize, searchTerm, filterStatus]);
 
   const handleSearchDebounced = React.useCallback(
     debounce((term: string) => {
       setSearchTerm(term);
-      setCurrentPage(0); // Reset to first page on new search
+      setCurrentPage(0);
     }, 500),
     []
   );
 
-  const handleFilterChange = (type: string) => {
-    setFilterType(type);
-    setCurrentPage(0); // Reset to first page on filter change
+  const handleFilterChange = (status: string) => {
+    setFilterStatus(status);
+    setCurrentPage(0);
   };
 
-  const handleDeleteUser = async (userId: number) => {
+  const handleDeleteProfile = async (profileId: number) => {
     try {
-      await deleteUser(userId);
-      toast({ title: "Success", description: "User deleted successfully." });
-      // Reload current page
-      loadUsers(currentPage, pageSize, searchTerm, filterType);
+      await deleteBusinessProfile(profileId);
+      toast({ title: "Success", description: "Business profile deleted successfully." });
+      loadProfiles(currentPage, pageSize, searchTerm, filterStatus);
     } catch (err: any) {
       toast({
         title: "Error",
-        description: err.message || "Failed to delete user.",
+        description: err.message || "Failed to delete business profile.",
         variant: "destructive",
       });
     }
   };
-
+  
   const handlePageChange = (newPage: number) => {
     setCurrentPage(newPage);
   };
-  
+
   function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
     let timeout: ReturnType<typeof setTimeout> | null = null;
     return (...args: Parameters<F>): Promise<ReturnType<F>> =>
@@ -138,21 +137,20 @@ export default function UsersListPage() {
       });
   }
 
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center">
-            <UsersIcon className="mr-3 h-7 w-7" /> User Management
+            <BusinessProfilesIcon className="mr-3 h-7 w-7" /> Business Profile Management
           </h1>
           <p className="text-muted-foreground">
-            View, add, edit, and manage all users.
+            Manage all company profiles.
           </p>
         </div>
-        <Link href="/users/new" passHref>
+        <Link href="/business-profiles/new" passHref>
           <Button>
-            <PlusCircle className="mr-2 h-4 w-4" /> Add New User
+            <PlusCircle className="mr-2 h-4 w-4" /> Add New Profile
           </Button>
         </Link>
       </div>
@@ -160,60 +158,55 @@ export default function UsersListPage() {
       <Card className="shadow-md">
         <CardHeader>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <CardTitle>All Users</CardTitle>
+            <CardTitle>All Business Profiles</CardTitle>
             <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto">
               <div className="relative flex-grow w-full sm:w-auto">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="search"
-                  placeholder="Search by name or phone..."
+                  placeholder="Search by company name..."
                   className="pl-8 w-full sm:w-[200px] md:w-[250px]"
                   onChange={(e) => handleSearchDebounced(e.target.value)}
                 />
               </div>
-              <Select value={filterType} onValueChange={handleFilterChange}>
+              <Select value={filterStatus} onValueChange={handleFilterChange}>
                 <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Filter by type" />
+                  <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Types</SelectItem>
-                  {USER_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {type}
+                  <SelectItem value="">All Statuses</SelectItem>
+                  {PROFILE_STATUSES.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
-          <CardDescription>
-            A list of all registered users in the system.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           {error && <p className="text-destructive text-center py-4">{error}</p>}
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[80px] hidden sm:table-cell">ID</TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead className="hidden md:table-cell">Phone</TableHead>
-                <TableHead className="hidden lg:table-cell">Email</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="hidden md:table-cell">Status</TableHead>
+                <TableHead className="hidden md:table-cell">GSTIN</TableHead>
+                <TableHead className="hidden lg:table-cell">Payment Terms</TableHead>
+                <TableHead>Users</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 Array.from({ length: pageSize }).map((_, index) => (
-                  <TableRow key={`skeleton-user-${index}`}>
-                    <TableCell className="hidden sm:table-cell"><Skeleton className="h-4 w-10" /></TableCell>
+                  <TableRow key={`skeleton-profile-${index}`}>
                     <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                     <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
-                    <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-40" /></TableCell>
-                    <TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
-                    <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
+                    <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                    <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
                     <TableCell className="text-right space-x-1">
                       <Skeleton className="h-8 w-8 inline-block rounded" />
                       <Skeleton className="h-8 w-8 inline-block rounded" />
@@ -221,38 +214,33 @@ export default function UsersListPage() {
                     </TableCell>
                   </TableRow>
                 ))
-              ) : usersPage && usersPage.content.length > 0 ? (
-                usersPage.content.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium hidden sm:table-cell">{user.id}</TableCell>
-                    <TableCell className="font-medium">{user.name}</TableCell>
-                    <TableCell className="hidden md:table-cell">{user.phone}</TableCell>
-                    <TableCell className="hidden lg:table-cell">{user.email || "N/A"}</TableCell>
+              ) : profilesPage && profilesPage.content.length > 0 ? (
+                profilesPage.content.map((profile) => (
+                  <TableRow key={profile.id}>
+                    <TableCell className="font-medium">{profile.name}</TableCell>
+                    <TableCell className="hidden md:table-cell">{profile.gstin}</TableCell>
+                    <TableCell className="hidden lg:table-cell">{profile.paymentTerms || "N/A"}</TableCell>
+                    <TableCell>{profile.userIds?.length || 0}</TableCell>
                     <TableCell>
-                      <Badge variant={user.type === "B2B" ? "secondary" : "default"}>
-                        {user.type}
+                      <Badge variant={profile.status.toUpperCase() === "ACTIVE" ? "default" : "outline"}
+                             className={profile.status.toUpperCase() === "ACTIVE" ? "bg-green-500/20 text-green-700 border-green-500/30" : "bg-gray-500/20 text-gray-700 border-gray-500/30"}>
+                        {profile.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                        <Badge variant={user.status?.toLowerCase() === 'active' ? 'default' : 'outline'} 
-                               className={user.status?.toLowerCase() === 'active' ? 'bg-green-500/20 text-green-700 border-green-500/30' : 'bg-yellow-500/20 text-yellow-700 border-yellow-500/30'}>
-                            {user.status || "N/A"}
-                        </Badge>
-                    </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" className="hover:text-primary" asChild title="View User">
-                        <Link href={`/users/${user.id}`}>
+                      <Button variant="ghost" size="icon" className="hover:text-primary" asChild title="View Profile">
+                        <Link href={`/business-profiles/${profile.id}`}>
                           <Eye className="h-4 w-4" />
                         </Link>
                       </Button>
-                      <Button variant="ghost" size="icon" className="hover:text-primary" asChild title="Edit User">
-                        <Link href={`/users/${user.id}/edit`}>
+                      <Button variant="ghost" size="icon" className="hover:text-primary" asChild title="Edit Profile">
+                        <Link href={`/business-profiles/${profile.id}/edit`}>
                           <Edit3 className="h-4 w-4" />
                         </Link>
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="hover:text-destructive" title="Delete User">
+                          <Button variant="ghost" size="icon" className="hover:text-destructive" title="Delete Profile">
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </AlertDialogTrigger>
@@ -260,13 +248,13 @@ export default function UsersListPage() {
                           <AlertDialogHeader>
                             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                             <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete the user "{user.name}".
+                              This action cannot be undone. This will permanently delete the profile "{profile.name}".
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
                             <AlertDialogAction
-                              onClick={() => handleDeleteUser(user.id)}
+                              onClick={() => handleDeleteProfile(profile.id)}
                               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
                             >
                               Delete
@@ -279,33 +267,33 @@ export default function UsersListPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-10">
-                    <UsersIcon className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
-                    <p className="text-muted-foreground">No users found.</p>
-                    {searchTerm && <p className="text-sm text-muted-foreground">Try adjusting your search term or filter.</p>}
+                  <TableCell colSpan={6} className="text-center py-10">
+                    <BusinessProfilesIcon className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
+                    <p className="text-muted-foreground">No business profiles found.</p>
+                     {searchTerm && <p className="text-sm text-muted-foreground">Try adjusting your search term or filter.</p>}
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
-          {usersPage && usersPage.totalPages > 1 && (
-            <div className="flex items-center justify-end space-x-2 py-4">
+          {profilesPage && profilesPage.totalPages > 1 && (
+             <div className="flex items-center justify-end space-x-2 py-4">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => handlePageChange(currentPage - 1)}
-                disabled={usersPage.first || isLoading}
+                disabled={profilesPage.first || isLoading}
               >
                 <ChevronLeft className="h-4 w-4 mr-1" /> Previous
               </Button>
               <span className="text-sm text-muted-foreground">
-                Page {usersPage.number + 1} of {usersPage.totalPages}
+                Page {profilesPage.number + 1} of {profilesPage.totalPages}
               </span>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => handlePageChange(currentPage + 1)}
-                disabled={usersPage.last || isLoading}
+                disabled={profilesPage.last || isLoading}
               >
                 Next <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
