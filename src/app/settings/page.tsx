@@ -11,7 +11,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
-import { PlusCircle, Edit3, Trash2, Palette, Tag, Ruler, Scale, Settings as SettingsIcon, FolderTree, BellRing, UsersRound, ListChecks, CreditCard, FileText as InventoryIcon } from "lucide-react";
+import { PlusCircle, Edit3, Trash2, Settings as SettingsIcon, FolderTree, BellRing, UsersRound, ListChecks, CreditCard, FileText as InventoryIcon, Tag, Scale } from "lucide-react";
 import {
   fetchProductBrands, createProductBrand, updateProductBrand, deleteProductBrand, type Brand,
   fetchProductCategoriesTree, createProductCategory, updateProductCategory, deleteProductCategory, type Category, type ProductCategoryNode,
@@ -103,7 +103,7 @@ const SettingSection = ({
     setIsLoading(true);
     setError(null);
     try {
-      let data;
+      let data: SettingItemUnion[] = [];
       switch (categoryKey) {
         case 'productBrands': data = await fetchProductBrands(); break;
         case 'productCategories':
@@ -122,7 +122,7 @@ const SettingSection = ({
     } catch (err: any) {
       setError(err.message || `Failed to fetch ${title.toLowerCase()}.`);
       toast({ title: "Error", description: err.message || `Failed to fetch ${title.toLowerCase()}.`, variant: "destructive" });
-      setItems([]); // Ensure items is an empty array on error
+      setItems([]); 
     } finally {
       setIsLoading(false);
     }
@@ -167,7 +167,8 @@ const SettingSection = ({
 
   const getDescriptionOrEquivalent = (item: SettingItemUnion) => {
     if (categoryKey === 'notificationTemplates') return (item as NotificationTemplate).subject || 'N/A';
-    if (categoryKey === 'userRolesMeta') return (item as UserRole).description || 'N/A';
+    // For UserRole, description is part of MetaItem, so default case handles it.
+    // For OrderStatus, PaymentType, InventoryAdjustmentReason, description is part of MetaItem.
     return (item as MetaItem).description || 'N/A';
   };
 
@@ -191,9 +192,26 @@ const SettingSection = ({
       <CardContent>
         {error && <p className="text-destructive text-center py-4">{error}</p>}
         {isLoading ? (
-          <div className="space-y-2">
-            {Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
-          </div>
+           <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                {renderAdditionalHeaders() && <TableHead className="hidden md:table-cell">Info</TableHead>}
+                <TableHead className="hidden md:table-cell">Details</TableHead>
+                {isEditable && <TableHead className="text-right">Actions</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({length: 3}).map((_, i) => (
+                <TableRow key={`skeleton-setting-${categoryKey}-${i}`}>
+                  <TableCell><Skeleton className="h-4 w-3/4" /></TableCell>
+                  {renderAdditionalHeaders() && <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-1/2" /></TableCell>}
+                  <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-full" /></TableCell>
+                  {isEditable && <TableCell className="text-right space-x-1"><Skeleton className="h-8 w-8 inline-block rounded-sm" /><Skeleton className="h-8 w-8 inline-block rounded-sm" /></TableCell>}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         ) : items.length > 0 ? (
           <Table>
             <TableHeader>
@@ -201,9 +219,7 @@ const SettingSection = ({
                 <TableHead>Name</TableHead>
                 {renderAdditionalHeaders()}
                 <TableHead className="hidden md:table-cell">
-                    {categoryKey === 'notificationTemplates' ? 'Subject' :
-                     categoryKey === 'userRolesMeta' ? 'Description' :
-                     'Description'}
+                    {categoryKey === 'notificationTemplates' ? 'Subject' : 'Description'}
                 </TableHead>
                 {isEditable && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
@@ -266,10 +282,13 @@ export default function SettingsPage() {
 
   const [itemName, setItemName] = React.useState('');
   const [itemDescription, setItemDescription] = React.useState('');
-  const [itemSubject, setItemSubject] = React.useState(''); // For Notification Templates
-  const [itemBody, setItemBody] = React.useState('');       // For Notification Templates
-  const [itemType, setItemType] = React.useState('');         // For Notification Templates
-  const [itemParentId, setItemParentId] = React.useState<number | null>(null); // For Categories
+  const [itemSubject, setItemSubject] = React.useState(''); 
+  const [itemBody, setItemBody] = React.useState('');       
+  const [itemType, setItemType] = React.useState('');         
+  const [itemParentId, setItemParentId] = React.useState<number | null>(null); 
+  // Permissions field state for UserRoles - not editable via this dialog currently
+  // const [itemPermissions, setItemPermissions] = React.useState<string[]>([]);
+
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
@@ -284,7 +303,11 @@ export default function SettingsPage() {
     setItemType(ntItem?.type || '');
 
     setItemParentId((item as Category)?.parentId || null);
-
+    // if (categoryKey === 'userRolesMeta' && item) {
+    //   setItemPermissions((item as UserRole).permissions || []);
+    // } else {
+    //   setItemPermissions([]);
+    // }
 
     setDialogState({ isOpen: true, item, categoryKey, mode });
   };
@@ -293,6 +316,7 @@ export default function SettingsPage() {
     setDialogState({ isOpen: false, item: null, categoryKey: null, mode: 'add' });
     setItemName(''); setItemDescription('');
     setItemSubject(''); setItemBody(''); setItemType(''); setItemParentId(null);
+    // setItemPermissions([]);
   };
 
   const handleDialogSubmit = async () => {
@@ -312,10 +336,12 @@ export default function SettingsPage() {
       if (itemDescription.trim()) payload.description = itemDescription.trim();
     }
 
-
     if (dialogState.categoryKey === 'productCategories') {
-        // if (itemDescription.trim()) payload.description = itemDescription.trim(); // Already handled above
-        if (itemParentId) payload.parentId = itemParentId; // This part is for future enhancement of parent selection
+        // Parent ID for categories is not handled in this dialog for creation/update for simplicity.
+        // New categories are top-level. Updating parent requires a different UI.
+        if (itemParentId && dialogState.mode === 'edit' && dialogState.item?.id) {
+             // payload.parentId = itemParentId; // Potentially for future, but API for PATCH doesn't allow parentId update directly if it makes it complex.
+        }
     }
 
     if (dialogState.categoryKey === 'notificationTemplates') {
@@ -327,13 +353,13 @@ export default function SettingsPage() {
       if (dialogState.mode === 'add') {
         switch(dialogState.categoryKey) {
           case 'productBrands': await createProductBrand(payload); break;
-          case 'productCategories': await createProductCategory(payload); break;
+          case 'productCategories': await createProductCategory(payload); break; // Creates as top-level
           case 'productUnits': await createProductUnit(payload); break;
           case 'notificationTemplates': await createNotificationTemplate(payload); break;
           default: throw new Error("Invalid category key for create or non-creatable item");
         }
         toast({ title: "Success", description: `${categoryDisplayNames[dialogState.categoryKey]} added successfully.` });
-      } else if (dialogState.item) {
+      } else if (dialogState.item?.id) { // Ensure item and item.id exist for update
          let currentItemId = dialogState.item.id;
         switch(dialogState.categoryKey) {
           case 'productBrands': await updateProductBrand(currentItemId, payload); break;
@@ -344,7 +370,7 @@ export default function SettingsPage() {
         }
         toast({ title: "Success", description: `${categoryDisplayNames[dialogState.categoryKey]} updated successfully.` });
       }
-      setForceRefreshKey(prev => prev + 1);
+      setForceRefreshKey(prev => prev + 1); // Trigger re-fetch in SettingSection
       handleDialogClose();
     } catch (err: any) {
       toast({ title: "Error", description: err.message || `Failed to save ${categoryDisplayNames[dialogState.categoryKey!].toLowerCase()}.`, variant: "destructive" });
@@ -369,10 +395,10 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
-        <SettingSection title="Product Brands" categoryKey="productBrands" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
-        <SettingSection title="Product Categories" categoryKey="productCategories" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
-        <SettingSection title="Product Units" categoryKey="productUnits" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
-        <SettingSection title="Notification Templates" categoryKey="notificationTemplates" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} />
+        <SettingSection title="Product Brands" categoryKey="productBrands" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} isEditable={true} />
+        <SettingSection title="Product Categories" categoryKey="productCategories" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} isEditable={true} />
+        <SettingSection title="Product Units" categoryKey="productUnits" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} isEditable={true} />
+        <SettingSection title="Notification Templates" categoryKey="notificationTemplates" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} isEditable={true} />
 
         <SettingSection title="Order Statuses" categoryKey="orderStatuses" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} isEditable={false} />
         <SettingSection title="Payment Types" categoryKey="paymentTypes" onEdit={handleEditOpen} forceRefreshKey={forceRefreshKey} isEditable={false} />
@@ -416,7 +442,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="type" className="text-right">Type*</Label>
-                  <Input id="type" value={itemType} onChange={(e) => setItemType(e.target.value)} className="col-span-3" placeholder="e.g., EMAIL, SMS" />
+                  <Input id="type" value={itemType} onChange={(e) => setItemType(e.target.value)} className="col-span-3" placeholder="e.g., EMAIL, SMS (as per API)" />
                 </div>
               </>
             )}

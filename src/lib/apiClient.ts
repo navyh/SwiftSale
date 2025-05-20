@@ -81,10 +81,10 @@ export interface UserDto {
   name: string;
   phone: string;
   email?: string | null;
-  type: 'B2C' | 'B2B' | string; // B2C_USER, B2B_USER as per API
+  type: 'B2C_USER' | 'B2B_USER' | string;
   gstin?: string | null;
   addresses?: AddressDto[] | null;
-  status?: string | null; // e.g. ACTIVE, INACTIVE from API spec
+  status?: string | null; 
   createdAt?: string;
   updatedAt?: string;
 }
@@ -93,26 +93,27 @@ export interface CreateUserRequest {
   name: string;
   phone: string;
   email?: string | null;
-  password?: string | null;
-  type: 'B2C_USER' | 'B2B_USER' | string; // Updated to API spec values
+  password?: string | null; // API spec does not show password here, might be handled separately
+  type: 'B2C_USER' | 'B2B_USER' | string; 
   gstin?: string | null; 
   addresses?: AddressCreateDto[] | null;
 }
 
 export interface UpdateUserRequest {
   name?: string;
-  phone?: string; // API spec says phone is not in UpdateUserRequest, but often it is. Keeping for now, verify.
+  // phone is not in UpdateUserRequest schema, but often needed for updates. Verify.
   email?: string | null;
-  type?: 'B2C_USER' | 'B2B_USER' | string; // API spec says type is not in UpdateUserRequest
+  // type is not in UpdateUserRequest schema. Verify.
   gstin?: string | null;
   addresses?: (AddressCreateDto | AddressDto)[] | null;
-  status?: string | null; //  e.g. ACTIVE, INACTIVE
+  status?: 'ACTIVE' | 'INACTIVE' | string; // API spec indicates status is part of UserDto not UpdateUserRequest. Verify
 }
+
 
 export async function fetchUsers(params?: { type?: string; search?: string; page?: number; size?: number }): Promise<Page<UserDto>> {
   const queryParams = new URLSearchParams();
-  if (params?.type) queryParams.append('type', params.type);
-  if (params?.search) queryParams.append('search', params.search);
+  if (params?.type) queryParams.append('type', params.type); // API supports 'type' for B2C_USER / B2B_USER
+  if (params?.search) queryParams.append('search', params.search); // API supports 'search'
   if (params?.page !== undefined) queryParams.append('page', params.page.toString());
   if (params?.size !== undefined) queryParams.append('size', params.size.toString());
   
@@ -150,7 +151,7 @@ export interface BusinessProfileDto {
   id: number;
   name: string;
   gstin: string;
-  status: 'ACTIVE' | 'INACTIVE' | string; // From API
+  status: 'ACTIVE' | 'INACTIVE' | string; 
   paymentTerms?: string | null;
   addresses?: AddressDto[] | null;
   userIds?: number[] | null; 
@@ -163,22 +164,23 @@ export interface CreateBusinessProfileRequest {
   gstin: string;
   addresses?: AddressCreateDto[] | null;
   paymentTerms?: string | null;
-  userIds?: number[] | null; // API indicates this is for linking users
+  userIds?: number[] | null;
 }
 
 export interface UpdateBusinessProfileRequest {
   name?: string;
-  gstin?: string; // API spec says gstin not in update, verify if needed
+  // gstin not in UpdateBusinessProfileRequest according to API
   status?: 'ACTIVE' | 'INACTIVE' | string;
   addresses?: (AddressCreateDto | AddressDto)[] | null;
   paymentTerms?: string | null;
   userIds?: number[] | null;
 }
 
+
 export async function fetchBusinessProfiles(params?: { search?: string; status?: string; page?: number; size?: number }): Promise<Page<BusinessProfileDto>> {
   const queryParams = new URLSearchParams();
-  if (params?.search) queryParams.append('search', params.search);
-  if (params?.status) queryParams.append('status', params.status);
+  if (params?.search) queryParams.append('search', params.search); // API supports 'search' by company name
+  if (params?.status) queryParams.append('status', params.status); // API supports 'status'
   if (params?.page !== undefined) queryParams.append('page', params.page.toString());
   if (params?.size !== undefined) queryParams.append('size', params.size.toString());
   
@@ -199,7 +201,7 @@ export async function createBusinessProfile(profileData: CreateBusinessProfileRe
 
 export async function updateBusinessProfile(profileId: number, profileData: UpdateBusinessProfileRequest): Promise<BusinessProfileDto> {
   return fetchAPI<BusinessProfileDto>(`/business-profiles/${profileId}`, {
-    method: 'PUT',
+    method: 'PUT', // API spec uses PUT for update
     body: JSON.stringify(profileData),
   });
 }
@@ -214,30 +216,32 @@ export async function deleteBusinessProfile(profileId: number): Promise<void> {
 export interface StaffDto {
   id: number;
   userId: number; 
-  user?: UserDto; // Optional for client-side enrichment
+  user?: UserDto; // API response for StaffDto includes nested UserDto
   roles: string[];
   permissions?: string[] | null;
-  status: 'ACTIVE' | 'INACTIVE' | string; // From API
+  status: 'ACTIVE' | 'INACTIVE' | string; 
   createdAt?: string;
   updatedAt?: string;
 }
 
-export interface CreateStaffRequest {
-  // userId is part of the path POST /api/v2/users/{userId}/staff
+export interface CreateStaffRequest { // For POST /users/{userId}/staff
   roles: string[];
   permissions?: string[] | null;
+  // userId is part of the path
 }
 
-export interface UpdateStaffRequest {
+export interface UpdateStaffRequest { // For PUT /staff/{staffId}
   roles?: string[];
   permissions?: string[] | null;
   status?: 'ACTIVE' | 'INACTIVE' | string;
 }
 
-export async function fetchStaff(params?: { role?: string; status?: string; page?: number; size?: number }): Promise<Page<StaffDto>> {
+
+export async function fetchStaff(params?: { role?: string; status?: string; page?: number; size?: number; search?: string }): Promise<Page<StaffDto>> {
   const queryParams = new URLSearchParams();
-  if (params?.role) queryParams.append('role', params.role);
-  if (params?.status) queryParams.append('status', params.status);
+  if (params?.search) queryParams.append('search', params.search); // API supports 'search'
+  if (params?.role) queryParams.append('role', params.role); // API supports 'role'
+  if (params?.status) queryParams.append('status', params.status); // API supports 'status'
   if (params?.page !== undefined) queryParams.append('page', params.page.toString());
   if (params?.size !== undefined) queryParams.append('size', params.size.toString());
 
@@ -249,10 +253,10 @@ export async function fetchStaffById(staffId: number): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/staff/${staffId}`);
 }
 
-export async function createStaffMember(userId: number, staffData: CreateStaffRequest): Promise<StaffDto> {
-  return fetchAPI<StaffDto>(`/users/${userId}/staff`, {
+export async function createStaffMember(userIdForStaff: number, staffData: CreateStaffRequest): Promise<StaffDto> {
+  return fetchAPI<StaffDto>(`/users/${userIdForStaff}/staff`, {
     method: 'POST',
-    body: JSON.stringify(staffData), // Payload only has roles and permissions
+    body: JSON.stringify(staffData),
   });
 }
 
@@ -271,7 +275,8 @@ export async function deleteStaffMember(staffId: number): Promise<void> {
 
 
 // === PRODUCT MANAGEMENT ===
-export interface MetaItem { // Base for many meta DTOs
+// Base for many meta DTOs, also used directly if a DTO has id, name, description
+export interface MetaItem { 
   id: number;
   name: string;
   description?: string | null;
@@ -281,51 +286,51 @@ export interface MetaItem { // Base for many meta DTOs
 
 export interface Brand extends MetaItem {}
 
-export interface Category extends MetaItem { // Flat category structure
+export interface Category extends MetaItem { // Flat category structure from /meta/product/categories
   parentId?: number | null;
 }
-export interface ProductCategoryNode extends MetaItem { // Tree structure
+export interface ProductCategoryNode extends MetaItem { // Tree structure from /meta/product/categories/tree
   parentId?: number | null;
   children?: ProductCategoryNode[] | null;
 }
 
 export interface ProductUnit extends MetaItem {}
 
-export interface ProductVariant {
+export interface ProductVariant { // As per VariantDto in API
   id: number;
   productId: number;
   sku?: string | null;
   price?: number | null;
-  compareAtPrice?: number | null;
+  compareAtPrice?: number | null; // API calls this comparePrice
   costPrice?: number | null;
   quantity: number;
   barcode?: string | null;
-  colorValue?: string | null; // API uses 'color' and 'size' in Variant DTO
-  sizeValue?: string | null;   // API uses 'color' and 'size' in Variant DTO
+  color?: string | null; // Changed from colorValue to match API's VariantDto
+  size?: string | null;   // Changed from sizeValue to match API's VariantDto
   imageUrls?: string[] | null;
   createdAt?: string;
   updatedAt?: string;
 }
 
-export interface Product {
+export interface Product { // As per ProductDto
   id: number;
   name:string;
   description?: string | null;
-  sku?: string | null;
-  barcode?: string | null;
-  quantity?: number; 
-  unitPrice?: number; 
-  costPrice?: number | null;
+  sku?: string | null; // Base product SKU
+  barcode?: string | null; // Base product barcode
+  quantity?: number; // Base product quantity (often sum of variants or for non-variant products)
+  unitPrice?: number; // Base product unit price
+  costPrice?: number | null; // Base product cost price
 
   // For GET /products list, these might be IDs
   categoryId?: number | null;
   brandId?: number | null;
   // For GET /products/{id}, these are nested objects
-  category?: Category | null; // The API returns CategoryDto (flat) not ProductCategoryNode
+  category?: Category | null; 
   brand?: Brand | null; 
   
-  unitId?: number | null; // API does not explicitly show unitId on Product, but good to have if used
-  unit?: ProductUnit | null; // API does not explicitly show unit on Product
+  unitId?: number | null; 
+  unit?: ProductUnit | null; 
 
   hsnCode?: string | null;
   gstTaxRate?: number | null;
@@ -339,29 +344,33 @@ export interface Product {
   isFeatured?: boolean | null;
   metaTitle?: string | null;
   metaDescription?: string | null;
-  variants?: ProductVariant[] | null;
+  variants?: ProductVariant[] | null; // Array of VariantDto
   createdAt?: string;
   updatedAt?: string;
 }
 
-export interface CreateProductRequest {
+export interface CreateProductRequest { // Based on API's CreateProductRequest
   name: string;
-  brand: string; 
+  brand: string; // API expects name string
   hsnCode?: string | null;
   description?: string | null;
   gstTaxRate?: number | null;
-  category: string; 
+  category: string; // API expects name string
   subCategory?: string | null;
-  colorVariant?: string[] | null; 
-  sizeVariant?: string[] | null;  
+  colorVariant?: string[] | null; // For backend to generate variants
+  sizeVariant?: string[] | null;  // For backend to generate variants
   tags?: string[] | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
   
-  sku?: string | null;
-  barcode?: string | null;
-  quantity?: number; 
-  unitPrice?: number; 
-  costPrice?: number | null;
+  // Optional base product fields (if product itself can exist without variants or has base values)
+  // These were previously part of the form, verify if CreateProductRequest directly supports them
+  // or if they are only set via variants. API spec for CreateProductRequest does not list these.
+  // For now, assuming they are NOT part of CreateProductRequest directly.
+  // sku?: string | null;
+  // barcode?: string | null;
+  // quantity?: number; 
+  // unitPrice?: number; 
+  // costPrice?: number | null;
   imageUrls?: string[] | null;
   weight?: number | null;
   dimensions?: string | null;
@@ -372,22 +381,25 @@ export interface CreateProductRequest {
 
 export interface UpdateProductRequest { // Based on PATCH /api/v2/products/{id}
   name?: string;
-  brand?: string; // API spec says product attributes like brand/category are not directly updatable via this PATCH
+  brand?: string; 
   hsnCode?: string | null;
   description?: string | null;
   gstTaxRate?: number | null;
-  category?: string; // API spec says product attributes like brand/category are not directly updatable via this PATCH
+  category?: string; 
   subCategory?: string | null;
-  colorVariant?: string[] | null; 
-  sizeVariant?: string[] | null;  
+  colorVariant?: string[] | null; // To generate *new* variants during an update
+  sizeVariant?: string[] | null;   // To generate *new* variants during an update
   tags?: string[] | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
-
-  sku?: string | null;
-  barcode?: string | null;
-  quantity?: number;
-  unitPrice?: number;
-  costPrice?: number | null;
+  
+  // Similar to CreateProductRequest, these base fields might not be directly updatable here.
+  // Updates to SKU, price, quantity for the base product (if applicable) might need clarification or separate variant updates.
+  // API spec for PATCH /products/{id} mainly shows attributes like name, description, status, tags etc.
+  // sku?: string | null; 
+  // barcode?: string | null;
+  // quantity?: number;
+  // unitPrice?: number;
+  // costPrice?: number | null;
   imageUrls?: string[] | null;
   weight?: number | null;
   dimensions?: string | null;
@@ -397,30 +409,27 @@ export interface UpdateProductRequest { // Based on PATCH /api/v2/products/{id}
 }
 
 
-export interface AddVariantRequest { // For POST /products/{productId}/variants
-  // The API schema for POST /products/{productId}/variants is VariantDto but id, productId, createdAt, updatedAt are ignored.
-  // Assuming we send the properties that make sense for creation.
+export interface AddVariantRequest { // For POST /products/{productId}/variants, matching VariantDto structure (excluding read-only fields)
   sku: string; 
   price?: number | null;
   compareAtPrice?: number | null;
   costPrice?: number | null;
   quantity: number;
   barcode?: string | null;
-  color?: string | null; // API uses 'color' not 'colorValue' for VariantDto
-  size?: string | null;  // API uses 'size' not 'sizeValue' for VariantDto
+  color?: string | null; 
+  size?: string | null;  
   imageUrls?: string[] | null;
 }
 
-export interface UpdateVariantRequest { // For PATCH /products/{productId}/variants/{variantId}
-  // API schema for PATCH is also VariantDto, properties are optional
+export interface UpdateVariantRequest { // For PATCH /products/{productId}/variants/{variantId}, matching VariantDto structure (all optional)
   sku?: string | null; 
   price?: number | null;
   compareAtPrice?: number | null;
   costPrice?: number | null;
   quantity?: number;
   barcode?: string | null;
-  color?: string | null; // API uses 'color'
-  size?: string | null;  // API uses 'size'
+  color?: string | null; 
+  size?: string | null;  
   imageUrls?: string[] | null;
 }
 
@@ -432,7 +441,8 @@ export async function fetchProducts(params?: { page?: number; size?: number; sea
   if (params?.search) queryParams.append('search', params.search);
   const queryString = queryParams.toString();
   const data = await fetchAPI<Page<Product> | undefined>(`/products${queryString ? `?${queryString}` : ''}`);
-  return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 20, number: params?.page ?? 0, first: true, last: true, empty: true };
+  // Ensure a valid Page object is always returned
+  return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
 
 export async function fetchProductById(id: number): Promise<Product> {
@@ -498,11 +508,11 @@ export async function fetchProductCategoriesTree(): Promise<ProductCategoryNode[
   const data = await fetchAPI<ProductCategoryNode[] | undefined>('/meta/product/categories/tree');
   return Array.isArray(data) ? data : [];
 }
-export async function fetchProductCategoriesFlat(): Promise<Category[]> {
+export async function fetchProductCategoriesFlat(): Promise<Category[]> { // Fetch flat list for simple dropdowns or mapping
   const data = await fetchAPI<Category[] | undefined>('/meta/product/categories');
   return Array.isArray(data) ? data : [];
 }
-export async function createProductCategory(data: Omit<Category, 'id' | 'createdAt' | 'updatedAt'>): Promise<Category> { // Category DTO for flat creation
+export async function createProductCategory(data: Omit<Category, 'id' | 'createdAt' | 'updatedAt'>): Promise<Category> {
   return fetchAPI<Category>('/meta/product/categories', { method: 'POST', body: JSON.stringify(data) });
 }
 export async function updateProductCategory(id: number, data: Partial<Omit<Category, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Category> {
@@ -547,12 +557,12 @@ export async function fetchInventoryAdjustmentReasons(): Promise<InventoryAdjust
 export interface UserRole extends MetaItem { 
   permissions?: string[];
 }
-export async function fetchUserRolesMeta(): Promise<UserRole[]> {
+export async function fetchUserRolesMeta(): Promise<UserRole[]> { // Renamed to avoid conflict if a UserRole type is used elsewhere
   const data = await fetchAPI<UserRole[] | undefined>('/meta/user/roles');
   return Array.isArray(data) ? data : [];
 }
 
-export interface NotificationTemplate {
+export interface NotificationTemplate { // Based on NotificationTemplateDto
   id: number;
   name: string;
   subject: string;
@@ -577,20 +587,19 @@ export async function deleteNotificationTemplate(id: number): Promise<void> {
 
 
 // === OTHER API FUNCTIONS ===
-// Placeholder for CurrentUser related API calls (if /users/me is different from UserDto)
-export interface CurrentUserDto extends UserDto { // Assuming it's similar to UserDto
-  // any specific fields for /users/me
+export interface CurrentUserDto extends UserDto { 
+  // Add any specific fields for /users/me if different from UserDto
+  // API spec for GET /users/me returns UserDto
 }
 export async function fetchCurrentUser(): Promise<CurrentUserDto> {
-  return fetchAPI<CurrentUserDto>('/users/me'); // Assuming /users/me endpoint exists and returns CurrentUserDto
+  return fetchAPI<CurrentUserDto>('/users/me');
 }
-export async function updateCurrentUser(data: UpdateUserRequest): Promise<CurrentUserDto> { // Assuming UpdateUserRequest is appropriate
+export async function updateCurrentUser(data: UpdateUserRequest): Promise<CurrentUserDto> { 
   return fetchAPI<CurrentUserDto>('/users/me', { 
-    method: 'PATCH', // Or PUT
+    method: 'PATCH', // API Spec for PATCH /users/me uses UpdateUserRequest
     body: JSON.stringify(data),
   });
 }
 
 // (End of apiClient.ts)
-
     
