@@ -31,9 +31,9 @@ const addressSchema = z.object({
 
 const userFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email address").optional().nullable(),
+  email: z.string().email("Invalid email address").optional().nullable().or(z.literal("")), // Allow empty string
   type: z.enum(["B2C", "B2B"], { required_error: "User type is required" }),
-  gstin: z.string().optional().nullable(),
+  gstin: z.string().optional().nullable().or(z.literal("")), // Allow empty string
   status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
   addresses: z.array(addressSchema).optional(),
 }).refine(data => {
@@ -91,13 +91,16 @@ export default function EditUserPage() {
       try {
         const fetchedUser = await fetchUserById(userId);
         setUser(fetchedUser);
+        
         const currentStatus = fetchedUser.status?.toUpperCase();
         const validStatus = USER_STATUSES.includes(currentStatus as any) ? currentStatus as "ACTIVE" | "INACTIVE" : "ACTIVE";
+        const userType = fetchedUser.type?.toUpperCase();
+        const validType = USER_TYPES.includes(userType as any) ? userType as "B2C" | "B2B" : "B2C";
 
         form.reset({
           name: fetchedUser.name,
           email: fetchedUser.email ?? "",
-          type: fetchedUser.type as "B2C" | "B2B", // API type should match these
+          type: validType,
           gstin: fetchedUser.gstin ?? "",
           status: validStatus,
           addresses: fetchedUser.addresses?.map(addr => ({ 
@@ -126,7 +129,7 @@ export default function EditUserPage() {
     try {
       const payload: UpdateUserRequest = {
         name: data.name,
-        email: data.email || undefined,
+        email: data.email || undefined, // Send undefined if empty string
         type: data.type,
         gstin: data.type === "B2B" ? (data.gstin || undefined) : undefined,
         status: data.status,
@@ -325,8 +328,9 @@ export default function EditUserPage() {
                                     type="button"
                                     variant={f.value ? "default" : "outline"}
                                     onClick={() => {
+                                      // Ensure only one address is default
                                       if (!f.value) {
-                                        form.getValues("addresses").forEach((_, addrIdx) => {
+                                        form.getValues("addresses")?.forEach((_, addrIdx) => {
                                           if (index !== addrIdx) {
                                             form.setValue(`addresses.${addrIdx}.isDefault`, false);
                                           }
@@ -364,3 +368,4 @@ export default function EditUserPage() {
     </div>
   );
 }
+

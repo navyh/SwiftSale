@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { fetchUserById, deleteUser, type UserDto, type AddressDto } from "@/lib/apiClient";
-import { ChevronLeft, Edit, Trash2, UserCircle, MapPin, FileText, CalendarDays, AlertCircle, Loader2 } from "lucide-react";
+import { ChevronLeft, Edit, Trash2, UserCircle, MapPin, FileText, CalendarDays, AlertCircle, Loader2, Building, Tag } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -39,7 +39,7 @@ function DetailItem({ label, value, icon: Icon }: { label: string; value?: strin
 
 function AddressCard({ address, isDefault }: { address: AddressDto; isDefault: boolean }) {
   return (
-    <Card className="bg-secondary/30 p-4">
+    <Card className="bg-secondary/30 p-4 shadow-sm">
       <CardHeader className="p-0 pb-2">
         <CardTitle className="text-base flex justify-between items-center">
           Address {address.id} {address.type ? `(${address.type})` : ''}
@@ -47,12 +47,12 @@ function AddressCard({ address, isDefault }: { address: AddressDto; isDefault: b
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
-        <p><span className="font-medium">Line 1:</span> {address.line1}</p>
-        {address.line2 && <p><span className="font-medium">Line 2:</span> {address.line2}</p>}
-        <p><span className="font-medium">City:</span> {address.city}</p>
-        <p><span className="font-medium">State:</span> {address.state}</p>
-        <p><span className="font-medium">Postal:</span> {address.postalCode}</p>
-        <p><span className="font-medium">Country:</span> {address.country}</p>
+        <DetailItem label="Line 1" value={address.line1} />
+        {address.line2 && <DetailItem label="Line 2" value={address.line2} />}
+        <DetailItem label="City" value={address.city} />
+        <DetailItem label="State" value={address.state} />
+        <DetailItem label="Postal Code" value={address.postalCode} />
+        <DetailItem label="Country" value={address.country} />
       </CardContent>
     </Card>
   );
@@ -124,30 +124,20 @@ export default function UserDetailPage() {
               <Skeleton className="h-4 w-64" />
             </div>
           </div>
-          <div className="flex gap-2">
-            <Skeleton className="h-9 w-20" />
-            <Skeleton className="h-9 w-20" />
-          </div>
+          <div className="flex gap-2"><Skeleton className="h-9 w-20" /><Skeleton className="h-9 w-20" /></div>
         </div>
-        <Card className="shadow-md">
-          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+        <Card className="shadow-md"><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" />
           </CardContent>
         </Card>
-        <Card className="shadow-md">
-          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
-          <CardContent className="space-y-4">
-            <Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" />
-          </CardContent>
+        <Card className="shadow-md"><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent className="space-y-4"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></CardContent>
         </Card>
-        <Card className="shadow-md">
-          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" />
-          </CardContent>
+        <Card className="shadow-md"><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4"><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /></CardContent>
         </Card>
       </div>
     );
@@ -155,7 +145,7 @@ export default function UserDetailPage() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center">
+      <div className="flex flex-col items-center justify-center h-full text-center py-10">
         <AlertCircle className="w-16 h-16 text-destructive mb-4" />
         <h2 className="text-xl font-semibold mb-2">Error Loading User</h2>
         <p className="text-muted-foreground mb-4">{error}</p>
@@ -169,6 +159,7 @@ export default function UserDetailPage() {
   }
   
   const userStatus = user.status ? (user.status).toUpperCase() : "N/A";
+  const userTypeDisplay = user.type ? (user.type).toUpperCase() : "N/A";
 
   return (
     <div className="space-y-6 pb-8">
@@ -213,46 +204,43 @@ export default function UserDetailPage() {
       </div>
 
       <Card className="shadow-md">
-        <CardHeader>
-          <CardTitle className="text-lg">User Information</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="text-lg">User Information</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <DetailItem label="Full Name" value={user.name} />
           <DetailItem label="Phone Number" value={user.phone} />
-          <DetailItem label="Email Address" value={user.email} />
-          <DetailItem label="User Type" value={user.type} />
-          {user.type === "B2B" && <DetailItem label="GSTIN" value={user.gstin} />}
-           <div className="flex items-start space-x-2">
-            <div>
+          <DetailItem label="Email Address" value={user.email || "N/A"} />
+           <div>
+                <p className="text-sm text-muted-foreground flex items-center"><Tag className="h-4 w-4 mr-1.5"/>User Type</p>
+                <Badge variant={userTypeDisplay === "B2B" ? "secondary" : "outline"} className="mt-1">
+                    {userTypeDisplay}
+                </Badge>
+            </div>
+          {userTypeDisplay === "B2B" && <DetailItem label="GSTIN" value={user.gstin || "N/A"} icon={Building} />}
+           <div>
                 <p className="text-sm text-muted-foreground">Status</p>
                 <Badge variant={userStatus === 'ACTIVE' ? 'default' : 'outline'}
-                       className={userStatus === 'ACTIVE' ? 'bg-green-500/20 text-green-700 border-green-500/30' : 'bg-yellow-500/20 text-yellow-700 border-yellow-500/30'}>
+                       className={`mt-1 ${userStatus === 'ACTIVE' ? 'bg-green-500/20 text-green-700 border-green-500/30' : 'bg-yellow-500/20 text-yellow-700 border-yellow-500/30'}`}>
                     {userStatus}
                 </Badge>
             </div>
-          </div>
         </CardContent>
       </Card>
 
       <Card className="shadow-md">
-        <CardHeader>
-          <CardTitle className="text-lg">Addresses</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="text-lg">Addresses</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           {user.addresses && user.addresses.length > 0 ? (
             user.addresses.map((address, index) => (
               <AddressCard key={address.id || index} address={address} isDefault={address.isDefault} />
             ))
           ) : (
-            <p className="text-muted-foreground">No addresses found for this user.</p>
+            <p className="text-muted-foreground flex items-center"><MapPin className="h-4 w-4 mr-2"/>No addresses found for this user.</p>
           )}
         </CardContent>
       </Card>
       
       <Card className="shadow-md">
-        <CardHeader>
-          <CardTitle className="text-lg">System Information</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="text-lg">System Information</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <DetailItem label="Created At" value={user.createdAt ? format(new Date(user.createdAt), "PPPpp") : 'N/A'} icon={CalendarDays}/>
             <DetailItem label="Last Updated At" value={user.updatedAt ? format(new Date(user.updatedAt), "PPPpp") : 'N/A'} icon={CalendarDays}/>
@@ -261,3 +249,4 @@ export default function UserDetailPage() {
     </div>
   );
 }
+

@@ -10,15 +10,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { createUser, type CreateUserRequest, type AddressCreateDto } from "@/lib/apiClient";
-import { ChevronLeft, PlusCircle, Save, Trash2 } from "lucide-react";
+import { ChevronLeft, PlusCircle, Save, Trash2, UserPlus, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 const addressSchema = z.object({
   line1: z.string().min(1, "Address line 1 is required"),
-  line2: z.string().optional().nullable(),
+  line2: z.string().optional().nullable().or(z.literal("")),
   city: z.string().min(1, "City is required"),
   state: z.string().min(1, "State is required"),
   country: z.string().min(1, "Country is required"),
@@ -29,11 +29,11 @@ const addressSchema = z.object({
 
 const userFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  phone: z.string().min(1, "Phone number is required").regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format"),
-  email: z.string().email("Invalid email address").optional().nullable(),
+  phone: z.string().min(1, "Phone number is required").regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format, e.g., +1234567890"),
+  email: z.string().email("Invalid email address").optional().nullable().or(z.literal("")),
   type: z.enum(["B2C", "B2B"], { required_error: "User type is required" }),
-  gstin: z.string().optional().nullable(),
-  status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
+  gstin: z.string().optional().nullable().or(z.literal("")),
+  status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
   addresses: z.array(addressSchema).optional(),
 }).refine(data => {
   if (data.type === "B2B" && (!data.gstin || data.gstin.trim() === "")) {
@@ -82,13 +82,13 @@ export default function CreateUserPage() {
         phone: data.phone,
         email: data.email || undefined,
         type: data.type,
-        gstin: data.type === "B2B" ? data.gstin || undefined : undefined,
+        gstin: data.type === "B2B" ? (data.gstin || undefined) : undefined,
         status: data.status,
         addresses: data.addresses?.map(addr => ({
             ...addr,
             line2: addr.line2 || undefined,
             type: addr.type || undefined,
-        })) || undefined,
+        })) || [], // Send empty array if addresses is null/undefined
       };
       
       await createUser(payload);
@@ -97,6 +97,7 @@ export default function CreateUserPage() {
         description: "User created successfully.",
       });
       router.push("/users");
+      router.refresh();
     } catch (error: any) {
       toast({
         title: "Error Creating User",
@@ -115,7 +116,9 @@ export default function CreateUserPage() {
             <Link href="/users"><ChevronLeft className="h-4 w-4" /></Link>
         </Button>
         <div>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight">Create New User</h1>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight flex items-center">
+            <UserPlus className="mr-2 h-6 w-6" /> Create New User
+          </h1>
           <p className="text-muted-foreground text-sm sm:text-base">Fill in the details to add a new user.</p>
         </div>
       </div>
@@ -163,7 +166,7 @@ export default function CreateUserPage() {
               {form.watch("type") === "B2B" && (
                 <FormField control={form.control} name="gstin" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>GSTIN *</FormLabel>
+                    <FormLabel>GSTIN {form.getValues("type") === "B2B" ? "*" : ""}</FormLabel>
                     <FormControl><Input placeholder="Enter GSTIN" {...field} value={field.value ?? ""} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -238,7 +241,17 @@ export default function CreateUserPage() {
                                 <Button 
                                     type="button"
                                     variant={f.value ? "default" : "outline"}
-                                    onClick={() => f.onChange(!f.value)}
+                                    onClick={() => {
+                                      // Ensure only one address is default
+                                      if (!f.value) {
+                                        form.getValues("addresses")?.forEach((_, addrIdx) => {
+                                          if (index !== addrIdx) {
+                                            form.setValue(`addresses.${addrIdx}.isDefault`, false);
+                                          }
+                                        });
+                                      }
+                                      f.onChange(!f.value);
+                                    }}
                                     className="w-full"
                                 >
                                     {f.value ? "Default Address" : "Set as Default"}
@@ -250,7 +263,7 @@ export default function CreateUserPage() {
                   </div>
                 </Card>
               ))}
-              <Button type="button" variant="outline" onClick={() => appendAddress({ line1: '', city: '', state: '', country: '', postalCode: '', isDefault: false, type: 'SHIPPING' })}>
+              <Button type="button" variant="outline" onClick={() => appendAddress({ line1: '', city: '', state: '', country: '', postalCode: '', isDefault: addressFields.length === 0, type: 'SHIPPING' })}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Add Address
               </Button>
             </CardContent>
@@ -261,7 +274,7 @@ export default function CreateUserPage() {
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
-              {isSubmitting ? "Creating..." : <><Save className="mr-2 h-4 w-4" /> Create User</>}
+              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating...</> : <><Save className="mr-2 h-4 w-4" /> Create User</>}
             </Button>
           </CardFooter>
         </form>
@@ -269,3 +282,4 @@ export default function CreateUserPage() {
     </div>
   );
 }
+

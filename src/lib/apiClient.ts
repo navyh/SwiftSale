@@ -60,7 +60,7 @@ export interface AddressDto {
   state: string;
   country: string;
   postalCode: string;
-  type?: 'SHIPPING' | 'BILLING' | string | null;
+  type?: 'SHIPPING' | 'BILLING' | string | null; // API returns string, UI will use specific enum
   isDefault: boolean;
 }
 
@@ -81,10 +81,10 @@ export interface UserDto {
   name: string;
   phone: string;
   email?: string | null;
-  type: 'B2C' | 'B2B' | string;
+  type: 'B2C' | 'B2B' | string; // API returns string
   gstin?: string | null;
   addresses?: AddressDto[] | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string | null;
+  status?: 'ACTIVE' | 'INACTIVE' | string | null; // API returns string
   createdAt?: string;
   updatedAt?: string;
 }
@@ -93,19 +93,19 @@ export interface CreateUserRequest {
   name: string;
   phone: string;
   email?: string | null;
-  type: 'B2C' | 'B2B' | string;
+  type: 'B2C' | 'B2B';
   gstin?: string | null;
   addresses?: AddressCreateDto[] | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string | null;
+  status?: 'ACTIVE' | 'INACTIVE';
 }
 
 export interface UpdateUserRequest {
   name?: string;
   email?: string | null;
-  type?: 'B2C' | 'B2B' | string;
+  type?: 'B2C' | 'B2B';
   gstin?: string | null;
-  addresses?: (AddressCreateDto | AddressDto)[] | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string | null;
+  addresses?: (AddressCreateDto | AddressDto)[] | null; // Can contain new (no id) or existing (with id) addresses
+  status?: 'ACTIVE' | 'INACTIVE';
 }
 
 
@@ -157,7 +157,7 @@ export interface BusinessProfileDto {
   id: number;
   name: string;
   gstin: string;
-  status: 'ACTIVE' | 'INACTIVE' | string;
+  status: 'ACTIVE' | 'INACTIVE' | string; // API returns string
   paymentTerms?: string | null;
   addresses?: AddressDto[] | null;
   userIds?: number[] | null;
@@ -170,14 +170,14 @@ export interface CreateBusinessProfileRequest {
   gstin: string;
   addresses?: AddressCreateDto[] | null;
   paymentTerms?: string | null;
-  userIds?: number[] | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string | null;
+  userIds?: number[] | null; // Optional on create, managed on edit
+  status?: 'ACTIVE' | 'INACTIVE';
 }
 
 export interface UpdateBusinessProfileRequest {
   name?: string;
   gstin?: string;
-  status?: 'ACTIVE' | 'INACTIVE' | undefined;
+  status?: 'ACTIVE' | 'INACTIVE' | undefined; // Ensure this matches form enum
   addresses?: (AddressCreateDto | AddressDto)[] | null;
   paymentTerms?: string | null;
   userIds?: number[] | null;
@@ -222,63 +222,80 @@ export async function deleteBusinessProfile(profileId: number): Promise<void> {
 
 // === STAFF MANAGEMENT ===
 export interface StaffDto {
-  id: number;
+  id: number; // This is the ID of the staff entry itself
   userId: number;
   user?: UserDto; 
   roles: string[];
   permissions?: string[] | null;
-  status: 'ACTIVE' | 'INACTIVE' | string;
+  status: 'ACTIVE' | 'INACTIVE' | string; // API likely returns string
   createdAt?: string;
   updatedAt?: string;
 }
 
+// For POST /api/v2/users/{userId}/staff
 export interface CreateStaffRequest {
-  userId: number;
-  roles: string[];
+  // userId is part of the path, not the body
+  roles: string[]; // Example: ["ADMIN", "MANAGER"]
   permissions?: string[] | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string | null;
+  status?: 'ACTIVE' | 'INACTIVE';
 }
 
+// For PUT /api/v2/staff/{staffId}
 export interface UpdateStaffRequest {
-  roles?: string[];
+  // staffId is part of the path
+  // roles are updated via a separate endpoint
   permissions?: string[] | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string | null;
+  status?: 'ACTIVE' | 'INACTIVE';
 }
 
 
 export async function fetchStaff(params?: { role?: string; status?: string; page?: number; size?: number; search?: string }): Promise<Page<StaffDto>> {
   const queryParams = new URLSearchParams();
-  if (params?.search) queryParams.append('search', params.search);
+  if (params?.search) queryParams.append('search', params.search); // Assuming API supports search for staff name via User
   if (params?.role) queryParams.append('role', params.role);
   if (params?.status) queryParams.append('status', params.status);
   if (params?.page !== undefined) queryParams.append('page', params.page.toString());
   if (params?.size !== undefined) queryParams.append('size', params.size.toString());
 
   const queryString = queryParams.toString();
+  // Corrected endpoint for fetching all staff
   const data = await fetchAPI<Page<StaffDto> | undefined>(`/users/staff${queryString ? `?${queryString}` : ''}`);
   return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
 
+// Fetch staff details by Staff ID
 export async function fetchStaffById(staffId: number): Promise<StaffDto> {
-  return fetchAPI<StaffDto>(`/users/staff/${staffId}`);
+  return fetchAPI<StaffDto>(`/staff/${staffId}`);
 }
 
-export async function createStaffMember(userIdForStaff: number, staffData: Omit<CreateStaffRequest, 'userId'>): Promise<StaffDto> {
-  return fetchAPI<StaffDto>(`/users/${userIdForStaff}/staff`, {
+// Create a new staff entry for a user
+export async function createStaffMember(userId: number, staffData: CreateStaffRequest): Promise<StaffDto> {
+  return fetchAPI<StaffDto>(`/users/${userId}/staff`, {
     method: 'POST',
     body: JSON.stringify(staffData),
   });
 }
 
+// Update staff details (permissions, status) by Staff ID
 export async function updateStaffMember(staffId: number, staffData: UpdateStaffRequest): Promise<StaffDto> {
-  return fetchAPI<StaffDto>(`/user/staff/${staffId}`, {
+  return fetchAPI<StaffDto>(`/staff/${staffId}`, { // Assumes this endpoint updates general staff details
     method: 'PUT',
     body: JSON.stringify(staffData),
   });
 }
 
+// Update staff roles for a user by User ID
+export async function updateStaffRoles(userId: number, roles: string[]): Promise<StaffDto> { // Assuming StaffDto is returned
+  return fetchAPI<StaffDto>(`/users/${userId}/staff-roles`, {
+    method: 'PUT',
+    body: JSON.stringify({ roles }), // API expects an object { "roles": ["ROLE1", "ROLE2"] }
+  });
+}
+
+
+// Delete staff entry by Staff ID
 export async function deleteStaffMember(staffId: number): Promise<void> {
-  return fetchAPI<void>(`/user/staff/${staffId}`, {
+  return fetchAPI<void>(`/staff/${staffId}`, {
     method: 'DELETE',
   }, false);
 }
@@ -316,8 +333,8 @@ export interface ProductVariant {
   costPrice?: number | null;
   quantity: number;
   barcode?: string | null;
-  color?: string | null; // Changed from colorValue
-  size?: string | null;  // Changed from sizeValue
+  color?: string | null; 
+  size?: string | null;  
   imageUrls?: string[] | null;
   createdAt?: string;
   updatedAt?: string;
@@ -392,8 +409,8 @@ export interface UpdateProductRequest {
   hsnCode?: string | null;
   gstTaxRate?: number | null;
   description?: string | null;
-  colorVariant?: string[] | null; 
-  sizeVariant?: string[] | null;   
+  colorVariant?: string[] | null; // For generating new variants during update
+  sizeVariant?: string[] | null;   // For generating new variants during update
   tags?: string[] | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
 
@@ -598,3 +615,4 @@ export async function updateCurrentUser(data: UpdateUserRequest): Promise<Curren
     body: JSON.stringify(data),
   });
 }
+
