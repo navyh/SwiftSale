@@ -12,13 +12,14 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { fetchUserById, updateUser, type UpdateUserRequest, type UserDto, type AddressDto, type AddressCreateDto } from "@/lib/apiClient";
+import { fetchUserById, updateUser, type UpdateUserRequest, type UserDto, type AddressDto as ApiAddressDto, type AddressCreateDto } from "@/lib/apiClient";
 import { ChevronLeft, Save, Trash2, PlusCircle, UserCog, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 
+// Form-specific Address schema, ID is optional for new addresses
 const addressSchema = z.object({
-  id: z.string().optional().nullable(), // Changed to string
+  id: z.string().optional().nullable(), // ID is string and optional
   line1: z.string().min(1, "Address line 1 is required"),
   line2: z.string().optional().nullable().or(z.literal("")),
   city: z.string().min(1, "City is required"),
@@ -32,22 +33,19 @@ const addressSchema = z.object({
 const userFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email address").optional().nullable().or(z.literal("")), 
-  // type field removed
-  // gstin field removed
   status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
   addresses: z.array(addressSchema).optional(),
 });
 
 type UserFormValues = z.infer<typeof userFormSchema>;
 
-// USER_TYPES removed
 const USER_STATUSES = ["ACTIVE", "INACTIVE"] as const;
 const ADDRESS_TYPES = ["SHIPPING", "BILLING"] as const;
 
 export default function EditUserPage() {
   const router = useRouter();
   const params = useParams();
-  const userId = params.id as string; // ID is now a string
+  const userId = params.id as string; 
   const { toast } = useToast();
 
   const [user, setUser] = React.useState<UserDto | null>(null);
@@ -59,8 +57,6 @@ export default function EditUserPage() {
     defaultValues: {
       name: "",
       email: "",
-      // type field removed
-      // gstin field removed
       status: "ACTIVE",
       addresses: [],
     },
@@ -72,7 +68,7 @@ export default function EditUserPage() {
   });
 
   React.useEffect(() => {
-    if (!userId) { // Check if userId is valid (not undefined/empty)
+    if (!userId) { 
       toast({ title: "Error", description: "Invalid user ID.", variant: "destructive" });
       router.push("/users");
       return;
@@ -86,7 +82,6 @@ export default function EditUserPage() {
         
         const currentStatus = fetchedUser.status?.toUpperCase();
         const validStatus = USER_STATUSES.includes(currentStatus as any) ? currentStatus as "ACTIVE" | "INACTIVE" : "ACTIVE";
-        // type and gstin removed from form reset
 
         form.reset({
           name: fetchedUser.name,
@@ -94,9 +89,9 @@ export default function EditUserPage() {
           status: validStatus,
           addresses: fetchedUser.addresses?.map(addr => ({ 
             ...addr, 
-            id: addr.id, // Ensure id is passed as string
+            id: addr.id, // Ensure id is passed as string from API
             type: addr.type as ("SHIPPING" | "BILLING" | undefined) ?? undefined,
-            line2: addr.line2 ?? ""
+            line2: addr.line2 ?? "",
           })) ?? [],
         });
       } catch (error: any) {
@@ -120,12 +115,18 @@ export default function EditUserPage() {
       const payload: UpdateUserRequest = {
         name: data.name,
         email: data.email || undefined, 
-        // type and gstin removed
         status: data.status,
         addresses: data.addresses?.map(addr => {
           const { id, ...rest } = addr; 
-          return id ? { id, ...rest, line2: rest.line2 || undefined, type: rest.type || undefined } 
-                    : { ...rest, line2: rest.line2 || undefined, type: rest.type || undefined };      
+          const apiAddr: AddressCreateDto | ApiAddressDto = {
+            ...rest,
+            line2: rest.line2 || undefined,
+            type: rest.type || undefined,
+          };
+          if (id) { // If ID exists, it's an existing address (ApiAddressDto)
+            (apiAddr as ApiAddressDto).id = id;
+          }
+          return apiAddr;     
         }) || [],
       };
       
@@ -180,7 +181,7 @@ export default function EditUserPage() {
   }
 
   if (!user) {
-    return <p className="text-center text-muted-foreground">User not found.</p>;
+    return <p className="text-center text-muted-foreground py-10">User not found.</p>;
   }
 
   return (
@@ -223,8 +224,6 @@ export default function EditUserPage() {
                   <FormMessage />
                 </FormItem>
               )}/>
-              {/* User Type field removed */}
-              {/* GSTIN field removed */}
               <FormField control={form.control} name="status" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Status</FormLabel>
@@ -246,17 +245,18 @@ export default function EditUserPage() {
               <CardDescription>Manage user addresses. Add, edit, or remove addresses.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {addressFields.map((field, index) => (
-                <Card key={field.id || `new-${index}`} className="p-4 space-y-3 bg-secondary/50">
+              {addressFields.map((formField, index) => ( // Renamed field to formField to avoid conflict
+                <Card key={formField.id} className="p-4 space-y-3 bg-secondary/50"> {/* Use formField.id for React key */}
                   <div className="flex justify-between items-center">
-                     <h4 className="font-medium">Address {index + 1} {field.id ? `(ID: ${field.id})` : "(New)"}</h4>
+                     <h4 className="font-medium">Address {index + 1} {form.watch(`addresses.${index}.id`) ? `(ID: ${form.watch(`addresses.${index}.id`)})` : "(New)"}</h4>
                     <Button type="button" variant="ghost" size="icon" onClick={() => removeAddress(index)} className="text-destructive hover:text-destructive/80">
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
-                    {/* id is a string or undefined, not number */}
-                    <input type="hidden" {...form.register(`addresses.${index}.id`)} value={field.id ?? ""} /> 
+                    {/* Actual address ID from API is form.watch(`addresses.${index}.id`) */}
+                    {/* field.id is from useFieldArray for React keys, do not send to API */}
+                    <input type="hidden" {...form.register(`addresses.${index}.id`)} /> 
                     
                     <FormField control={form.control} name={`addresses.${index}.line1`} render={({ field: f }) => (
                         <FormItem><FormLabel>Line 1 *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
@@ -298,14 +298,18 @@ export default function EditUserPage() {
                                     type="button"
                                     variant={f.value ? "default" : "outline"}
                                     onClick={() => {
-                                      if (!f.value) {
+                                      if (!f.value) { // If setting this one to default
                                         form.getValues("addresses")?.forEach((_, addrIdx) => {
-                                          if (index !== addrIdx) {
+                                          if (index !== addrIdx) { // Unset others
                                             form.setValue(`addresses.${addrIdx}.isDefault`, false);
                                           }
                                         });
                                       }
-                                      f.onChange(!f.value);
+                                      // For radio-like behavior (only one default):
+                                      // If you want to ensure only one default, and clicking a default one makes it non-default
+                                      // then you might not need the above loop, just toggle.
+                                      // But typically, setting one default unsets others.
+                                      form.setValue(`addresses.${index}.isDefault`, !f.value);
                                     }}
                                     className="w-full"
                                 >

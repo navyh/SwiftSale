@@ -61,7 +61,7 @@ function AddressCard({ address, isDefault }: { address: AddressDto; isDefault: b
 export default function BusinessProfileDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const profileId = Number(params.id);
+  const profileId = params.id as string; // ID is string
   const { toast } = useToast();
 
   const [profile, setProfile] = React.useState<BusinessProfileDto | null>(null);
@@ -71,7 +71,7 @@ export default function BusinessProfileDetailPage() {
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (isNaN(profileId)) {
+    if (!profileId) {
       toast({ title: "Error", description: "Invalid business profile ID.", variant: "destructive" });
       router.push("/business-profiles");
       return;
@@ -86,7 +86,7 @@ export default function BusinessProfileDetailPage() {
         if (fetchedProfile.userIds && fetchedProfile.userIds.length > 0) {
           setIsLoadingUsers(true);
           const usersDataPromises = fetchedProfile.userIds.map(id => 
-            fetchUserById(id).catch((userError) => {
+            fetchUserById(id).catch((userError) => { // id is string
               console.warn(`Failed to fetch user with ID: ${id}. Error: ${userError.message}`);
               return null; 
             })
@@ -116,7 +116,7 @@ export default function BusinessProfileDetailPage() {
   const handleDeleteProfile = async () => {
     if (!profile) return;
     try {
-      await deleteBusinessProfile(profile.id);
+      await deleteBusinessProfile(profile.id); // profile.id is string
       toast({ title: "Success", description: "Business profile deleted successfully." });
       router.push("/business-profiles");
       router.refresh(); 
@@ -266,7 +266,7 @@ export default function BusinessProfileDetailPage() {
         <CardContent className="space-y-4">
           {profile.addresses && profile.addresses.length > 0 ? (
             profile.addresses.map((address, index) => (
-              <AddressCard key={address.id || index} address={address} isDefault={address.isDefault} />
+              <AddressCard key={address.id || index.toString()} address={address} isDefault={address.isDefault} />
             ))
           ) : (
             <p className="text-muted-foreground">No addresses found for this profile.</p>

@@ -11,15 +11,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { 
   fetchBusinessProfileById, 
   updateBusinessProfile, 
-  fetchAllUsers,
+  fetchAllUsers, // To populate user selection
   type BusinessProfileDto, 
   type UpdateBusinessProfileRequest, 
-  type AddressDto, 
+  type AddressDto as ApiAddressDto, 
   type AddressCreateDto,
   type UserDto
 } from "@/lib/apiClient";
@@ -29,10 +29,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+// Form-specific Address schema, ID is optional
 const addressSchema = z.object({
-  id: z.number().optional().nullable(),
+  id: z.string().optional().nullable(), // ID is string and optional for new addresses
   line1: z.string().min(1, "Address line 1 is required"),
-  line2: z.string().optional().nullable(),
+  line2: z.string().optional().nullable().or(z.literal("")),
   city: z.string().min(1, "City is required"),
   state: z.string().min(1, "State is required"),
   country: z.string().min(1, "Country is required"),
@@ -45,10 +46,10 @@ const profileFormSchema = z.object({
   name: z.string().min(1, "Company name is required"),
   gstin: z.string().min(1, "GSTIN is required")
     .regex(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, "Invalid GSTIN format"),
-  paymentTerms: z.string().optional().nullable(),
+  paymentTerms: z.string().optional().nullable().or(z.literal("")),
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
   addresses: z.array(addressSchema).optional(),
-  userIds: z.array(z.number()).optional(),
+  userIds: z.array(z.string()).optional(), // User IDs are strings
 });
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
@@ -59,7 +60,7 @@ const ADDRESS_TYPES = ["SHIPPING", "BILLING"] as const;
 export default function EditBusinessProfilePage() {
   const router = useRouter();
   const params = useParams();
-  const profileId = Number(params.id);
+  const profileId = params.id as string; // ID is string
   const { toast } = useToast();
 
   const [profile, setProfile] = React.useState<BusinessProfileDto | null>(null);
@@ -86,7 +87,7 @@ export default function EditBusinessProfilePage() {
   });
 
   React.useEffect(() => {
-    if (isNaN(profileId)) {
+    if (!profileId) {
       toast({ title: "Error", description: "Invalid business profile ID.", variant: "destructive" });
       router.push("/business-profiles");
       return;
@@ -117,10 +118,11 @@ export default function EditBusinessProfilePage() {
           status: validStatus,
           addresses: fetchedProfile.addresses?.map(addr => ({ 
             ...addr, 
+            id: addr.id, // ID is string
             type: addr.type as ("SHIPPING" | "BILLING" | undefined) ?? undefined,
             line2: addr.line2 ?? "",
           })) ?? [],
-          userIds: fetchedProfile.userIds ?? [],
+          userIds: fetchedProfile.userIds ?? [], // userIds are strings
         });
       } catch (error: any) {
         console.error("Error fetching data for edit business profile:", error);
@@ -147,10 +149,17 @@ export default function EditBusinessProfilePage() {
         status: data.status,
         addresses: data.addresses?.map(addr => {
           const { id, ...rest } = addr;
-          return id ? { id, ...rest, line2: rest.line2 || undefined, type: rest.type || undefined } 
-                    : { ...rest, line2: rest.line2 || undefined, type: rest.type || undefined };
+          const apiAddr: AddressCreateDto | ApiAddressDto = {
+            ...rest,
+            line2: rest.line2 || undefined,
+            type: rest.type || undefined,
+          };
+          if (id) { // If ID exists, it's an existing address
+            (apiAddr as ApiAddressDto).id = id;
+          }
+          return apiAddr;
         }) || [],
-        userIds: data.userIds || [],
+        userIds: data.userIds || [], // UserIDs are strings
       };
       
       await updateBusinessProfile(profileId, payload);
@@ -279,7 +288,7 @@ export default function EditBusinessProfilePage() {
                               <FormItem key={user.id} className="flex flex-row items-start space-x-3 space-y-0">
                                 <FormControl>
                                   <Checkbox
-                                    checked={field.value?.includes(user.id)}
+                                    checked={field.value?.includes(user.id)} // user.id is string
                                     onCheckedChange={(checked) => {
                                       return checked
                                         ? field.onChange([...(field.value || []), user.id])
@@ -311,14 +320,14 @@ export default function EditBusinessProfilePage() {
           <Card className="shadow-md">
             <CardHeader><CardTitle>Addresses</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              {addressFields.map((field, index) => (
-                <Card key={field.id || `new-${index}`} className="p-4 space-y-3 bg-secondary/50">
+              {addressFields.map((formField, index) => ( // Renamed field to formField
+                <Card key={formField.id} className="p-4 space-y-3 bg-secondary/50"> {/* Use formField.id for React key */}
                   <div className="flex justify-between items-center">
-                    <h4 className="font-medium">Address {index + 1} {field.id ? `(ID: ${field.id})` : "(New)"}</h4>
+                    <h4 className="font-medium">Address {index + 1} {form.watch(`addresses.${index}.id`) ? `(ID: ${form.watch(`addresses.${index}.id`)})` : "(New)"}</h4>
                     <Button type="button" variant="ghost" size="icon" onClick={() => removeAddress(index)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4" /></Button>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
-                    {field.id && <input type="hidden" {...form.register(`addresses.${index}.id`)} />}
+                    <input type="hidden" {...form.register(`addresses.${index}.id`)} />
                     <FormField control={form.control} name={`addresses.${index}.line1`} render={({ field: f }) => (<FormItem><FormLabel>Line 1 *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>)}/>
                     <FormField control={form.control} name={`addresses.${index}.line2`} render={({ field: f }) => (<FormItem><FormLabel>Line 2</FormLabel><FormControl><Input {...f} value={f.value ?? ""} /></FormControl><FormMessage /></FormItem>)}/>
                     <FormField control={form.control} name={`addresses.${index}.city`} render={({ field: f }) => (<FormItem><FormLabel>City *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>)}/>
@@ -339,8 +348,8 @@ export default function EditBusinessProfilePage() {
                           <FormControl>
                             <Button type="button" variant={f.value ? "default" : "outline"}
                               onClick={() => {
-                                if (!f.value) {form.getValues("addresses").forEach((_, addrIdx) => {if (index !== addrIdx) {form.setValue(`addresses.${addrIdx}.isDefault`, false);}});}
-                                f.onChange(!f.value);
+                                if (!f.value) {form.getValues("addresses")?.forEach((_, addrIdx) => {if (index !== addrIdx) {form.setValue(`addresses.${addrIdx}.isDefault`, false);}});}
+                                form.setValue(`addresses.${index}.isDefault`, !f.value);
                               }} className="w-full">
                               {f.value ? "Default Address" : "Set as Default"}
                             </Button>

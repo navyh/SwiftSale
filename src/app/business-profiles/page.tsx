@@ -58,8 +58,8 @@ import {
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const PROFILE_STATUSES = ["ACTIVE", "INACTIVE"]; // Hardcoded
-const ALL_PROFILES_FILTER_VALUE = "__ALL_PROFILE_STATUSES__";
+const PROFILE_STATUSES = ["ACTIVE", "INACTIVE"]; 
+const ALL_PROFILES_FILTER_VALUE = "__ALL_PROFILE_STATUSES__"; // Unique value for "All Statuses"
 
 export default function BusinessProfilesListPage() {
   const { toast } = useToast();
@@ -68,7 +68,7 @@ export default function BusinessProfilesListPage() {
   const [error, setError] = React.useState<string | null>(null);
   
   const [searchTerm, setSearchTerm] = React.useState("");
-  const [filterStatus, setFilterStatus] = React.useState<string>("");
+  const [filterStatus, setFilterStatus] = React.useState<string>(""); // Empty string means no filter or "All"
   const [currentPage, setCurrentPage] = React.useState(0);
   const [pageSize, setPageSize] = React.useState(10);
 
@@ -78,7 +78,7 @@ export default function BusinessProfilesListPage() {
     try {
       const params: { page: number; size: number; search?: string; status?: string } = { page, size };
       if (search) params.search = search;
-      if (status) params.status = status;
+      if (status) params.status = status; // API expects "ACTIVE" or "INACTIVE"
       const data = await fetchBusinessProfiles(params);
       setProfilesPage(data);
     } catch (err: any) {
@@ -110,7 +110,7 @@ export default function BusinessProfilesListPage() {
     setCurrentPage(0);
   };
 
-  const handleDeleteProfile = async (profileId: number) => {
+  const handleDeleteProfile = async (profileId: string) => { // ID is string
     try {
       await deleteBusinessProfile(profileId);
       toast({ title: "Success", description: "Business profile deleted successfully." });
@@ -308,4 +308,3 @@ export default function BusinessProfilesListPage() {
     </div>
   );
 }
-
