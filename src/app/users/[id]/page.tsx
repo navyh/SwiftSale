@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { fetchUserById, deleteUser, type UserDto, type AddressDto } from "@/lib/apiClient";
-import { ChevronLeft, Edit, Trash2, UserCircle, MapPin, FileText, CalendarDays, AlertCircle, Loader2, Building, Tag } from "lucide-react";
+import { ChevronLeft, Edit, Trash2, UserCircle, MapPin, FileText, CalendarDays, AlertCircle, Loader2, Building, Tag, AtSign, PhoneIcon } from "lucide-react"; // Removed Building and Tag, added AtSign, PhoneIcon
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -61,7 +61,7 @@ function AddressCard({ address, isDefault }: { address: AddressDto; isDefault: b
 export default function UserDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const userId = Number(params.id);
+  const userId = params.id as string; // ID is now a string
   const { toast } = useToast();
 
   const [user, setUser] = React.useState<UserDto | null>(null);
@@ -69,7 +69,7 @@ export default function UserDetailPage() {
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (isNaN(userId)) {
+    if (!userId) { // Check if userId is valid
       toast({ title: "Error", description: "Invalid user ID.", variant: "destructive" });
       router.push("/users");
       return;
@@ -130,7 +130,7 @@ export default function UserDetailPage() {
           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" />
+            {/* Removed skeleton for Type and GSTIN */}
           </CardContent>
         </Card>
         <Card className="shadow-md"><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
@@ -159,7 +159,7 @@ export default function UserDetailPage() {
   }
   
   const userStatus = user.status ? (user.status).toUpperCase() : "N/A";
-  const userTypeDisplay = user.type ? (user.type).toUpperCase() : "N/A";
+  // userTypeDisplay removed
 
   return (
     <div className="space-y-6 pb-8">
@@ -206,16 +206,10 @@ export default function UserDetailPage() {
       <Card className="shadow-md">
         <CardHeader><CardTitle className="text-lg">User Information</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <DetailItem label="Full Name" value={user.name} />
-          <DetailItem label="Phone Number" value={user.phone} />
-          <DetailItem label="Email Address" value={user.email || "N/A"} />
-           <div>
-                <p className="text-sm text-muted-foreground flex items-center"><Tag className="h-4 w-4 mr-1.5"/>User Type</p>
-                <Badge variant={userTypeDisplay === "B2B" ? "secondary" : "outline"} className="mt-1">
-                    {userTypeDisplay}
-                </Badge>
-            </div>
-          {userTypeDisplay === "B2B" && <DetailItem label="GSTIN" value={user.gstin || "N/A"} icon={Building} />}
+          <DetailItem label="Full Name" value={user.name} icon={UserCircle} />
+          <DetailItem label="Phone Number" value={user.phone} icon={PhoneIcon}/>
+          <DetailItem label="Email Address" value={user.email || "N/A"} icon={AtSign}/>
+           {/* User Type and GSTIN display removed */}
            <div>
                 <p className="text-sm text-muted-foreground">Status</p>
                 <Badge variant={userStatus === 'ACTIVE' ? 'default' : 'outline'}
@@ -231,7 +225,7 @@ export default function UserDetailPage() {
         <CardContent className="space-y-4">
           {user.addresses && user.addresses.length > 0 ? (
             user.addresses.map((address, index) => (
-              <AddressCard key={address.id || index} address={address} isDefault={address.isDefault} />
+              <AddressCard key={address.id || index.toString()} address={address} isDefault={address.isDefault} />
             ))
           ) : (
             <p className="text-muted-foreground flex items-center"><MapPin className="h-4 w-4 mr-2"/>No addresses found for this user.</p>
@@ -249,4 +243,3 @@ export default function UserDetailPage() {
     </div>
   );
 }
-

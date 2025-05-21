@@ -31,23 +31,15 @@ const userFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
   phone: z.string().min(1, "Phone number is required").regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format, e.g., +1234567890"),
   email: z.string().email("Invalid email address").optional().nullable().or(z.literal("")),
-  type: z.enum(["B2C", "B2B"], { required_error: "User type is required" }),
-  gstin: z.string().optional().nullable().or(z.literal("")),
+  // type field removed
+  // gstin field removed
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
   addresses: z.array(addressSchema).optional(),
-}).refine(data => {
-  if (data.type === "B2B" && (!data.gstin || data.gstin.trim() === "")) {
-    return false;
-  }
-  return true;
-}, {
-  message: "GSTIN is required for B2B users",
-  path: ["gstin"],
 });
 
 type UserFormValues = z.infer<typeof userFormSchema>;
 
-const USER_TYPES = ["B2C", "B2B"] as const;
+// USER_TYPES removed
 const USER_STATUSES = ["ACTIVE", "INACTIVE"] as const;
 const ADDRESS_TYPES = ["SHIPPING", "BILLING"] as const;
 
@@ -62,8 +54,8 @@ export default function CreateUserPage() {
       name: "",
       phone: "",
       email: "",
-      type: "B2C",
-      gstin: "",
+      // type: "B2C", // default removed
+      // gstin: "", // default removed
       status: "ACTIVE",
       addresses: [],
     },
@@ -81,14 +73,14 @@ export default function CreateUserPage() {
         name: data.name,
         phone: data.phone,
         email: data.email || undefined,
-        type: data.type,
-        gstin: data.type === "B2B" ? (data.gstin || undefined) : undefined,
+        // type field removed
+        // gstin field removed
         status: data.status,
         addresses: data.addresses?.map(addr => ({
             ...addr,
             line2: addr.line2 || undefined,
             type: addr.type || undefined,
-        })) || [], // Send empty array if addresses is null/undefined
+        })) || [], 
       };
       
       await createUser(payload);
@@ -151,27 +143,8 @@ export default function CreateUserPage() {
                   <FormMessage />
                 </FormItem>
               )}/>
-              <FormField control={form.control} name="type" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>User Type *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select user type" /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      {USER_TYPES.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}/>
-              {form.watch("type") === "B2B" && (
-                <FormField control={form.control} name="gstin" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>GSTIN {form.getValues("type") === "B2B" ? "*" : ""}</FormLabel>
-                    <FormControl><Input placeholder="Enter GSTIN" {...field} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}/>
-              )}
+              {/* User Type field removed */}
+              {/* GSTIN field removed */}
               <FormField control={form.control} name="status" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Status</FormLabel>
@@ -242,7 +215,6 @@ export default function CreateUserPage() {
                                     type="button"
                                     variant={f.value ? "default" : "outline"}
                                     onClick={() => {
-                                      // Ensure only one address is default
                                       if (!f.value) {
                                         form.getValues("addresses")?.forEach((_, addrIdx) => {
                                           if (index !== addrIdx) {
@@ -282,4 +254,3 @@ export default function CreateUserPage() {
     </div>
   );
 }
-

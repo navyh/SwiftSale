@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { fetchUserById, updateUser, type UpdateUserRequest, type UserDto, type AddressDto, type AddressCreateDto } from "@/lib/apiClient";
 import { ChevronLeft, Save, Trash2, PlusCircle, UserCog, Loader2 } from "lucide-react";
@@ -18,9 +18,9 @@ import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const addressSchema = z.object({
-  id: z.number().optional().nullable(), 
+  id: z.string().optional().nullable(), // Changed to string
   line1: z.string().min(1, "Address line 1 is required"),
-  line2: z.string().optional().nullable(),
+  line2: z.string().optional().nullable().or(z.literal("")),
   city: z.string().min(1, "City is required"),
   state: z.string().min(1, "State is required"),
   country: z.string().min(1, "Country is required"),
@@ -31,31 +31,23 @@ const addressSchema = z.object({
 
 const userFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email address").optional().nullable().or(z.literal("")), // Allow empty string
-  type: z.enum(["B2C", "B2B"], { required_error: "User type is required" }),
-  gstin: z.string().optional().nullable().or(z.literal("")), // Allow empty string
+  email: z.string().email("Invalid email address").optional().nullable().or(z.literal("")), 
+  // type field removed
+  // gstin field removed
   status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
   addresses: z.array(addressSchema).optional(),
-}).refine(data => {
-  if (data.type === "B2B" && (!data.gstin || data.gstin.trim() === "")) {
-    return false;
-  }
-  return true;
-}, {
-  message: "GSTIN is required for B2B users",
-  path: ["gstin"],
 });
 
 type UserFormValues = z.infer<typeof userFormSchema>;
 
-const USER_TYPES = ["B2C", "B2B"] as const;
+// USER_TYPES removed
 const USER_STATUSES = ["ACTIVE", "INACTIVE"] as const;
 const ADDRESS_TYPES = ["SHIPPING", "BILLING"] as const;
 
 export default function EditUserPage() {
   const router = useRouter();
   const params = useParams();
-  const userId = Number(params.id);
+  const userId = params.id as string; // ID is now a string
   const { toast } = useToast();
 
   const [user, setUser] = React.useState<UserDto | null>(null);
@@ -67,8 +59,8 @@ export default function EditUserPage() {
     defaultValues: {
       name: "",
       email: "",
-      type: "B2C",
-      gstin: "",
+      // type field removed
+      // gstin field removed
       status: "ACTIVE",
       addresses: [],
     },
@@ -80,7 +72,7 @@ export default function EditUserPage() {
   });
 
   React.useEffect(() => {
-    if (isNaN(userId)) {
+    if (!userId) { // Check if userId is valid (not undefined/empty)
       toast({ title: "Error", description: "Invalid user ID.", variant: "destructive" });
       router.push("/users");
       return;
@@ -94,17 +86,15 @@ export default function EditUserPage() {
         
         const currentStatus = fetchedUser.status?.toUpperCase();
         const validStatus = USER_STATUSES.includes(currentStatus as any) ? currentStatus as "ACTIVE" | "INACTIVE" : "ACTIVE";
-        const userType = fetchedUser.type?.toUpperCase();
-        const validType = USER_TYPES.includes(userType as any) ? userType as "B2C" | "B2B" : "B2C";
+        // type and gstin removed from form reset
 
         form.reset({
           name: fetchedUser.name,
           email: fetchedUser.email ?? "",
-          type: validType,
-          gstin: fetchedUser.gstin ?? "",
           status: validStatus,
           addresses: fetchedUser.addresses?.map(addr => ({ 
             ...addr, 
+            id: addr.id, // Ensure id is passed as string
             type: addr.type as ("SHIPPING" | "BILLING" | undefined) ?? undefined,
             line2: addr.line2 ?? ""
           })) ?? [],
@@ -129,9 +119,8 @@ export default function EditUserPage() {
     try {
       const payload: UpdateUserRequest = {
         name: data.name,
-        email: data.email || undefined, // Send undefined if empty string
-        type: data.type,
-        gstin: data.type === "B2B" ? (data.gstin || undefined) : undefined,
+        email: data.email || undefined, 
+        // type and gstin removed
         status: data.status,
         addresses: data.addresses?.map(addr => {
           const { id, ...rest } = addr; 
@@ -174,7 +163,6 @@ export default function EditUserPage() {
           <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
             <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
-             <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
           </CardContent>
         </Card>
         <Card className="shadow-md">
@@ -235,27 +223,8 @@ export default function EditUserPage() {
                   <FormMessage />
                 </FormItem>
               )}/>
-              <FormField control={form.control} name="type" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>User Type *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select user type" /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      {USER_TYPES.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}/>
-              {form.watch("type") === "B2B" && (
-                <FormField control={form.control} name="gstin" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>GSTIN {form.getValues("type") === "B2B" ? "*" : ""}</FormLabel>
-                    <FormControl><Input placeholder="Enter GSTIN" {...field} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}/>
-              )}
+              {/* User Type field removed */}
+              {/* GSTIN field removed */}
               <FormField control={form.control} name="status" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Status</FormLabel>
@@ -286,7 +255,8 @@ export default function EditUserPage() {
                     </Button>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
-                    {field.id && <input type="hidden" {...form.register(`addresses.${index}.id`)} />}
+                    {/* id is a string or undefined, not number */}
+                    <input type="hidden" {...form.register(`addresses.${index}.id`)} value={field.id ?? ""} /> 
                     
                     <FormField control={form.control} name={`addresses.${index}.line1`} render={({ field: f }) => (
                         <FormItem><FormLabel>Line 1 *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
@@ -328,7 +298,6 @@ export default function EditUserPage() {
                                     type="button"
                                     variant={f.value ? "default" : "outline"}
                                     onClick={() => {
-                                      // Ensure only one address is default
                                       if (!f.value) {
                                         form.getValues("addresses")?.forEach((_, addrIdx) => {
                                           if (index !== addrIdx) {
@@ -368,4 +337,3 @@ export default function EditUserPage() {
     </div>
   );
 }
-

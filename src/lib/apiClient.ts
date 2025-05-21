@@ -53,14 +53,14 @@ export interface Page<T> {
 }
 
 export interface AddressDto {
-  id: number;
+  id: string; // Changed to string
   line1: string;
   line2?: string | null;
   city: string;
   state: string;
   country: string;
   postalCode: string;
-  type?: 'SHIPPING' | 'BILLING' | string | null; // API returns string, UI will use specific enum
+  type?: 'SHIPPING' | 'BILLING' | string | null;
   isDefault: boolean;
 }
 
@@ -77,14 +77,14 @@ export interface AddressCreateDto {
 
 // === USER MANAGEMENT ===
 export interface UserDto {
-  id: number;
+  id: string; // Changed to string
   name: string;
   phone: string;
   email?: string | null;
-  type: 'B2C' | 'B2B' | string; // API returns string
-  gstin?: string | null;
+  // type field removed
+  // gstin field removed
   addresses?: AddressDto[] | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string | null; // API returns string
+  status?: 'ACTIVE' | 'INACTIVE' | string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -93,8 +93,8 @@ export interface CreateUserRequest {
   name: string;
   phone: string;
   email?: string | null;
-  type: 'B2C' | 'B2B';
-  gstin?: string | null;
+  // type field removed
+  // gstin field removed
   addresses?: AddressCreateDto[] | null;
   status?: 'ACTIVE' | 'INACTIVE';
 }
@@ -102,16 +102,16 @@ export interface CreateUserRequest {
 export interface UpdateUserRequest {
   name?: string;
   email?: string | null;
-  type?: 'B2C' | 'B2B';
-  gstin?: string | null;
-  addresses?: (AddressCreateDto | AddressDto)[] | null; // Can contain new (no id) or existing (with id) addresses
+  // type field removed
+  // gstin field removed
+  addresses?: (AddressCreateDto | AddressDto)[] | null; 
   status?: 'ACTIVE' | 'INACTIVE';
 }
 
 
-export async function fetchUsers(params?: { type?: string; search?: string; page?: number; size?: number }): Promise<Page<UserDto>> {
+export async function fetchUsers(params?: { search?: string; page?: number; size?: number }): Promise<Page<UserDto>> {
   const queryParams = new URLSearchParams();
-  if (params?.type) queryParams.append('type', params.type);
+  // Removed type filter
   if (params?.search) queryParams.append('search', params.search);
   if (params?.page !== undefined) queryParams.append('page', params.page.toString());
   if (params?.size !== undefined) queryParams.append('size', params.size.toString());
@@ -122,12 +122,13 @@ export async function fetchUsers(params?: { type?: string; search?: string; page
 }
 
 export async function fetchAllUsers(): Promise<UserDto[]> {
-  const data = await fetchAPI<Page<UserDto> | undefined>(`/users?size=1000`); // Fetch up to 1000 users
+  // Defaulting to a large size to fetch all users; consider pagination if user list is very large
+  const data = await fetchAPI<Page<UserDto> | undefined>(`/users?size=1000`); 
   return data?.content ?? [];
 }
 
 
-export async function fetchUserById(userId: number): Promise<UserDto> {
+export async function fetchUserById(userId: string): Promise<UserDto> { // Changed userId to string
   return fetchAPI<UserDto>(`/users/${userId}`);
 }
 
@@ -138,14 +139,14 @@ export async function createUser(userData: CreateUserRequest): Promise<UserDto> 
   });
 }
 
-export async function updateUser(userId: number, userData: UpdateUserRequest): Promise<UserDto> {
+export async function updateUser(userId: string, userData: UpdateUserRequest): Promise<UserDto> { // Changed userId to string
   return fetchAPI<UserDto>(`/users/${userId}`, {
     method: 'PUT',
     body: JSON.stringify(userData),
   });
 }
 
-export async function deleteUser(userId: number): Promise<void> {
+export async function deleteUser(userId: string): Promise<void> { // Changed userId to string
   return fetchAPI<void>(`/users/${userId}`, {
     method: 'DELETE',
   }, false);
@@ -154,13 +155,13 @@ export async function deleteUser(userId: number): Promise<void> {
 
 // === BUSINESS PROFILE MANAGEMENT ===
 export interface BusinessProfileDto {
-  id: number;
+  id: string; // Changed to string
   name: string;
   gstin: string;
-  status: 'ACTIVE' | 'INACTIVE' | string; // API returns string
+  status: 'ACTIVE' | 'INACTIVE' | string;
   paymentTerms?: string | null;
   addresses?: AddressDto[] | null;
-  userIds?: number[] | null;
+  userIds?: string[] | null; // Changed to string array
   createdAt?: string;
   updatedAt?: string;
 }
@@ -170,17 +171,17 @@ export interface CreateBusinessProfileRequest {
   gstin: string;
   addresses?: AddressCreateDto[] | null;
   paymentTerms?: string | null;
-  userIds?: number[] | null; // Optional on create, managed on edit
+  userIds?: string[] | null; // Changed to string array
   status?: 'ACTIVE' | 'INACTIVE';
 }
 
 export interface UpdateBusinessProfileRequest {
   name?: string;
   gstin?: string;
-  status?: 'ACTIVE' | 'INACTIVE' | undefined; // Ensure this matches form enum
+  status?: 'ACTIVE' | 'INACTIVE' | undefined;
   addresses?: (AddressCreateDto | AddressDto)[] | null;
   paymentTerms?: string | null;
-  userIds?: number[] | null;
+  userIds?: string[] | null; // Changed to string array
 }
 
 
@@ -196,7 +197,7 @@ export async function fetchBusinessProfiles(params?: { search?: string; status?:
   return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
 
-export async function fetchBusinessProfileById(profileId: number): Promise<BusinessProfileDto> {
+export async function fetchBusinessProfileById(profileId: string): Promise<BusinessProfileDto> { // Changed profileId to string
   return fetchAPI<BusinessProfileDto>(`/business-profiles/${profileId}`);
 }
 
@@ -207,14 +208,14 @@ export async function createBusinessProfile(profileData: CreateBusinessProfileRe
   });
 }
 
-export async function updateBusinessProfile(profileId: number, profileData: UpdateBusinessProfileRequest): Promise<BusinessProfileDto> {
+export async function updateBusinessProfile(profileId: string, profileData: UpdateBusinessProfileRequest): Promise<BusinessProfileDto> { // Changed profileId to string
   return fetchAPI<BusinessProfileDto>(`/business-profiles/${profileId}`, {
     method: 'PUT',
     body: JSON.stringify(profileData),
   });
 }
 
-export async function deleteBusinessProfile(profileId: number): Promise<void> {
+export async function deleteBusinessProfile(profileId: string): Promise<void> { // Changed profileId to string
   return fetchAPI<void>(`/business-profiles/${profileId}`, {
     method: 'DELETE',
   }, false);
@@ -222,28 +223,24 @@ export async function deleteBusinessProfile(profileId: number): Promise<void> {
 
 // === STAFF MANAGEMENT ===
 export interface StaffDto {
-  id: number; // This is the ID of the staff entry itself
-  userId: number;
+  id: string; // Changed to string
+  userId: string; // Changed to string
   user?: UserDto; 
   roles: string[];
   permissions?: string[] | null;
-  status: 'ACTIVE' | 'INACTIVE' | string; // API likely returns string
+  status: 'ACTIVE' | 'INACTIVE' | string;
   createdAt?: string;
   updatedAt?: string;
 }
 
-// For POST /api/v2/users/{userId}/staff
 export interface CreateStaffRequest {
-  // userId is part of the path, not the body
-  roles: string[]; // Example: ["ADMIN", "MANAGER"]
+  roles: string[];
   permissions?: string[] | null;
   status?: 'ACTIVE' | 'INACTIVE';
 }
 
-// For PUT /api/v2/staff/{staffId}
 export interface UpdateStaffRequest {
-  // staffId is part of the path
-  // roles are updated via a separate endpoint
+  roles?: string[];
   permissions?: string[] | null;
   status?: 'ACTIVE' | 'INACTIVE';
 }
@@ -251,50 +248,42 @@ export interface UpdateStaffRequest {
 
 export async function fetchStaff(params?: { role?: string; status?: string; page?: number; size?: number; search?: string }): Promise<Page<StaffDto>> {
   const queryParams = new URLSearchParams();
-  if (params?.search) queryParams.append('search', params.search); // Assuming API supports search for staff name via User
+  if (params?.search) queryParams.append('search', params.search);
   if (params?.role) queryParams.append('role', params.role);
   if (params?.status) queryParams.append('status', params.status);
   if (params?.page !== undefined) queryParams.append('page', params.page.toString());
   if (params?.size !== undefined) queryParams.append('size', params.size.toString());
-
   const queryString = queryParams.toString();
-  // Corrected endpoint for fetching all staff
   const data = await fetchAPI<Page<StaffDto> | undefined>(`/users/staff${queryString ? `?${queryString}` : ''}`);
   return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
 
-// Fetch staff details by Staff ID
-export async function fetchStaffById(staffId: number): Promise<StaffDto> {
+export async function fetchStaffById(staffId: string): Promise<StaffDto> { // Changed staffId to string
   return fetchAPI<StaffDto>(`/staff/${staffId}`);
 }
 
-// Create a new staff entry for a user
-export async function createStaffMember(userId: number, staffData: CreateStaffRequest): Promise<StaffDto> {
+export async function createStaffMember(userId: string, staffData: CreateStaffRequest): Promise<StaffDto> { // Changed userId to string
   return fetchAPI<StaffDto>(`/users/${userId}/staff`, {
     method: 'POST',
     body: JSON.stringify(staffData),
   });
 }
 
-// Update staff details (permissions, status) by Staff ID
-export async function updateStaffMember(staffId: number, staffData: UpdateStaffRequest): Promise<StaffDto> {
-  return fetchAPI<StaffDto>(`/staff/${staffId}`, { // Assumes this endpoint updates general staff details
+export async function updateStaffMember(staffId: string, staffData: UpdateStaffRequest): Promise<StaffDto> { // Changed staffId to string
+  return fetchAPI<StaffDto>(`/staff/${staffId}`, {
     method: 'PUT',
     body: JSON.stringify(staffData),
   });
 }
 
-// Update staff roles for a user by User ID
-export async function updateStaffRoles(userId: number, roles: string[]): Promise<StaffDto> { // Assuming StaffDto is returned
+export async function updateStaffRoles(userId: string, roles: string[]): Promise<StaffDto> { // Changed userId to string
   return fetchAPI<StaffDto>(`/users/${userId}/staff-roles`, {
     method: 'PUT',
-    body: JSON.stringify({ roles }), // API expects an object { "roles": ["ROLE1", "ROLE2"] }
+    body: JSON.stringify({ roles }),
   });
 }
 
-
-// Delete staff entry by Staff ID
-export async function deleteStaffMember(staffId: number): Promise<void> {
+export async function deleteStaffMember(staffId: string): Promise<void> { // Changed staffId to string
   return fetchAPI<void>(`/staff/${staffId}`, {
     method: 'DELETE',
   }, false);
@@ -303,7 +292,7 @@ export async function deleteStaffMember(staffId: number): Promise<void> {
 
 // === PRODUCT MANAGEMENT ===
 export interface MetaItem {
-  id: number;
+  id: string; // Changed to string
   name: string;
   description?: string | null;
   createdAt?: string;
@@ -313,7 +302,7 @@ export interface MetaItem {
 export interface Brand extends MetaItem {}
 
 export interface Category extends MetaItem {
-  parentId?: number | null;
+  parentId?: string | null; // Changed to string
 }
 export interface ProductCategoryNode extends Category {
   children?: ProductCategoryNode[] | null;
@@ -325,8 +314,8 @@ export interface ProductUnit extends MetaItem {}
 
 
 export interface ProductVariant {
-  id: number;
-  productId?: number;
+  id: string; // Changed to string
+  productId?: string; // Changed to string
   sku?: string | null;
   price?: number | null;
   compareAtPrice?: number | null;
@@ -341,12 +330,12 @@ export interface ProductVariant {
 }
 
 export interface Product {
-  id: number;
+  id: string; // Changed to string
   name:string;
   brand?: Brand | null; 
-  brandId?: number | null;
+  brandId?: string | null; // Changed to string
   category?: Category | null; 
-  categoryId?: number | null;
+  categoryId?: string | null; // Changed to string
   subCategory?: string | null;
   hsnCode?: string | null;
   gstTaxRate?: number | null;
@@ -359,7 +348,7 @@ export interface Product {
   unitPrice?: number; 
   costPrice?: number | null; 
 
-  unitId?: number | null;
+  unitId?: string | null; // Changed to string
   unit?: ProductUnit | null;
 
   imageUrls?: string[] | null;
@@ -409,8 +398,8 @@ export interface UpdateProductRequest {
   hsnCode?: string | null;
   gstTaxRate?: number | null;
   description?: string | null;
-  colorVariant?: string[] | null; // For generating new variants during update
-  sizeVariant?: string[] | null;   // For generating new variants during update
+  colorVariant?: string[] | null; 
+  sizeVariant?: string[] | null;   
   tags?: string[] | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
 
@@ -463,7 +452,7 @@ export async function fetchProducts(params?: { page?: number; size?: number; sea
   return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
 
-export async function fetchProductById(id: number): Promise<Product> {
+export async function fetchProductById(id: string): Promise<Product> { // Changed id to string
   return fetchAPI<Product>(`/products/${id}`);
 }
 
@@ -474,34 +463,34 @@ export async function createProduct(productData: CreateProductRequest): Promise<
   });
 }
 
-export async function updateProduct(id: number, productData: UpdateProductRequest): Promise<Product> {
+export async function updateProduct(id: string, productData: UpdateProductRequest): Promise<Product> { // Changed id to string
   return fetchAPI<Product>(`/products/${id}`, {
     method: 'PATCH', 
     body: JSON.stringify(productData),
   });
 }
 
-export async function deleteProduct(id: number): Promise<void> {
+export async function deleteProduct(id: string): Promise<void> { // Changed id to string
   return fetchAPI<void>(`/products/${id}`, {
     method: 'DELETE',
   }, false);
 }
 
-export async function addProductVariant(productId: number, variantData: AddVariantRequest): Promise<ProductVariant> {
+export async function addProductVariant(productId: string, variantData: AddVariantRequest): Promise<ProductVariant> { // Changed productId to string
   return fetchAPI<ProductVariant>(`/products/${productId}/variants`, {
     method: 'POST',
     body: JSON.stringify(variantData),
   });
 }
 
-export async function updateProductVariant(productId: number, variantId: number, variantData: UpdateVariantRequest): Promise<ProductVariant> {
+export async function updateProductVariant(productId: string, variantId: string, variantData: UpdateVariantRequest): Promise<ProductVariant> { // Changed productId and variantId to string
   return fetchAPI<ProductVariant>(`/products/${productId}/variants/${variantId}`, {
     method: 'PATCH',
     body: JSON.stringify(variantData),
   });
 }
 
-export async function deleteProductVariant(productId: number, variantId: number): Promise<void> {
+export async function deleteProductVariant(productId: string, variantId: string): Promise<void> { // Changed productId and variantId to string
   return fetchAPI<void>(`/products/${productId}/variants/${variantId}`, {
     method: 'DELETE',
   }, false);
@@ -515,10 +504,10 @@ export async function fetchProductBrands(): Promise<Brand[]> {
 export async function createProductBrand(data: Omit<Brand, 'id' | 'createdAt' | 'updatedAt'>): Promise<Brand> {
   return fetchAPI<Brand>('/meta/product/brands', { method: 'POST', body: JSON.stringify(data) });
 }
-export async function updateProductBrand(id: number, data: Partial<Omit<Brand, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Brand> {
+export async function updateProductBrand(id: string, data: Partial<Omit<Brand, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Brand> { // Changed id to string
   return fetchAPI<Brand>(`/meta/product/brands/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 }
-export async function deleteProductBrand(id: number): Promise<void> {
+export async function deleteProductBrand(id: string): Promise<void> { // Changed id to string
   return fetchAPI<void>(`/meta/product/brands/${id}`, { method: 'DELETE' }, false);
 }
 
@@ -530,13 +519,13 @@ export async function fetchProductCategoriesFlat(): Promise<Category[]> {
   const data = await fetchAPI<Category[] | undefined>('/meta/product/categories');
   return Array.isArray(data) ? data : [];
 }
-export async function createProductCategory(data: Omit<Category, 'id' | 'createdAt' | 'updatedAt' | 'parentId'> & { parentId?: number | null }): Promise<Category> {
+export async function createProductCategory(data: Omit<Category, 'id' | 'createdAt' | 'updatedAt' | 'parentId'> & { parentId?: string | null }): Promise<Category> { // Changed parentId to string
   return fetchAPI<Category>('/meta/product/categories', { method: 'POST', body: JSON.stringify(data) });
 }
-export async function updateProductCategory(id: number, data: Partial<Omit<Category, 'id' | 'createdAt' | 'updatedAt' | 'parentId'> & { parentId?: number | null }>): Promise<Category> {
+export async function updateProductCategory(id: string, data: Partial<Omit<Category, 'id' | 'createdAt' | 'updatedAt' | 'parentId'> & { parentId?: string | null }>): Promise<Category> { // Changed id and parentId to string
   return fetchAPI<Category>(`/meta/product/categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 }
-export async function deleteProductCategory(id: number): Promise<void> {
+export async function deleteProductCategory(id: string): Promise<void> { // Changed id to string
   return fetchAPI<void>(`/meta/product/categories/${id}`, { method: 'DELETE' }, false);
 }
 
@@ -547,10 +536,10 @@ export async function fetchProductUnits(): Promise<ProductUnit[]> {
 export async function createProductUnit(data: Omit<ProductUnit, 'id' | 'createdAt' | 'updatedAt'>): Promise<ProductUnit> {
   return fetchAPI<ProductUnit>('/meta/product/units', { method: 'POST', body: JSON.stringify(data) });
 }
-export async function updateProductUnit(id: number, data: Partial<Omit<ProductUnit, 'id' | 'createdAt' | 'updatedAt'>>): Promise<ProductUnit> {
+export async function updateProductUnit(id: string, data: Partial<Omit<ProductUnit, 'id' | 'createdAt' | 'updatedAt'>>): Promise<ProductUnit> { // Changed id to string
   return fetchAPI<ProductUnit>(`/meta/product/units/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 }
-export async function deleteProductUnit(id: number): Promise<void> {
+export async function deleteProductUnit(id: string): Promise<void> { // Changed id to string
   return fetchAPI<void>(`/meta/product/units/${id}`, { method: 'DELETE' }, false);
 }
 
@@ -579,7 +568,7 @@ export async function fetchUserRolesMeta(): Promise<UserRoleMeta[]> {
 }
 
 export interface NotificationTemplate {
-  id: number;
+  id: string; // Changed to string
   name: string;
   subject: string;
   body: string;
@@ -594,10 +583,10 @@ export async function fetchNotificationTemplates(): Promise<NotificationTemplate
 export async function createNotificationTemplate(data: Omit<NotificationTemplate, 'id' | 'createdAt' | 'updatedAt'>): Promise<NotificationTemplate> {
   return fetchAPI<NotificationTemplate>('/meta/notification/templates', { method: 'POST', body: JSON.stringify(data) });
 }
-export async function updateNotificationTemplate(id: number, data: Partial<Omit<NotificationTemplate, 'id' | 'createdAt' | 'updatedAt'>>): Promise<NotificationTemplate> {
+export async function updateNotificationTemplate(id: string, data: Partial<Omit<NotificationTemplate, 'id' | 'createdAt' | 'updatedAt'>>): Promise<NotificationTemplate> { // Changed id to string
   return fetchAPI<NotificationTemplate>(`/meta/notification/templates/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 }
-export async function deleteNotificationTemplate(id: number): Promise<void> {
+export async function deleteNotificationTemplate(id: string): Promise<void> { // Changed id to string
   return fetchAPI<void>(`/meta/notification/templates/${id}`, { method: 'DELETE' }, false);
 }
 
@@ -615,4 +604,3 @@ export async function updateCurrentUser(data: UpdateUserRequest): Promise<Curren
     body: JSON.stringify(data),
   });
 }
-

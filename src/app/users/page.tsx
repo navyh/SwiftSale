@@ -38,13 +38,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+// Select component removed as type filter is removed
 import { Badge } from "@/components/ui/badge";
 import {
   PlusCircle,
@@ -52,14 +46,13 @@ import {
   Edit3,
   Trash2,
   Eye,
-  UsersRound as UsersIcon, // Changed from UserCircle
+  UsersRound as UsersIcon,
   ChevronLeft,
   ChevronRight
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const USER_TYPES = ["B2C", "B2B"]; // Hardcoded as per instruction
-const ALL_USERS_FILTER_VALUE = "__ALL_USER_TYPES__";
+// USER_TYPES and ALL_USERS_FILTER_VALUE removed
 
 export default function UsersListPage() {
   const { toast } = useToast();
@@ -68,17 +61,17 @@ export default function UsersListPage() {
   const [error, setError] = React.useState<string | null>(null);
   
   const [searchTerm, setSearchTerm] = React.useState("");
-  const [filterType, setFilterType] = React.useState<string>("");
+  // filterType state removed
   const [currentPage, setCurrentPage] = React.useState(0);
   const [pageSize, setPageSize] = React.useState(10);
 
-  const loadUsers = React.useCallback(async (page: number, size: number, search: string, type: string) => {
+  const loadUsers = React.useCallback(async (page: number, size: number, search: string) => {
     setIsLoading(true);
     setError(null);
     try {
-      const params: { page: number; size: number; search?: string; type?: string } = { page, size };
+      const params: { page: number; size: number; search?: string; } = { page, size }; // type parameter removed
       if (search) params.search = search;
-      if (type) params.type = type;
+      // type parameter removed from fetchUsers call
       const data = await fetchUsers(params);
       setUsersPage(data);
     } catch (err: any) {
@@ -94,28 +87,24 @@ export default function UsersListPage() {
   }, [toast]);
 
   React.useEffect(() => {
-    loadUsers(currentPage, pageSize, searchTerm, filterType);
-  }, [loadUsers, currentPage, pageSize, searchTerm, filterType]);
+    loadUsers(currentPage, pageSize, searchTerm); // filterType removed
+  }, [loadUsers, currentPage, pageSize, searchTerm]); // filterType removed
 
   const handleSearchDebounced = React.useCallback(
     debounce((term: string) => {
       setSearchTerm(term);
-      setCurrentPage(0); // Reset to first page on new search
+      setCurrentPage(0); 
     }, 500),
     []
   );
 
-  const handleFilterChange = (selectedValue: string) => {
-    setFilterType(selectedValue === ALL_USERS_FILTER_VALUE ? "" : selectedValue);
-    setCurrentPage(0); // Reset to first page on filter change
-  };
+  // handleFilterChange removed
 
-  const handleDeleteUser = async (userId: number) => {
+  const handleDeleteUser = async (userId: string) => { // userId changed to string
     try {
       await deleteUser(userId);
       toast({ title: "Success", description: "User deleted successfully." });
-      // Reload current page
-      loadUsers(currentPage, pageSize, searchTerm, filterType);
+      loadUsers(currentPage, pageSize, searchTerm); // filterType removed
     } catch (err: any) {
       toast({
         title: "Error",
@@ -173,19 +162,7 @@ export default function UsersListPage() {
                   onChange={(e) => handleSearchDebounced(e.target.value)}
                 />
               </div>
-              <Select value={filterType || ALL_USERS_FILTER_VALUE} onValueChange={handleFilterChange}>
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Filter by type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_USERS_FILTER_VALUE}>All Types</SelectItem>
-                  {USER_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {type}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Select for type filter removed */}
             </div>
           </div>
           <CardDescription>
@@ -201,7 +178,7 @@ export default function UsersListPage() {
                 <TableHead>Name</TableHead>
                 <TableHead className="hidden md:table-cell">Phone</TableHead>
                 <TableHead className="hidden lg:table-cell">Email</TableHead>
-                <TableHead>Type</TableHead>
+                {/* Type column removed */}
                 <TableHead className="hidden md:table-cell">Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -214,8 +191,8 @@ export default function UsersListPage() {
                     <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                     <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
                     <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-40" /></TableCell>
-                    <TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
-                    <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
+                    {/* Skeleton for Type column removed */}
+                    <TableCell className="hidden md:table-cell"><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
                     <TableCell className="text-right space-x-1">
                       <Skeleton className="h-8 w-8 inline-block rounded" />
                       <Skeleton className="h-8 w-8 inline-block rounded" />
@@ -230,11 +207,7 @@ export default function UsersListPage() {
                     <TableCell className="font-medium">{user.name}</TableCell>
                     <TableCell className="hidden md:table-cell">{user.phone}</TableCell>
                     <TableCell className="hidden lg:table-cell">{user.email || "N/A"}</TableCell>
-                    <TableCell>
-                      <Badge variant={user.type === "B2B" ? "secondary" : "default"}>
-                        {user.type}
-                      </Badge>
-                    </TableCell>
+                    {/* Type Badge removed */}
                     <TableCell className="hidden md:table-cell">
                         <Badge variant={user.status?.toLowerCase() === 'active' ? 'default' : 'outline'} 
                                className={user.status?.toLowerCase() === 'active' ? 'bg-green-500/20 text-green-700 border-green-500/30' : 'bg-yellow-500/20 text-yellow-700 border-yellow-500/30'}>
@@ -281,10 +254,10 @@ export default function UsersListPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-10">
+                  <TableCell colSpan={6} className="text-center py-10"> {/* Adjusted colSpan */}
                     <UsersIcon className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
                     <p className="text-muted-foreground">No users found.</p>
-                    {searchTerm && <p className="text-sm text-muted-foreground">Try adjusting your search term or filter.</p>}
+                    {searchTerm && <p className="text-sm text-muted-foreground">Try adjusting your search term.</p>}
                   </TableCell>
                 </TableRow>
               )}
