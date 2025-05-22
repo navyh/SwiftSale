@@ -112,15 +112,20 @@ export default function EditBusinessProfilePage() {
         const validStatus = PROFILE_STATUSES.includes(currentStatus as any) ? currentStatus as "ACTIVE" | "INACTIVE" : "ACTIVE";
 
         form.reset({
-          name: fetchedProfile.name,
-          gstin: fetchedProfile.gstin,
+          name: fetchedProfile.name ?? "",
+          gstin: fetchedProfile.gstin ?? "",
           paymentTerms: fetchedProfile.paymentTerms ?? "",
           status: validStatus,
           addresses: fetchedProfile.addresses?.map(addr => ({ 
-            ...addr, 
             id: addr.id, 
-            type: addr.type as ("SHIPPING" | "BILLING" | undefined) ?? undefined,
+            line1: addr.line1 ?? "",
             line2: addr.line2 ?? "",
+            city: addr.city ?? "",
+            state: addr.state ?? "",
+            country: addr.country ?? "",
+            postalCode: addr.postalCode ?? "",
+            type: addr.type as ("SHIPPING" | "BILLING" | undefined) ?? undefined,
+            isDefault: addr.isDefault ?? false,
           })) ?? [],
           userIds: fetchedProfile.userIds?.map(id => String(id)) ?? [], 
         });
@@ -159,7 +164,7 @@ export default function EditBusinessProfilePage() {
           }
           return apiAddr;
         }) || [],
-        userIds: data.userIds || [], 
+        userIds: data.userIds?.map(id => String(id)) || [], // Ensure userIds are strings if API expects strings
       };
       
       await updateBusinessProfile(profileId, payload);
@@ -377,3 +382,4 @@ export default function EditBusinessProfilePage() {
     </div>
   );
 }
+
