@@ -61,7 +61,7 @@ function AddressCard({ address, isDefault }: { address: AddressDto; isDefault: b
 export default function BusinessProfileDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const profileId = params.id as string; // ID is string
+  const profileId = params.id as string; 
   const { toast } = useToast();
 
   const [profile, setProfile] = React.useState<BusinessProfileDto | null>(null);
@@ -86,7 +86,7 @@ export default function BusinessProfileDetailPage() {
         if (fetchedProfile.userIds && fetchedProfile.userIds.length > 0) {
           setIsLoadingUsers(true);
           const usersDataPromises = fetchedProfile.userIds.map(id => 
-            fetchUserById(id).catch((userError) => { // id is string
+            fetchUserById(id).catch((userError) => { 
               console.warn(`Failed to fetch user with ID: ${id}. Error: ${userError.message}`);
               return null; 
             })
@@ -116,7 +116,7 @@ export default function BusinessProfileDetailPage() {
   const handleDeleteProfile = async () => {
     if (!profile) return;
     try {
-      await deleteBusinessProfile(profile.id); // profile.id is string
+      await deleteBusinessProfile(profile.id); 
       toast({ title: "Success", description: "Business profile deleted successfully." });
       router.push("/business-profiles");
       router.refresh(); 

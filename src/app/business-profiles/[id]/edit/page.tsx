@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   fetchBusinessProfileById, 
   updateBusinessProfile, 
-  fetchAllUsers, // To populate user selection
+  fetchAllUsers, 
   type BusinessProfileDto, 
   type UpdateBusinessProfileRequest, 
   type AddressDto as ApiAddressDto, 
@@ -31,7 +31,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 // Form-specific Address schema, ID is optional
 const addressSchema = z.object({
-  id: z.string().optional().nullable(), // ID is string and optional for new addresses
+  id: z.string().optional().nullable(), 
   line1: z.string().min(1, "Address line 1 is required"),
   line2: z.string().optional().nullable().or(z.literal("")),
   city: z.string().min(1, "City is required"),
@@ -49,7 +49,7 @@ const profileFormSchema = z.object({
   paymentTerms: z.string().optional().nullable().or(z.literal("")),
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
   addresses: z.array(addressSchema).optional(),
-  userIds: z.array(z.string()).optional(), // User IDs are strings
+  userIds: z.array(z.string()).optional(), 
 });
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
@@ -60,7 +60,7 @@ const ADDRESS_TYPES = ["SHIPPING", "BILLING"] as const;
 export default function EditBusinessProfilePage() {
   const router = useRouter();
   const params = useParams();
-  const profileId = params.id as string; // ID is string
+  const profileId = params.id as string; 
   const { toast } = useToast();
 
   const [profile, setProfile] = React.useState<BusinessProfileDto | null>(null);
@@ -118,11 +118,11 @@ export default function EditBusinessProfilePage() {
           status: validStatus,
           addresses: fetchedProfile.addresses?.map(addr => ({ 
             ...addr, 
-            id: addr.id, // ID is string
+            id: addr.id, 
             type: addr.type as ("SHIPPING" | "BILLING" | undefined) ?? undefined,
             line2: addr.line2 ?? "",
           })) ?? [],
-          userIds: fetchedProfile.userIds ?? [], // userIds are strings
+          userIds: fetchedProfile.userIds?.map(id => String(id)) ?? [], 
         });
       } catch (error: any) {
         console.error("Error fetching data for edit business profile:", error);
@@ -154,12 +154,12 @@ export default function EditBusinessProfilePage() {
             line2: rest.line2 || undefined,
             type: rest.type || undefined,
           };
-          if (id) { // If ID exists, it's an existing address
+          if (id) { 
             (apiAddr as ApiAddressDto).id = id;
           }
           return apiAddr;
         }) || [],
-        userIds: data.userIds || [], // UserIDs are strings
+        userIds: data.userIds || [], 
       };
       
       await updateBusinessProfile(profileId, payload);
@@ -288,7 +288,7 @@ export default function EditBusinessProfilePage() {
                               <FormItem key={user.id} className="flex flex-row items-start space-x-3 space-y-0">
                                 <FormControl>
                                   <Checkbox
-                                    checked={field.value?.includes(user.id)} // user.id is string
+                                    checked={field.value?.includes(user.id)} 
                                     onCheckedChange={(checked) => {
                                       return checked
                                         ? field.onChange([...(field.value || []), user.id])
@@ -320,8 +320,8 @@ export default function EditBusinessProfilePage() {
           <Card className="shadow-md">
             <CardHeader><CardTitle>Addresses</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              {addressFields.map((formField, index) => ( // Renamed field to formField
-                <Card key={formField.id} className="p-4 space-y-3 bg-secondary/50"> {/* Use formField.id for React key */}
+              {addressFields.map((formField, index) => ( 
+                <Card key={formField.id} className="p-4 space-y-3 bg-secondary/50"> 
                   <div className="flex justify-between items-center">
                     <h4 className="font-medium">Address {index + 1} {form.watch(`addresses.${index}.id`) ? `(ID: ${form.watch(`addresses.${index}.id`)})` : "(New)"}</h4>
                     <Button type="button" variant="ghost" size="icon" onClick={() => removeAddress(index)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4" /></Button>
@@ -360,7 +360,7 @@ export default function EditBusinessProfilePage() {
                   </div>
                 </Card>
               ))}
-              <Button type="button" variant="outline" onClick={() => appendAddress({ line1: '', city: '', state: '', country: '', postalCode: '', isDefault: addressFields.length === 0, type: 'SHIPPING' })}>
+              <Button type="button" variant="outline" onClick={() => appendAddress({ id: null, line1: '', city: '', state: '', country: '', postalCode: '', isDefault: addressFields.length === 0, type: 'SHIPPING' })}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Add Address
               </Button>
             </CardContent>
