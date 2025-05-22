@@ -83,6 +83,8 @@ export interface UserDto {
   email?: string | null;
   addresses?: AddressDto[] | null;
   status?: 'ACTIVE' | 'INACTIVE' | string | null; 
+  // type: 'B2C' | 'B2B' | string; // Removed as per user request
+  // gstin?: string | null; // Removed as per user request
   createdAt?: string;
   updatedAt?: string;
 }
@@ -93,6 +95,8 @@ export interface CreateUserRequest {
   email?: string | null;
   status?: 'ACTIVE' | 'INACTIVE'; 
   addresses?: AddressCreateDto[] | null;
+  // type?: 'B2C' | 'B2B'; // Removed
+  // gstin?: string | null; // Removed
 }
 
 export interface UpdateUserRequest {
@@ -100,6 +104,8 @@ export interface UpdateUserRequest {
   email?: string | null;
   status?: 'ACTIVE' | 'INACTIVE'; 
   addresses?: (AddressCreateDto | AddressDto)[] | null; 
+  // type?: 'B2C' | 'B2B'; // Removed
+  // gstin?: string | null; // Removed
 }
 
 
@@ -108,6 +114,7 @@ export async function fetchUsers(params?: { search?: string; page?: number; size
   if (params?.search) queryParams.append('search', params.search);
   if (params?.page !== undefined) queryParams.append('page', params.page.toString());
   if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+  // type filter removed
 
   const queryString = queryParams.toString();
   const data = await fetchAPI<Page<UserDto> | undefined>(`/users${queryString ? `?${queryString}` : ''}`);
@@ -202,7 +209,7 @@ export async function createBusinessProfile(profileData: CreateBusinessProfileRe
 
 export async function updateBusinessProfile(profileId: string, profileData: UpdateBusinessProfileRequest): Promise<BusinessProfileDto> { 
   return fetchAPI<BusinessProfileDto>(`/business-profiles/${profileId}`, {
-    method: 'PUT',
+    method: 'PATCH', // Changed from PUT to PATCH
     body: JSON.stringify(profileData),
   });
 }
@@ -227,13 +234,15 @@ export interface StaffDto {
 
 // For POST /users/{userId}/staff
 export interface CreateStaffRequest {
+  // userId is part of the path, not body
   roles: string[];
   permissions?: string[] | null;
   status?: 'ACTIVE' | 'INACTIVE'; 
 }
 
 // For PUT /staff/{staffId} (status, permissions)
-export interface UpdateStaffDetailsRequest {
+export interface UpdateStaffRequest { // Renamed from UpdateStaffDetailsRequest for clarity
+  roles?: string[]; // Assuming PUT /staff/{staffId} can also update roles, or they are managed separately
   permissions?: string[] | null;
   status?: 'ACTIVE' | 'INACTIVE';
 }
@@ -247,7 +256,7 @@ export async function fetchStaff(params?: { role?: string; status?: string; page
   if (params?.page !== undefined) queryParams.append('page', params.page.toString());
   if (params?.size !== undefined) queryParams.append('size', params.size.toString());
   const queryString = queryParams.toString();
-  const data = await fetchAPI<Page<StaffDto> | undefined>(`/users/staff${queryString ? `?${queryString}` : ''}`); // Corrected endpoint
+  const data = await fetchAPI<Page<StaffDto> | undefined>(`/users/staff${queryString ? `?${queryString}` : ''}`); 
   return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
 
@@ -255,15 +264,15 @@ export async function fetchStaffById(staffId: string): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/staff/${staffId}`);
 }
 
-export async function createStaffMember(userId: string, staffData: CreateStaffRequest): Promise<StaffDto> { 
-  return fetchAPI<StaffDto>(`/users/${userId}/staff`, { // Corrected endpoint
+export async function createStaffMember(userId: string, staffData: Omit<CreateStaffRequest, 'userId'>): Promise<StaffDto> { 
+  return fetchAPI<StaffDto>(`/users/${userId}/staff`, { 
     method: 'POST',
     body: JSON.stringify(staffData),
   });
 }
 
 // Updates status and permissions for a staff member using their staff ID
-export async function updateStaffMember(staffId: string, staffData: UpdateStaffDetailsRequest): Promise<StaffDto> { 
+export async function updateStaffMember(staffId: string, staffData: UpdateStaffRequest): Promise<StaffDto> { 
   return fetchAPI<StaffDto>(`/staff/${staffId}`, {
     method: 'PUT', 
     body: JSON.stringify(staffData),
@@ -360,11 +369,11 @@ export interface Product {
 
 export interface CreateProductRequest {
   name: string;
-  brand: string; 
+  brand: string; // Expects string name
   hsnCode?: string | null;
   description?: string | null;
   gstTaxRate?: number | null;
-  category: string; 
+  category: string; // Expects string name
   subCategory?: string | null;
   colorVariant?: string[] | null; 
   sizeVariant?: string[] | null;  
@@ -419,8 +428,8 @@ export interface AddVariantRequest {
   costPrice?: number | null;
   quantity: number;
   barcode?: string | null;
-  color?: string | null;
-  size?: string | null;
+  color?: string | null; // Changed from colorValue
+  size?: string | null;  // Changed from sizeValue
   imageUrls?: string[] | null;
 }
 
@@ -431,8 +440,8 @@ export interface UpdateVariantRequest {
   costPrice?: number | null;
   quantity?: number;
   barcode?: string | null;
-  color?: string | null;
-  size?: string | null;
+  color?: string | null; // Changed from colorValue
+  size?: string | null;  // Changed from sizeValue
   imageUrls?: string[] | null;
 }
 
@@ -601,3 +610,6 @@ export async function updateCurrentUser(data: UpdateUserRequest): Promise<Curren
     body: JSON.stringify(data),
   });
 }
+
+
+    
