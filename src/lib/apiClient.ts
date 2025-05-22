@@ -82,7 +82,7 @@ export interface UserDto {
   phone: string;
   email?: string | null;
   addresses?: AddressDto[] | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string | null;
+  status?: 'ACTIVE' | 'INACTIVE' | string | null; // Response can be any string
   createdAt?: string;
   updatedAt?: string;
 }
@@ -91,15 +91,15 @@ export interface CreateUserRequest {
   name: string;
   phone: string;
   email?: string | null;
+  status?: 'ACTIVE' | 'INACTIVE'; // Request should be strict
   addresses?: AddressCreateDto[] | null;
-  status?: 'ACTIVE' | 'INACTIVE';
 }
 
 export interface UpdateUserRequest {
   name?: string;
   email?: string | null;
+  status?: 'ACTIVE' | 'INACTIVE'; // Request should be strict
   addresses?: (AddressCreateDto | AddressDto)[] | null; 
-  status?: 'ACTIVE' | 'INACTIVE';
 }
 
 
@@ -134,7 +134,7 @@ export async function createUser(userData: CreateUserRequest): Promise<UserDto> 
 
 export async function updateUser(userId: string, userData: UpdateUserRequest): Promise<UserDto> { 
   return fetchAPI<UserDto>(`/users/${userId}`, {
-    method: 'PUT',
+    method: 'PATCH', // Changed from PUT to PATCH
     body: JSON.stringify(userData),
   });
 }
@@ -151,7 +151,7 @@ export interface BusinessProfileDto {
   id: string; 
   name: string;
   gstin: string;
-  status: 'ACTIVE' | 'INACTIVE' | string;
+  status: 'ACTIVE' | 'INACTIVE' | string; // Response can be any string
   paymentTerms?: string | null;
   addresses?: AddressDto[] | null;
   userIds?: string[] | null; 
@@ -165,13 +165,13 @@ export interface CreateBusinessProfileRequest {
   addresses?: AddressCreateDto[] | null;
   paymentTerms?: string | null;
   userIds?: string[] | null; 
-  status?: 'ACTIVE' | 'INACTIVE';
+  status?: 'ACTIVE' | 'INACTIVE'; // Request should be strict
 }
 
 export interface UpdateBusinessProfileRequest {
   name?: string;
   gstin?: string;
-  status?: 'ACTIVE' | 'INACTIVE' | undefined;
+  status?: 'ACTIVE' | 'INACTIVE' | undefined; // Request should be strict or undefined
   addresses?: (AddressCreateDto | AddressDto)[] | null;
   paymentTerms?: string | null;
   userIds?: string[] | null; 
@@ -221,34 +221,35 @@ export interface StaffDto {
   user?: UserDto; 
   roles: string[];
   permissions?: string[] | null;
-  status: 'ACTIVE' | 'INACTIVE' | string;
+  status: 'ACTIVE' | 'INACTIVE' | string; // Response can be any string
   createdAt?: string;
   updatedAt?: string;
 }
 
 export interface CreateStaffRequest {
-  // userId is part of the path, not body for create
+  // userId is part of the path for POST /users/{userId}/staff, not in the body
   roles: string[];
   permissions?: string[] | null;
-  status?: 'ACTIVE' | 'INACTIVE';
+  status?: 'ACTIVE' | 'INACTIVE'; // Request should be strict
 }
 
 export interface UpdateStaffRequest {
-  roles?: string[];
+  // For PUT /staff/{staffId}
+  roles?: string[]; // API Doc for PUT /staff/{staffId} shows roles as optional here
   permissions?: string[] | null;
-  status?: 'ACTIVE' | 'INACTIVE';
+  status?: 'ACTIVE' | 'INACTIVE'; // Request should be strict
 }
 
 
 export async function fetchStaff(params?: { role?: string; status?: string; page?: number; size?: number; search?: string }): Promise<Page<StaffDto>> {
   const queryParams = new URLSearchParams();
-  if (params?.search) queryParams.append('search', params.search);
+  if (params?.search) queryParams.append('search', params.search); // Assuming backend supports search for staff list
   if (params?.role) queryParams.append('role', params.role);
   if (params?.status) queryParams.append('status', params.status);
   if (params?.page !== undefined) queryParams.append('page', params.page.toString());
   if (params?.size !== undefined) queryParams.append('size', params.size.toString());
   const queryString = queryParams.toString();
-  const data = await fetchAPI<Page<StaffDto> | undefined>(`/users/staff${queryString ? `?${queryString}` : ''}`); // Corrected endpoint
+  const data = await fetchAPI<Page<StaffDto> | undefined>(`/users/staff${queryString ? `?${queryString}` : ''}`);
   return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
 
@@ -264,10 +265,10 @@ export async function createStaffMember(userId: string, staffData: CreateStaffRe
   });
 }
 
-// For PUT /api/v2/staff/{staffId} - used for updating status and permissions
-export async function updateStaffMember(staffId: string, staffData: Omit<UpdateStaffRequest, 'roles'>): Promise<StaffDto> { 
+// For PUT /api/v2/staff/{staffId} - used for updating status, permissions, and potentially roles if API allows
+export async function updateStaffMember(staffId: string, staffData: UpdateStaffRequest): Promise<StaffDto> { 
   return fetchAPI<StaffDto>(`/staff/${staffId}`, {
-    method: 'PUT',
+    method: 'PUT', // API docs specify PUT for /staff/{staffId}
     body: JSON.stringify(staffData),
   });
 }
@@ -276,7 +277,7 @@ export async function updateStaffMember(staffId: string, staffData: Omit<UpdateS
 export async function updateStaffRoles(userId: string, roles: string[]): Promise<StaffDto> { 
   return fetchAPI<StaffDto>(`/users/${userId}/staff-roles`, {
     method: 'PUT',
-    body: JSON.stringify({ roles }), // API expects an object like { "roles": ["ADMIN"] }
+    body: JSON.stringify({ roles }), 
   });
 }
 
@@ -517,10 +518,12 @@ export async function fetchProductCategoriesFlat(): Promise<Category[]> {
   return Array.isArray(data) ? data : [];
 }
 export async function createProductCategory(data: Omit<Category, 'id' | 'createdAt' | 'updatedAt' | 'parentId'> & { parentId?: string | null }): Promise<Category> { 
-  return fetchAPI<Category>('/meta/product/categories', { method: 'POST', body: JSON.stringify(data) });
+  const payload = { ...data, parentId: data.parentId === null ? undefined : data.parentId }; // Ensure null parentId is omitted or correctly handled
+  return fetchAPI<Category>('/meta/product/categories', { method: 'POST', body: JSON.stringify(payload) });
 }
 export async function updateProductCategory(id: string, data: Partial<Omit<Category, 'id' | 'createdAt' | 'updatedAt' | 'parentId'> & { parentId?: string | null }>): Promise<Category> { 
-  return fetchAPI<Category>(`/meta/product/categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  const payload = { ...data, parentId: data.parentId === null ? undefined : data.parentId };
+  return fetchAPI<Category>(`/meta/product/categories/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
 }
 export async function deleteProductCategory(id: string): Promise<void> { 
   return fetchAPI<void>(`/meta/product/categories/${id}`, { method: 'DELETE' }, false);
@@ -601,3 +604,6 @@ export async function updateCurrentUser(data: UpdateUserRequest): Promise<Curren
     body: JSON.stringify(data),
   });
 }
+
+
+    
