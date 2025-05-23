@@ -33,7 +33,7 @@ import {
   searchBusinessProfileByGstin, createBusinessProfileWithUser, type CreateBusinessProfileWithUserRequest, type CreateBusinessProfileWithUserResponse,
   searchProductsFuzzy, type ProductSearchResultDto, type ProductDto, fetchProductById, type ProductVariantDto,
   quickCreateProduct, type QuickCreateProductRequest, type QuickCreateProductResponse,
-  type AddressCreateDto, type OrderItemRequest, type CreateOrderRequest, type OrderDto
+  type AddressCreateDto, type OrderItemRequest, type CreateOrderRequest, type OrderDto, Page
 } from "@/lib/apiClient";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -221,9 +221,8 @@ export default function CreateOrderPage() {
     }
     setIsSearchingProducts(true);
     try {
-      // Pass default pagination and sort, or make them configurable
-      const results = await searchProductsFuzzy(productSearchQuery, 0, 20, 'name,asc');
-      setProductSearchResults(results);
+      const resultsPage: Page<ProductSearchResultDto> = await searchProductsFuzzy(productSearchQuery, 0, 20, 'name,asc');
+      setProductSearchResults(resultsPage.content);
     } catch (error: any) {
       toast({ title: "Error Searching Products", description: error.message || "Failed to search products.", variant: "destructive" });
       setProductSearchResults([]);
@@ -277,7 +276,8 @@ export default function CreateOrderPage() {
       
       if (responseProduct.id && responseProduct.variants && responseProduct.variants.length > 0 && responseProduct.variants[0] && responseProduct.variants[0].id) {
         const newVariant = responseProduct.variants[0];
-        const unitPrice = newVariant.price || responseProduct.unitPrice || data.unitPrice; 
+        // Use variant price if available, otherwise product unit price, then form unit price as fallback
+        const unitPrice = newVariant.price ?? responseProduct.unitPrice ?? data.unitPrice; 
         const newItem: OrderItemDisplay = {
           productId: responseProduct.id,
           variantId: newVariant.id,
@@ -328,13 +328,8 @@ export default function CreateOrderPage() {
       };
       setOrderItems(prevItems => [...prevItems, newItem]);
     }
-    // Optionally reset selection after adding
-    // setSelectedProductForDetails(null); 
-    // setSelectedVariant(null);
-    // setProductSearchQuery("");
-    // setProductSearchResults([]);
     setSelectedQuantity(1); 
-    toast({ title: "Item Added", description: `${selectedProductForDetails.name} (${selectedVariant.color}/${selectedVariant.size}) added to order.`});
+    toast({ title: "Item Added", description: `${selectedProductForDetails.name} (${selectedVariant.color || 'N/A'}/${selectedVariant.size || 'N/A'}) added to order.`});
   };
 
   const handleRemoveOrderItem = (variantIdToRemove: string) => {
@@ -504,9 +499,10 @@ export default function CreateOrderPage() {
                         <div>
                             <p className="font-medium">{product.name}</p>
                             <p className="text-xs text-muted-foreground">
-                                {product.brandName && `${product.brandName} | `}
-                                {product.categoryName && `${product.categoryName} | `}
-                                Price: {product.unitPrice ? `₹${product.unitPrice.toFixed(2)}` : 'N/A'}
+                                {product.brand && `${product.brand} | `}
+                                {product.category && `${product.category} | `}
+                                {/* Price display adjusted, or remove if not directly available here */}
+                                {product.sku && `SKU: ${product.sku}`}
                             </p>
                         </div>
                       </Button>
