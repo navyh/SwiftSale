@@ -35,6 +35,7 @@ import {
   quickCreateProduct, type QuickCreateProductRequest, type QuickCreateProductResponse,
   type AddressCreateDto, type OrderItemRequest, type CreateOrderRequest, type OrderDto
 } from "@/lib/apiClient";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // Zod Schemas for Forms
 const userCreateDialogSchema = z.object({
@@ -80,7 +81,8 @@ export default function CreateOrderPage() {
   // Step 1 State
   const [phoneSearch, setPhoneSearch] = React.useState("");
   const [gstinSearch, setGstinSearch] = React.useState("");
-  const [foundUser, setFoundUser] = React.useState<UserDto | null>(null);
+  const [searchedUsers, setSearchedUsers] = React.useState<UserDto[]>([]); 
+  const [selectedUserDisplay, setSelectedUserDisplay] = React.useState<UserDto | null>(null); 
   const [foundBusinessProfile, setFoundBusinessProfile] = React.useState<BusinessProfileDto | null>(null);
   const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
   const [selectedBusinessProfileId, setSelectedBusinessProfileId] = React.useState<string | null>(null);
@@ -112,12 +114,16 @@ export default function CreateOrderPage() {
 
   const handleUserSearch = async () => {
     if (!phoneSearch) return;
-    setIsSearchingUser(true); setFoundUser(null); setSelectedUserId(null);
+    setIsSearchingUser(true); 
+    setSearchedUsers([]); 
+    setSelectedUserId(null); 
+    setSelectedUserDisplay(null);
     try {
-      const user = await searchUserByPhone(phoneSearch);
-      setFoundUser(user);
-      if (user && user.id) setSelectedUserId(user.id); // Ensure ID is string
-      else setShowUserCreateDialog(true);
+      const users = await searchUserByPhone(phoneSearch);
+      setSearchedUsers(users);
+      if (users.length === 0) {
+        setShowUserCreateDialog(true);
+      }
     } catch (error: any) {
       toast({ title: "Error Searching User", description: error.message || "Failed to search user.", variant: "destructive" });
     } finally {
@@ -125,20 +131,30 @@ export default function CreateOrderPage() {
     }
   };
 
+  const handleSelectUserFromList = (user: UserDto) => {
+    setSelectedUserId(user.id);
+    setSelectedUserDisplay(user);
+    setSearchedUsers([]); // Clear search results after selection
+  };
+
   const handleBusinessProfileSearch = async () => {
     if (!gstinSearch) return;
-    setIsSearchingBp(true); setFoundBusinessProfile(null); setSelectedBusinessProfileId(null); setSelectedUserId(null); setFoundUser(null);
+    setIsSearchingBp(true); 
+    setFoundBusinessProfile(null); 
+    setSelectedBusinessProfileId(null); 
+    setSelectedUserId(null); // Clear user if searching for new BP
+    setSelectedUserDisplay(null);
     try {
       const bp = await searchBusinessProfileByGstin(gstinSearch);
       setFoundBusinessProfile(bp);
       if (bp && bp.id) {
-        setSelectedBusinessProfileId(bp.id); // Ensure ID is string
+        setSelectedBusinessProfileId(bp.id);
         if (bp.userIds && bp.userIds.length > 0 && bp.userIds[0]) {
           const user = await fetchUserById(bp.userIds[0]); 
-          setFoundUser(user); 
-          if (user && user.id) setSelectedUserId(user.id); // Ensure ID is string
+          setSelectedUserDisplay(user); 
+          if (user && user.id) setSelectedUserId(user.id);
         } else {
-          toast({ title: "Info", description: "Business profile found, but no users are linked. Please link a user via Business Profile Management.", variant: "default" });
+          toast({ title: "Info", description: "Business profile found, but no primary user linked. Please link a user via Business Profile Management if needed, or proceed to add items.", variant: "default" });
         }
       } else {
         setShowBpWithUserCreateDialog(true);
@@ -154,10 +170,11 @@ export default function CreateOrderPage() {
     setIsUserCreateSubmitting(true);
     try {
       const newUser = await createUser({ name: data.name, phone: data.phone, email: data.email || undefined, status: 'ACTIVE' });
-      setFoundUser(newUser);
-      if (newUser && newUser.id) setSelectedUserId(newUser.id); // Ensure ID is string
+      setSelectedUserDisplay(newUser);
+      if (newUser && newUser.id) setSelectedUserId(newUser.id);
       setShowUserCreateDialog(false);
       userCreateForm.reset();
+      setPhoneSearch(""); // Clear search after creation
       toast({ title: "Success", description: "User created successfully." });
     } catch (error: any) {
       toast({ title: "Error Creating User", description: error.message || "Failed to create user.", variant: "destructive" });
@@ -174,19 +191,21 @@ export default function CreateOrderPage() {
     };
     try {
       const response = await createBusinessProfileWithUser(payload);
-      setFoundBusinessProfile(response);
-      if (response && response.id) setSelectedBusinessProfileId(response.id); // Ensure ID is string
+      setFoundBusinessProfile(response); // API returns the created BusinessProfileDto
+      if (response && response.id) setSelectedBusinessProfileId(response.id);
       
-      if (response.user && response.user.id) { 
-        setFoundUser(response.user);
-        setSelectedUserId(response.user.id); // Ensure ID is string
+      const createdUserInResponse = response.user; 
+      if (createdUserInResponse && createdUserInResponse.id) {
+        setSelectedUserDisplay(createdUserInResponse);
+        setSelectedUserId(createdUserInResponse.id);
       } else if (response.userIds && response.userIds.length > 0 && response.userIds[0]) { 
         const user = await fetchUserById(response.userIds[0]);
-        setFoundUser(user);
-        if (user && user.id) setSelectedUserId(user.id); // Ensure ID is string
+        setSelectedUserDisplay(user);
+        if (user && user.id) setSelectedUserId(user.id);
       }
       setShowBpWithUserCreateDialog(false);
       bpWithUserCreateForm.reset();
+      setGstinSearch(""); 
       toast({ title: "Success", description: "Business profile and user created successfully." });
     } catch (error: any) {
       toast({ title: "Error Creating BP & User", description: error.message || "Failed to create business profile with user.", variant: "destructive" });
@@ -226,12 +245,9 @@ export default function CreateOrderPage() {
     setSelectedVariant(null);
     setSelectedQuantity(1);
     try {
-      const product = await fetchProductById(productId); // ID is already string
+      const product = await fetchProductById(productId);
       setSelectedProductForDetails(product);
-      if (product.variants && product.variants.length > 0) {
-        // Auto-select first variant as a default, user can change
-        // setSelectedVariant(product.variants[0]); 
-      } else {
+      if (!product.variants || product.variants.length === 0) {
         toast({title: "Info", description: "This product has no variants defined.", variant: "default"});
       }
     } catch (error: any) {
@@ -259,14 +275,15 @@ export default function CreateOrderPage() {
       
       if (response.id && response.variants && response.variants.length > 0 && response.variants[0] && response.variants[0].id) {
         const newVariant = response.variants[0];
+        const unitPrice = newVariant.price || response.unitPrice || data.unitPrice; 
         const newItem: OrderItemDisplay = {
-          productId: response.id, // Ensure ID is string
-          variantId: newVariant.id, // Ensure ID is string
+          productId: response.id,
+          variantId: newVariant.id,
           quantity: 1, 
-          unitPrice: newVariant.price || data.unitPrice, // Use variant price if available
+          unitPrice: unitPrice,
           productName: response.name ?? "Unknown Product",
           variantName: `${newVariant.color || ''}${newVariant.color && newVariant.size ? ' / ' : ''}${newVariant.size || ''}`.trim() || 'Default',
-          totalPrice: (newVariant.price || data.unitPrice) * 1,
+          totalPrice: unitPrice * 1,
         };
         setOrderItems(prevItems => [...prevItems, newItem]);
         setSelectedProductForDetails(response); 
@@ -299,8 +316,8 @@ export default function CreateOrderPage() {
       setOrderItems(updatedItems);
     } else {
       const newItem: OrderItemDisplay = {
-        productId: selectedProductForDetails.id, // Ensure ID is string
-        variantId: selectedVariant.id, // Ensure ID is string
+        productId: selectedProductForDetails.id,
+        variantId: selectedVariant.id,
         quantity: selectedQuantity,
         unitPrice: unitPrice,
         productName: selectedProductForDetails.name ?? "Unknown Product",
@@ -309,12 +326,11 @@ export default function CreateOrderPage() {
       };
       setOrderItems(prevItems => [...prevItems, newItem]);
     }
-    // Reset selection for next item, but keep product details if user wants to add another variant of same product
     setSelectedVariant(null);
     setSelectedQuantity(1); 
   };
 
-  const handleRemoveOrderItem = (variantIdToRemove: string) => { // ID is string
+  const handleRemoveOrderItem = (variantIdToRemove: string) => {
     setOrderItems(prevItems => prevItems.filter(item => item.variantId !== variantIdToRemove));
   };
 
@@ -347,9 +363,9 @@ export default function CreateOrderPage() {
           <CardContent className="space-y-6">
             <RadioGroup value={customerType} onValueChange={(value: "B2C" | "B2B") => {
               setCustomerType(value);
-              setFoundUser(null); setSelectedUserId(null);
+              setSelectedUserDisplay(null); setSelectedUserId(null);
               setFoundBusinessProfile(null); setSelectedBusinessProfileId(null);
-              setPhoneSearch(""); setGstinSearch("");
+              setPhoneSearch(""); setGstinSearch(""); setSearchedUsers([]);
             }} className="flex gap-4">
               <div className="flex items-center space-x-2"><RadioGroupItem value="B2C" id="r_b2c" /><Label htmlFor="r_b2c">Retail Customer (B2C)</Label></div>
               <div className="flex items-center space-x-2"><RadioGroupItem value="B2B" id="r_b2b" /><Label htmlFor="r_b2b">Business Customer (B2B)</Label></div>
@@ -364,8 +380,27 @@ export default function CreateOrderPage() {
                     {isSearchingUser ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <SearchIcon className="mr-2 h-4 w-4" />} Search
                   </Button>
                 </div>
-                {foundUser && <Card className="mt-2 p-3 bg-green-50 border-green-200"><CardDescription>Selected User: {foundUser.name} ({foundUser.phone})</CardDescription></Card>}
-                 {!isSearchingUser && !foundUser && phoneSearch && (
+                
+                {isSearchingUser && <div className="text-sm text-muted-foreground p-2"><Loader2 className="animate-spin mr-2 h-3 w-3 inline-block"/>Searching...</div>}
+
+                {searchedUsers.length > 0 && !isSearchingUser && (
+                  <Card className="mt-2 p-2 bg-secondary/30">
+                    <CardDescription className="mb-1 text-xs">Multiple users found. Please select one:</CardDescription>
+                    <ScrollArea className="h-40">
+                      {searchedUsers.map(user => (
+                        <Button key={user.id} variant="ghost" className="w-full justify-start text-left h-auto py-1.5 mb-1" onClick={() => handleSelectUserFromList(user)}>
+                          {user.name} ({user.phone}) {user.email && `- ${user.email}`}
+                        </Button>
+                      ))}
+                    </ScrollArea>
+                  </Card>
+                )}
+                {selectedUserDisplay && (
+                    <Card className="mt-2 p-3 bg-green-50 border-green-200">
+                        <CardDescription>Selected User: {selectedUserDisplay.name} ({selectedUserDisplay.phone})</CardDescription>
+                    </Card>
+                )}
+                 {!isSearchingUser && searchedUsers.length === 0 && phoneSearch && !selectedUserDisplay && (
                     <Dialog open={showUserCreateDialog} onOpenChange={setShowUserCreateDialog}>
                         <DialogTrigger asChild><Button variant="outline" className="mt-2">Create New User</Button></DialogTrigger>
                         <DialogContent>
@@ -395,10 +430,12 @@ export default function CreateOrderPage() {
                      {isSearchingBp ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <SearchIcon className="mr-2 h-4 w-4" />} Search
                   </Button>
                 </div>
+                 {isSearchingBp && <div className="text-sm text-muted-foreground p-2"><Loader2 className="animate-spin mr-2 h-3 w-3 inline-block"/>Searching...</div>}
                 {foundBusinessProfile && (
                   <Card className="mt-2 p-3 bg-green-50 border-green-200">
                     <CardDescription>Selected Business: {foundBusinessProfile.name} ({foundBusinessProfile.gstin})</CardDescription>
-                    {foundUser && <CardDescription className="mt-1">Associated User: {foundUser.name} ({foundUser.phone})</CardDescription>}
+                    {selectedUserDisplay && <CardDescription className="mt-1">Associated User: {selectedUserDisplay.name} ({selectedUserDisplay.phone})</CardDescription>}
+                     {!selectedUserDisplay && <CardDescription className="mt-1 text-orange-600">No primary user linked to this BP. Order can proceed, or link user via BP Management.</CardDescription>}
                   </Card>
                 )}
                 {!isSearchingBp && !foundBusinessProfile && gstinSearch && (
@@ -546,7 +583,7 @@ export default function CreateOrderPage() {
                         )}
                       </div>
                     ) : (
-                      <p className="text-muted-foreground">This product has no variants defined.</p>
+                      <p className="text-muted-foreground">This product has no variants defined or available.</p>
                     )}
                   </Card>
                 )}
@@ -656,3 +693,4 @@ export default function CreateOrderPage() {
   );
 }
 
+    
