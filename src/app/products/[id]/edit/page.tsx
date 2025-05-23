@@ -20,9 +20,10 @@ import {
   fetchProductById,
   updateProduct,
   type UpdateProductRequest,
-  type Product,
+  type ProductDto, // Changed from Product to ProductDto
+  type ProductVariantDto
 } from "@/lib/apiClient";
-import { ChevronLeft, Save, PlusCircle } from "lucide-react";
+import { ChevronLeft, Save, PlusCircle, Loader2, Trash2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Hardcoded product statuses as meta API for product statuses is not available
@@ -31,11 +32,11 @@ const hardcodedProductStatuses = ["ACTIVE", "DRAFT", "ARCHIVED", "OUT_OF_STOCK"]
 
 const productFormSchema = z.object({
   name: z.string().min(1, "Product name is required"),
-  brand: z.string().min(1, "Brand name is required"), // Changed to string input
+  brand: z.string().min(1, "Brand name is required"), 
   hsnCode: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   gstTaxRate: z.coerce.number({invalid_type_error: "GST Tax Rate must be a number"}).min(0).optional().nullable(),
-  category: z.string().min(1, "Category name is required"), // Changed to string input
+  category: z.string().min(1, "Category name is required"), 
   subCategory: z.string().optional().nullable(),
   
   status: z.string().optional().nullable(),
@@ -47,8 +48,8 @@ const productFormSchema = z.object({
 
   sku: z.string().optional().nullable(), 
   barcode: z.string().optional().nullable(), 
-  quantity: z.coerce.number({invalid_type_error: "Quantity must be a number"}).int().min(0).optional().nullable(),
-  unitPrice: z.coerce.number({invalid_type_error: "Unit price must be a number"}).min(0).optional().nullable(),
+  // quantity: z.coerce.number({invalid_type_error: "Quantity must be a number"}).int().min(0).optional().nullable(), // Product level quantity often comes from variants
+  // unitPrice: z.coerce.number({invalid_type_error: "Unit price must be a number"}).min(0).optional().nullable(), // Product level price often comes from variants
   costPrice: z.coerce.number({invalid_type_error: "Cost price must be a number"}).min(0).optional().nullable(),
   imageUrlsInput: z.string().optional().nullable(),
   weight: z.coerce.number({invalid_type_error: "Weight must be a number"}).min(0).optional().nullable(),
@@ -60,19 +61,14 @@ const productFormSchema = z.object({
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
 
-// If API returns brandId/categoryId, these maps help display names.
-// For editing, brand/category are text inputs.
-const hardcodedCategoriesMap: { [key: string]: string } = { "1": "Electronics", "2": "Books", "3": "Clothing", "4": "Home Goods" };
-const hardcodedBrandsMap: { [key: string]: string } = { "1": "BrandA", "2": "BrandB", "3": "BrandC" };
-
 
 export default function EditProductPage() {
   const router = useRouter();
   const params = useParams();
   const { toast } = useToast();
-  const productId = Number(params.id);
+  const productId = params.id as string; // ID is a string
 
-  const [product, setProduct] = React.useState<Product | null>(null);
+  const [product, setProduct] = React.useState<ProductDto | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
@@ -82,11 +78,11 @@ export default function EditProductPage() {
     resolver: zodResolver(productFormSchema),
     defaultValues: {
       name: "",
-      brand: "", // Text input now
+      brand: "", 
       hsnCode: "",
       description: "",
       gstTaxRate: undefined,
-      category: "", // Text input now
+      category: "", 
       subCategory: "",
       status: "DRAFT",
       newColorValues: "",
@@ -94,8 +90,8 @@ export default function EditProductPage() {
       tagsInput: "",
       sku: "",
       barcode: "",
-      quantity: 0,
-      unitPrice: 0,
+      // quantity: 0,
+      // unitPrice: 0,
       costPrice: undefined,
       imageUrlsInput: "",
       weight: undefined,
@@ -107,7 +103,7 @@ export default function EditProductPage() {
   });
 
   React.useEffect(() => {
-    if (isNaN(productId)) {
+    if (!productId) {
       toast({ title: "Error", description: "Invalid product ID.", variant: "destructive" });
       router.push("/products");
       return;
@@ -118,23 +114,25 @@ export default function EditProductPage() {
       try {
         const fetchedProduct = await fetchProductById(productId);
         setProduct(fetchedProduct);
+
+        const currentStatus = fetchedProduct.status?.toUpperCase();
+        const validStatus = productStatuses.includes(currentStatus as any) ? currentStatus : "DRAFT";
+        
         form.reset({
-          name: fetchedProduct.name,
-          // API might return brand/category objects with names, or just IDs.
-          // Form uses text input for brand/category names for update.
-          brand: fetchedProduct.brand?.name || (fetchedProduct.brandId ? hardcodedBrandsMap[fetchedProduct.brandId.toString()] : "") || "",
-          category: fetchedProduct.category?.name || (fetchedProduct.categoryId ? hardcodedCategoriesMap[fetchedProduct.categoryId.toString()] : "") || "",
+          name: fetchedProduct.name || "",
+          brand: fetchedProduct.brand || "", // API returns brand name as string
+          category: fetchedProduct.category || "", // API returns category name as string
           subCategory: fetchedProduct.subCategory ?? "",
           hsnCode: fetchedProduct.hsnCode ?? "",
           description: fetchedProduct.description ?? "",
           gstTaxRate: fetchedProduct.gstTaxRate ?? undefined,
-          status: fetchedProduct.status ?? "DRAFT",
+          status: validStatus,
           
           tagsInput: fetchedProduct.tags?.join(", ") ?? "",
-          sku: fetchedProduct.sku ?? "",
-          barcode: fetchedProduct.barcode ?? "",
-          quantity: fetchedProduct.quantity ?? 0,
-          unitPrice: fetchedProduct.unitPrice ?? 0,
+          sku: fetchedProduct.sku ?? "", // Base product SKU
+          barcode: fetchedProduct.barcode ?? "", // Base product barcode
+          // quantity: fetchedProduct.quantity ?? 0, // Usually variant-level
+          // unitPrice: fetchedProduct.unitPrice ?? 0, // Usually variant-level
           costPrice: fetchedProduct.costPrice ?? undefined,
           imageUrlsInput: fetchedProduct.imageUrls?.join(", ") ?? "",
           weight: fetchedProduct.weight ?? undefined,
@@ -161,6 +159,7 @@ export default function EditProductPage() {
   }, [productId, router, toast, form]);
 
   async function onSubmit(data: ProductFormValues) {
+    if (!productId) return;
     setIsSubmitting(true);
     try {
       const colorVariant = data.newColorValues?.split(',').map(c => c.trim()).filter(Boolean) || undefined;
@@ -170,21 +169,21 @@ export default function EditProductPage() {
 
       const payload: UpdateProductRequest = {
         name: data.name,
-        brand: data.brand, // Send brand name as string
+        brand: data.brand, 
         hsnCode: data.hsnCode || undefined,
         description: data.description || undefined,
         gstTaxRate: data.gstTaxRate === undefined || data.gstTaxRate === null ? undefined : Number(data.gstTaxRate),
-        category: data.category, // Send category name as string
+        category: data.category, 
         subCategory: data.subCategory || undefined,
-        colorVariant: (colorVariant && colorVariant.length > 0) ? colorVariant : undefined, // For new variant generation
-        sizeVariant: (sizeVariant && sizeVariant.length > 0) ? sizeVariant : undefined,   // For new variant generation
+        colorVariant: (colorVariant && colorVariant.length > 0) ? colorVariant : undefined, 
+        sizeVariant: (sizeVariant && sizeVariant.length > 0) ? sizeVariant : undefined,   
         tags: tags,
         status: data.status as UpdateProductRequest['status'] || undefined,
         
         sku: data.sku || undefined,
         barcode: data.barcode || undefined,
-        quantity: data.quantity === undefined || data.quantity === null ? undefined : Number(data.quantity),
-        unitPrice: data.unitPrice === undefined || data.unitPrice === null ? undefined : Number(data.unitPrice),
+        // quantity: data.quantity === undefined || data.quantity === null ? undefined : Number(data.quantity),
+        // unitPrice: data.unitPrice === undefined || data.unitPrice === null ? undefined : Number(data.unitPrice),
         costPrice: data.costPrice === undefined || data.costPrice === null ? undefined : Number(data.costPrice),
         imageUrls: imageUrls,
         weight: data.weight === undefined || data.weight === null ? undefined : Number(data.weight),
@@ -200,6 +199,7 @@ export default function EditProductPage() {
         description: "Product updated successfully.",
       });
       router.push("/products"); 
+      router.refresh();
     } catch (error: any) {
       toast({
         title: "Error Updating Product",
@@ -213,17 +213,38 @@ export default function EditProductPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <Skeleton className="h-10 w-1/4" />
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-64 w-full" />
-        <Skeleton className="h-64 w-full" />
+      <div className="space-y-6 pb-8 animate-pulse">
+        <div className="flex items-center gap-2 md:gap-4">
+          <Skeleton className="h-9 w-9" />
+          <div><Skeleton className="h-8 w-3/5 mb-1" /><Skeleton className="h-4 w-4/5" /></div>
+        </div>
+        <Card className="shadow-md">
+          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
+            <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-20 w-full md:col-span-2" />
+          </CardContent>
+        </Card>
+         <Card className="shadow-md">
+          <CardHeader><Skeleton className="h-6 w-1/4" /></CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
+            <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
+          </CardContent>
+        </Card>
+        <Card className="shadow-md">
+          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent className="space-y-4"><Skeleton className="h-32 w-full" /><Skeleton className="h-10 w-32" /></CardContent>
+        </Card>
+        <CardFooter className="flex justify-end gap-2 pt-6">
+          <Skeleton className="h-10 w-24" /><Skeleton className="h-10 w-32" />
+        </CardFooter>
       </div>
     );
   }
 
   if (!product) {
-    return <p>Product not found.</p>;
+    return <p className="text-center text-muted-foreground py-10">Product not found or failed to load.</p>;
   }
 
   return (
@@ -305,7 +326,7 @@ export default function EditProductPage() {
               <FormField control={form.control} name="gstTaxRate" render={({ field }) => (
                   <FormItem>
                     <FormLabel>GST Tax Rate (%)</FormLabel>
-                    <FormControl><Input type="number" step="0.01" placeholder="e.g., 18" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? ""} /></FormControl>
+                    <FormControl><Input type="number" step="0.01" placeholder="e.g., 18" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -335,26 +356,11 @@ export default function EditProductPage() {
                   </FormItem>
                 )}
               />
-              <FormField control={form.control} name="quantity" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Base Quantity</FormLabel>
-                    <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? 0} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField control={form.control} name="unitPrice" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Base Unit Price</FormLabel>
-                    <FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? 0.00}/></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* Base Quantity and Unit Price removed as they are variant-specific */}
               <FormField control={form.control} name="costPrice" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Base Cost Price</FormLabel>
-                    <FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? ""} /></FormControl>
+                    <FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -404,7 +410,8 @@ export default function EditProductPage() {
                       <TableHead>SKU</TableHead>
                       <TableHead>Color</TableHead>
                       <TableHead>Size</TableHead>
-                      <TableHead>Price</TableHead>
+                      <TableHead>Selling Price</TableHead>
+                      <TableHead>MRP</TableHead>
                       <TableHead>Stock</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -413,9 +420,10 @@ export default function EditProductPage() {
                     {product.variants.map(variant => (
                       <TableRow key={variant.id}>
                         <TableCell>{variant.sku || 'N/A'}</TableCell>
-                        <TableCell>{variant.colorValue || 'N/A'}</TableCell> {/* API VariantDto uses 'color' */}
-                        <TableCell>{variant.sizeValue || 'N/A'}</TableCell>   {/* API VariantDto uses 'size' */}
-                        <TableCell>{variant.price !== null && variant.price !== undefined ? `$${variant.price.toFixed(2)}` : 'N/A'}</TableCell>
+                        <TableCell>{variant.color || 'N/A'}</TableCell> 
+                        <TableCell>{variant.size || 'N/A'}</TableCell>   
+                        <TableCell>{variant.sellingPrice !== null && variant.sellingPrice !== undefined ? `₹${variant.sellingPrice.toFixed(2)}` : 'N/A'}</TableCell>
+                        <TableCell>{variant.mrp !== null && variant.mrp !== undefined ? `₹${variant.mrp.toFixed(2)}` : 'N/A'}</TableCell>
                         <TableCell>{variant.quantity}</TableCell>
                         <TableCell className="text-right">
                           <Button type="button" variant="outline" size="sm" onClick={() => alert(`Edit variant ${variant.id} - TBD: Implement variant edit modal/form using updateProductVariant API.`)}>Edit</Button>
@@ -452,7 +460,7 @@ export default function EditProductPage() {
                   <FormItem className="md:col-span-2">
                     <FormLabel>Image URLs</FormLabel>
                     <FormControl><Textarea rows={3} placeholder="e.g., https://example.com/image1.jpg" {...field} value={field.value ?? ""} /></FormControl>
-                    <FormDescription>Comma-separated.</FormDescription>
+                    <FormDescription>Comma-separated product-level image URLs.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -460,7 +468,7 @@ export default function EditProductPage() {
               <FormField control={form.control} name="weight" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Weight (kg)</FormLabel>
-                    <FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? ""} /></FormControl>
+                    <FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -522,7 +530,7 @@ export default function EditProductPage() {
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting || isLoading} className="w-full sm:w-auto">
-              {isSubmitting ? "Saving..." : <><Save className="mr-2 h-4 w-4" /> Save Changes</>}
+              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</> : <><Save className="mr-2 h-4 w-4" /> Save Changes</>}
             </Button>
           </CardFooter>
         </form>

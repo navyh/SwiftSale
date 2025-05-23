@@ -80,12 +80,15 @@ export default function ProductsPage() {
     setError(null);
     try {
       const productsData = await fetchProducts({ page, size, search });
+      console.log("Fetched products data:", productsData);
       if (productsData && Array.isArray(productsData.content)) {
         setProductsPage(productsData);
       } else {
+        console.warn("Unexpected products data structure:", productsData);
         setProductsPage(defaultPageData);
       }
     } catch (err: any) {
+      console.error("Failed to fetch products:", err);
       setError(err.message || "Failed to fetch data.");
       toast({
         title: "Error",
@@ -118,8 +121,6 @@ export default function ProductsPage() {
 
   const filteredProducts = React.useMemo(() => {
     if (!productsPage.content || productsPage.content.length === 0) return [];
-    // Search term filtering is handled by the API, so we directly use productsPage.content
-    // If client-side filtering was needed on top, it would go here.
     return productsPage.content;
   }, [productsPage.content]);
 
@@ -171,6 +172,8 @@ export default function ProductsPage() {
   const handlePageChange = (newPage: number) => {
     setCurrentPage(newPage);
   };
+  
+  console.log("Rendering ProductsPage, isLoading:", isLoading, "error:", error, "filteredProducts length:", filteredProducts.length);
 
   return (
     <div className="space-y-6">
@@ -295,12 +298,11 @@ export default function ProductsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        {/* View button can be added if a dedicated product detail page exists */}
-                        {/* <Button variant="ghost" size="icon" className="hover:text-primary" asChild title="View Product">
+                        <Button variant="ghost" size="icon" className="hover:text-primary" asChild title="View Product">
                           <Link href={`/products/${product.id}`}>
                             <Eye className="h-4 w-4" />
                           </Link>
-                        </Button> */}
+                        </Button>
                         <Button variant="ghost" size="icon" className="hover:text-primary" asChild title="Edit Product">
                           <Link href={`/products/${product.id}/edit`}>
                             <Edit3 className="h-4 w-4" />
@@ -388,11 +390,11 @@ export default function ProductsPage() {
                       </Badge>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
-                       {/* <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" asChild title="View Product">
+                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" asChild title="View Product">
                           <Link href={`/products/${product.id}`}>
                             <Eye className="h-4 w-4" />
                           </Link>
-                        </Button> */}
+                        </Button>
                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" asChild title="Edit Product">
                         <Link href={`/products/${product.id}/edit`}>
                           <Edit3 className="h-4 w-4" />
