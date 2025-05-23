@@ -85,7 +85,6 @@ export interface UserDto {
   status?: 'ACTIVE' | 'INACTIVE' | string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
-  // type and gstin removed
 }
 
 export interface CreateUserRequest {
@@ -147,7 +146,7 @@ export async function deleteUser(userId: string): Promise<void> {
 
 export async function searchUserByPhone(phone: string): Promise<UserDto[]> {
   try {
-    const result = await fetchAPI<UserDto | UserDto[]>(`/users/by-phone?phone=${encodeURIComponent(phone)}`);
+    const result = await fetchAPI<UserDto | UserDto[] | null>(`/users/by-phone?phone=${encodeURIComponent(phone)}`);
     if (Array.isArray(result)) {
       return result;
     } else if (result) { 
@@ -631,10 +630,23 @@ export interface InvoiceDto {
 }
 
 
-export async function searchProductsFuzzy(keyword: string): Promise<ProductSearchResultDto[]> {
-  const data = await fetchAPI<ProductSearchResultDto[] | undefined>(`/products/search?keyword=${encodeURIComponent(keyword)}`);
-  return Array.isArray(data) ? data : [];
+export async function searchProductsFuzzy(
+  keyword: string,
+  page: number = 0,
+  size: number = 10,
+  sort: string = 'name,asc' // Default sort if not provided
+): Promise<ProductSearchResultDto[]> {
+  const queryParams = new URLSearchParams();
+  queryParams.append('keyword', keyword);
+  queryParams.append('page', page.toString());
+  queryParams.append('size', size.toString());
+  queryParams.append('sort', sort);
+
+  const queryString = queryParams.toString();
+  const data = await fetchAPI<Page<ProductSearchResultDto> | undefined>(`/products/search?${queryString}`);
+  return data?.content ?? []; // Return the content array from the Page object or an empty array
 }
+
 
 export async function quickCreateProduct(productData: QuickCreateProductRequest): Promise<QuickCreateProductResponse> {
     return fetchAPI<QuickCreateProductResponse>('/products/quick', {

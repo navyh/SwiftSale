@@ -154,7 +154,7 @@ export default function CreateOrderPage() {
           setSelectedUserDisplay(user); 
           if (user && user.id) setSelectedUserId(user.id);
         } else {
-          toast({ title: "Info", description: "Business profile found, but no primary user linked. Please link a user via Business Profile Management if needed, or proceed to add items.", variant: "default" });
+          toast({ title: "Info", description: "Business profile found, but no primary user linked. You can proceed, or link a user via Business Profile Management.", variant: "default" });
         }
       } else {
         setShowBpWithUserCreateDialog(true);
@@ -191,7 +191,7 @@ export default function CreateOrderPage() {
     };
     try {
       const response = await createBusinessProfileWithUser(payload);
-      setFoundBusinessProfile(response); // API returns the created BusinessProfileDto
+      setFoundBusinessProfile(response); 
       if (response && response.id) setSelectedBusinessProfileId(response.id);
       
       const createdUserInResponse = response.user; 
@@ -221,7 +221,8 @@ export default function CreateOrderPage() {
     }
     setIsSearchingProducts(true);
     try {
-      const results = await searchProductsFuzzy(productSearchQuery);
+      // Pass default pagination and sort, or make them configurable
+      const results = await searchProductsFuzzy(productSearchQuery, 0, 20, 'name,asc');
       setProductSearchResults(results);
     } catch (error: any) {
       toast({ title: "Error Searching Products", description: error.message || "Failed to search products.", variant: "destructive" });
@@ -234,6 +235,7 @@ export default function CreateOrderPage() {
   React.useEffect(() => {
     const timer = setTimeout(() => {
         if (productSearchQuery) handleProductSearch();
+        else setProductSearchResults([]); // Clear results if query is empty
     }, 500); 
     return () => clearTimeout(timer);
   }, [productSearchQuery, handleProductSearch]);
@@ -268,25 +270,25 @@ export default function CreateOrderPage() {
       unitPrice: data.unitPrice,
     };
     try {
-      const response = await quickCreateProduct(payload); 
+      const responseProduct = await quickCreateProduct(payload); 
       setShowQuickProductDialog(false);
       quickProductCreateForm.reset();
-      toast({ title: "Success", description: `Product "${response.name}" created quickly.` });
+      toast({ title: "Success", description: `Product "${responseProduct.name}" created quickly.` });
       
-      if (response.id && response.variants && response.variants.length > 0 && response.variants[0] && response.variants[0].id) {
-        const newVariant = response.variants[0];
-        const unitPrice = newVariant.price || response.unitPrice || data.unitPrice; 
+      if (responseProduct.id && responseProduct.variants && responseProduct.variants.length > 0 && responseProduct.variants[0] && responseProduct.variants[0].id) {
+        const newVariant = responseProduct.variants[0];
+        const unitPrice = newVariant.price || responseProduct.unitPrice || data.unitPrice; 
         const newItem: OrderItemDisplay = {
-          productId: response.id,
+          productId: responseProduct.id,
           variantId: newVariant.id,
           quantity: 1, 
           unitPrice: unitPrice,
-          productName: response.name ?? "Unknown Product",
+          productName: responseProduct.name ?? "Unknown Product",
           variantName: `${newVariant.color || ''}${newVariant.color && newVariant.size ? ' / ' : ''}${newVariant.size || ''}`.trim() || 'Default',
           totalPrice: unitPrice * 1,
         };
         setOrderItems(prevItems => [...prevItems, newItem]);
-        setSelectedProductForDetails(response); 
+        setSelectedProductForDetails(responseProduct); 
         setSelectedVariant(newVariant); 
         setSelectedQuantity(1);
       } else {
@@ -326,8 +328,13 @@ export default function CreateOrderPage() {
       };
       setOrderItems(prevItems => [...prevItems, newItem]);
     }
-    setSelectedVariant(null);
+    // Optionally reset selection after adding
+    // setSelectedProductForDetails(null); 
+    // setSelectedVariant(null);
+    // setProductSearchQuery("");
+    // setProductSearchResults([]);
     setSelectedQuantity(1); 
+    toast({ title: "Item Added", description: `${selectedProductForDetails.name} (${selectedVariant.color}/${selectedVariant.size}) added to order.`});
   };
 
   const handleRemoveOrderItem = (variantIdToRemove: string) => {
@@ -381,14 +388,14 @@ export default function CreateOrderPage() {
                   </Button>
                 </div>
                 
-                {isSearchingUser && <div className="text-sm text-muted-foreground p-2"><Loader2 className="animate-spin mr-2 h-3 w-3 inline-block"/>Searching...</div>}
+                {isSearchingUser && <div className="text-sm text-muted-foreground p-2"><Loader2 className="animate-spin mr-2 h-3 w-3 inline-block"/>Searching users...</div>}
 
                 {searchedUsers.length > 0 && !isSearchingUser && (
                   <Card className="mt-2 p-2 bg-secondary/30">
-                    <CardDescription className="mb-1 text-xs">Multiple users found. Please select one:</CardDescription>
+                    <CardDescription className="mb-1 text-xs px-2">Multiple users found. Please select one:</CardDescription>
                     <ScrollArea className="h-40">
                       {searchedUsers.map(user => (
-                        <Button key={user.id} variant="ghost" className="w-full justify-start text-left h-auto py-1.5 mb-1" onClick={() => handleSelectUserFromList(user)}>
+                        <Button key={user.id} variant="ghost" className="w-full justify-start text-left h-auto py-1.5 px-2 mb-1" onClick={() => handleSelectUserFromList(user)}>
                           {user.name} ({user.phone}) {user.email && `- ${user.email}`}
                         </Button>
                       ))}
@@ -412,7 +419,7 @@ export default function CreateOrderPage() {
                             {userCreateForm.formState.errors.phone && <p className="text-xs text-destructive">{userCreateForm.formState.errors.phone.message}</p>}
                             <Input {...userCreateForm.register("email")} placeholder="Email (Optional)" />
                             {userCreateForm.formState.errors.email && <p className="text-xs text-destructive">{userCreateForm.formState.errors.email.message}</p>}
-                            <DialogFooter><Button type="submit" disabled={isUserCreateSubmitting}>
+                            <DialogFooter><DialogClose asChild><Button variant="ghost">Cancel</Button></DialogClose><Button type="submit" disabled={isUserCreateSubmitting}>
                                {isUserCreateSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : null} Create User</Button></DialogFooter>
                         </form>
                         </DialogContent>
@@ -430,12 +437,12 @@ export default function CreateOrderPage() {
                      {isSearchingBp ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <SearchIcon className="mr-2 h-4 w-4" />} Search
                   </Button>
                 </div>
-                 {isSearchingBp && <div className="text-sm text-muted-foreground p-2"><Loader2 className="animate-spin mr-2 h-3 w-3 inline-block"/>Searching...</div>}
+                 {isSearchingBp && <div className="text-sm text-muted-foreground p-2"><Loader2 className="animate-spin mr-2 h-3 w-3 inline-block"/>Searching business profile...</div>}
                 {foundBusinessProfile && (
                   <Card className="mt-2 p-3 bg-green-50 border-green-200">
                     <CardDescription>Selected Business: {foundBusinessProfile.name} ({foundBusinessProfile.gstin})</CardDescription>
                     {selectedUserDisplay && <CardDescription className="mt-1">Associated User: {selectedUserDisplay.name} ({selectedUserDisplay.phone})</CardDescription>}
-                     {!selectedUserDisplay && <CardDescription className="mt-1 text-orange-600">No primary user linked to this BP. Order can proceed, or link user via BP Management.</CardDescription>}
+                     {!selectedUserDisplay && <CardDescription className="mt-1 text-orange-600">No primary user linked. Order can proceed, or link user via BP Management.</CardDescription>}
                   </Card>
                 )}
                 {!isSearchingBp && !foundBusinessProfile && gstinSearch && (
@@ -456,7 +463,7 @@ export default function CreateOrderPage() {
                             {bpWithUserCreateForm.formState.errors.userPhone && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.userPhone.message}</p>}
                             <Input {...bpWithUserCreateForm.register("userEmail")} placeholder="User Email (Optional)" />
                             {bpWithUserCreateForm.formState.errors.userEmail && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.userEmail.message}</p>}
-                            <DialogFooter><Button type="submit" disabled={isBpWithUserCreateSubmitting}>
+                            <DialogFooter><DialogClose asChild><Button variant="ghost">Cancel</Button></DialogClose><Button type="submit" disabled={isBpWithUserCreateSubmitting}>
                               {isBpWithUserCreateSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : null}  Create BP & User</Button></DialogFooter>
                         </form>
                         </DialogContent>
@@ -487,13 +494,13 @@ export default function CreateOrderPage() {
                   </div>
                 </div>
 
-                {isSearchingProducts && <div className="flex items-center justify-center p-4"><Loader2 className="animate-spin h-5 w-5 mr-2"/>Searching products...</div>}
+                {isSearchingProducts && <div className="flex items-center justify-center p-4 text-muted-foreground"><Loader2 className="animate-spin h-5 w-5 mr-2"/>Searching products...</div>}
                 
                 {productSearchResults.length > 0 && !isSearchingProducts && (
-                  <ScrollArea className="h-60 border rounded-md p-2">
-                    <p className="text-sm text-muted-foreground mb-2">Search Results ({productSearchResults.length}):</p>
+                  <ScrollArea className="h-60 border rounded-md p-2 bg-secondary/20">
+                    <p className="text-sm text-muted-foreground mb-2 px-2">Search Results ({productSearchResults.length}):</p>
                     {productSearchResults.map(product => (
-                      <Button key={product.id} variant="ghost" className="w-full justify-start mb-1 h-auto py-2 text-left" onClick={() => handleSelectSearchedProduct(product.id)}>
+                      <Button key={product.id} variant="ghost" className="w-full justify-start mb-1 h-auto py-2 px-2 text-left" onClick={() => handleSelectSearchedProduct(product.id)}>
                         <div>
                             <p className="font-medium">{product.name}</p>
                             <p className="text-xs text-muted-foreground">
@@ -526,7 +533,7 @@ export default function CreateOrderPage() {
                                      {quickProductCreateForm.formState.errors.sizes && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.sizes.message}</p>}
                                     <Input type="number" step="0.01" {...quickProductCreateForm.register("unitPrice")} placeholder="Unit Price *" />
                                     {quickProductCreateForm.formState.errors.unitPrice && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.unitPrice.message}</p>}
-                                    <DialogFooter><Button type="submit" disabled={isQuickProductSubmitting}>
+                                    <DialogFooter><DialogClose asChild><Button variant="ghost">Cancel</Button></DialogClose><Button type="submit" disabled={isQuickProductSubmitting}>
                                       {isQuickProductSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : null} Quick Create</Button></DialogFooter>
                                 </form>
                             </DialogContent>
@@ -534,15 +541,15 @@ export default function CreateOrderPage() {
                     </div>
                 )}
 
-                {isLoadingProductDetails && <div className="flex items-center justify-center p-4"><Loader2 className="animate-spin h-6 w-6 mr-2"/> Fetching product details...</div>}
+                {isLoadingProductDetails && <div className="flex items-center justify-center p-4 text-muted-foreground"><Loader2 className="animate-spin h-6 w-6 mr-2"/> Fetching product details...</div>}
                 
                 {selectedProductForDetails && !isLoadingProductDetails && (
-                  <Card className="p-4 mt-4 shadow-sm">
+                  <Card className="p-4 mt-4 shadow-sm border">
                     <CardTitle className="text-lg mb-3">Configure: {selectedProductForDetails.name}</CardTitle>
                     {selectedProductForDetails.variants && selectedProductForDetails.variants.length > 0 ? (
                       <div className="space-y-4">
                         <div>
-                          <Label className="font-medium">Select Variant:</Label>
+                          <Label className="font-medium text-sm">Select Variant:</Label>
                            <RadioGroup 
                                 onValueChange={(variantId) => {
                                     const v = selectedProductForDetails.variants?.find(va => va.id === variantId);
@@ -571,19 +578,19 @@ export default function CreateOrderPage() {
                             </RadioGroup>
                         </div>
                         {selectedVariant && (
-                            <div className="flex items-end gap-3">
-                                <div>
-                                    <Label htmlFor="quantity" className="font-medium">Quantity:</Label>
-                                    <Input id="quantity" type="number" value={selectedQuantity} onChange={e => setSelectedQuantity(parseInt(e.target.value) > 0 ? parseInt(e.target.value) : 1)} min="1" className="w-24 mt-1" />
+                            <div className="flex items-end gap-3 pt-2 border-t border-dashed">
+                                <div className="flex-grow">
+                                    <Label htmlFor="quantity" className="font-medium text-sm">Quantity:</Label>
+                                    <Input id="quantity" type="number" value={selectedQuantity} onChange={e => setSelectedQuantity(parseInt(e.target.value) > 0 ? parseInt(e.target.value) : 1)} min="1" className="w-24 mt-1 h-9" />
                                 </div>
-                                <Button onClick={handleAddOrderItem} disabled={!selectedVariant || selectedQuantity <= 0} className="h-10">
+                                <Button onClick={handleAddOrderItem} disabled={!selectedVariant || selectedQuantity <= 0} className="h-9">
                                   <PlusCircle className="mr-2 h-4 w-4" /> Add to Order
                                 </Button>
                             </div>
                         )}
                       </div>
                     ) : (
-                      <p className="text-muted-foreground">This product has no variants defined or available.</p>
+                      <p className="text-muted-foreground py-3">This product has no variants defined or available.</p>
                     )}
                   </Card>
                 )}
@@ -602,7 +609,7 @@ export default function CreateOrderPage() {
                     <p className="text-xs text-muted-foreground">Add products using the search panel.</p>
                   </div>
                 ) : (
-                  <ScrollArea className="h-[calc(100vh-20rem)] max-h-[500px]"> 
+                  <ScrollArea className="h-[calc(100vh-22rem)] max-h-[500px] -mx-6 px-6"> 
                     <Table>
                       <TableHeader><TableRow><TableHead>Item</TableHead><TableHead className="text-center">Qty</TableHead><TableHead className="text-right">Total</TableHead><TableHead></TableHead></TableRow></TableHeader>
                       <TableBody>
@@ -613,8 +620,8 @@ export default function CreateOrderPage() {
                               <p className="text-xs text-muted-foreground">{item.variantName} (@ ₹{item.unitPrice.toFixed(2)})</p>
                             </TableCell>
                             <TableCell className="text-center py-2">{item.quantity}</TableCell>
-                            <TableCell className="text-right py-2">₹{item.totalPrice.toFixed(2)}</TableCell>
-                            <TableCell className="py-2">
+                            <TableCell className="text-right py-2 font-medium">₹{item.totalPrice.toFixed(2)}</TableCell>
+                            <TableCell className="py-2 pl-1 pr-2">
                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRemoveOrderItem(item.variantId)}>
                                     <X className="h-3.5 w-3.5 text-destructive"/>
                                     <span className="sr-only">Remove item</span>
@@ -635,12 +642,12 @@ export default function CreateOrderPage() {
                     </div>
                 )}
               </CardContent>
-              <CardFooter className="flex-col space-y-2 pt-4">
+              <CardFooter className="flex-col items-stretch space-y-2 pt-4">
                  <Button onClick={nextStep} disabled={!canProceedToStep3} className="w-full">
                     Next: Review & Payment <ChevronRight className="h-4 w-4 ml-2" />
                  </Button>
                  <Button onClick={prevStep} variant="outline" className="w-full">
-                    Back to Customer <ChevronLeft className="h-4 w-4 mr-2" />
+                    <ChevronLeft className="h-4 w-4 mr-2" /> Back to Customer 
                  </Button>
               </CardFooter>
             </Card>
