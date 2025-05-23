@@ -33,7 +33,7 @@ import {
   searchBusinessProfileByGstin, createBusinessProfileWithUser, type CreateBusinessProfileWithUserRequest, type CreateBusinessProfileWithUserResponse,
   searchProductsFuzzy, type ProductSearchResultDto, type ProductDto, fetchProductById, type ProductVariantDto,
   quickCreateProduct, type QuickCreateProductRequest, type QuickCreateProductResponse,
-  type AddressCreateDto, type OrderItemRequest, type CreateOrderRequest, type OrderDto, Page
+  type AddressDto, type AddressCreateDto, type OrderItemRequest, type CreateOrderRequest, type OrderDto, Page, CustomerDetailsDto
 } from "@/lib/apiClient";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -69,24 +69,30 @@ export interface OrderItemDisplay {
   productId: string;
   variantId: string;
   productName: string;
-  variantName: string; // e.g., "Red / M"
+  variantName: string; 
   hsnCode?: string | null;
   quantity: number;
   mrp: number; 
   discountRate: number; // percentage
-  discountAmount: number; // calculated
+  discountAmount: number; // calculated: mrp * (discountRate / 100)
   sellingPrice: number; // calculated: mrp - discountAmount (this becomes unitPrice for API)
-  gstTaxRate: number; // percentage
-  gstAmount: number; // calculated
+  gstTaxRate: number; // percentage from select
+  gstAmount: number; // calculated total GST for the line item: sellingPrice * quantity * (gstTaxRate / 100)
+  igstAmount: number; // calculated
+  sgstAmount: number; // calculated
+  cgstAmount: number; // calculated
   finalItemPrice: number; // calculated: (sellingPrice * quantity) + gstAmount for the line
   unitPrice: number; // API's unitPrice is our sellingPrice (price per single item before tax)
 }
+
+const SELLER_STATE_CODE = "KA"; // Example: Karnataka. TODO: Make this configurable via settings
+const STANDARD_GST_RATES = [0, 5, 12, 18, 28];
 
 
 export default function CreateOrderPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [currentStep, setCurrentStep] = React.useState(1); // Now 4 steps
+  const [currentStep, setCurrentStep] = React.useState(1); 
   const [customerType, setCustomerType] = React.useState<"B2C" | "B2B">("B2C");
   
   // Step 1 State
@@ -95,8 +101,9 @@ export default function CreateOrderPage() {
   const [searchedUsers, setSearchedUsers] = React.useState<UserDto[]>([]); 
   const [selectedUserDisplay, setSelectedUserDisplay] = React.useState<UserDto | null>(null); 
   const [foundBusinessProfile, setFoundBusinessProfile] = React.useState<BusinessProfileDto | null>(null);
-  const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
+  const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null); // Holds ID of the *end customer* or main contact for B2B
   const [selectedBusinessProfileId, setSelectedBusinessProfileId] = React.useState<string | null>(null);
+  const [customerStateCode, setCustomerStateCode] = React.useState<string | null>(SELLER_STATE_CODE); // Default to seller state
 
   const [isSearchingUser, setIsSearchingUser] = React.useState(false);
   const [isSearchingBp, setIsSearchingBp] = React.useState(false);
@@ -116,10 +123,35 @@ export default function CreateOrderPage() {
   const [orderItems, setOrderItems] = React.useState<OrderItemDisplay[]>([]);
   const [showQuickProductDialog, setShowQuickProductDialog] = React.useState(false);
   const [isQuickProductSubmitting, setIsQuickProductSubmitting] = React.useState(false);
+  
+  // General submitting state for final order
+  const [isSubmittingOrder, setIsSubmittingOrder] = React.useState(false);
+
 
   const userCreateForm = useForm<UserCreateDialogValues>({ resolver: zodResolver(userCreateDialogSchema) });
   const bpWithUserCreateForm = useForm<BpWithUserCreateDialogValues>({ resolver: zodResolver(bpWithUserCreateDialogSchema) });
   const quickProductCreateForm = useForm<QuickProductCreateDialogValues>({ resolver: zodResolver(quickProductCreateDialogSchema) });
+
+  // Determine Customer State Code
+  React.useEffect(() => {
+    let determinedStateCode: string | null = null;
+    if (customerType === "B2C" && selectedUserDisplay?.addresses && selectedUserDisplay.addresses.length > 0) {
+      const defaultBilling = selectedUserDisplay.addresses.find(a => a.isDefault && a.type === "BILLING");
+      const anyBilling = selectedUserDisplay.addresses.find(a => a.type === "BILLING");
+      const anyAddress = selectedUserDisplay.addresses[0];
+      determinedStateCode = defaultBilling?.state || anyBilling?.state || anyAddress?.state || null;
+    } else if (customerType === "B2B" && foundBusinessProfile?.addresses && foundBusinessProfile.addresses.length > 0) {
+      const defaultBilling = foundBusinessProfile.addresses.find(a => a.isDefault && a.type === "BILLING");
+      const anyBilling = foundBusinessProfile.addresses.find(a => a.type === "BILLING");
+      const anyAddress = foundBusinessProfile.addresses[0];
+      determinedStateCode = defaultBilling?.state || anyBilling?.state || anyAddress?.state || null;
+      if (!determinedStateCode) {
+         toast({ title: "Warning", description: `Business Profile ${foundBusinessProfile.name} should ideally have an address with a state for accurate GST calculation. Assuming intra-state for now.`, variant: "default", duration: 5000 });
+      }
+    }
+    setCustomerStateCode(determinedStateCode || SELLER_STATE_CODE); // Fallback to seller state
+  }, [selectedUserDisplay, foundBusinessProfile, customerType, toast]);
+
 
   const handleUserSearch = async () => {
     if (!phoneSearch) return;
@@ -287,12 +319,18 @@ export default function CreateOrderPage() {
       
       if (responseProduct.id && responseProduct.variants && responseProduct.variants.length > 0 && responseProduct.variants[0]?.id) {
         const newVariant = responseProduct.variants[0];
-        const mrp = newVariant.mrp ?? newVariant.compareAtPrice ?? newVariant.price ?? responseProduct.unitPrice ?? data.unitPrice; 
+        
+        const mrp = newVariant.mrp ?? newVariant.compareAtPrice ?? newVariant.price ?? responseProduct.unitPrice ?? data.unitPrice;
         const sellingPrice = newVariant.sellingPrice ?? newVariant.price ?? responseProduct.unitPrice ?? data.unitPrice;
-        const discountAmount = mrp - sellingPrice;
+        const discountAmount = mrp > 0 ? mrp - sellingPrice : 0;
         const discountRate = mrp > 0 ? (discountAmount / mrp) * 100 : 0;
-        const gstTaxRate = responseProduct.gstTaxRate ?? 0; 
-        const gstAmount = sellingPrice * (gstTaxRate / 100);
+        const gstTaxRate = responseProduct.gstTaxRate ?? 0;
+        
+        // Line item calculations
+        const lineDiscountAmount = discountAmount * 1; // For 1 unit
+        const lineSellingPriceTotal = sellingPrice * 1;
+        const lineGstAmount = sellingPrice * (gstTaxRate / 100) * 1;
+        const lineFinalPrice = lineSellingPriceTotal + lineGstAmount;
 
         const newItem: OrderItemDisplay = {
           productId: responseProduct.id,
@@ -300,18 +338,21 @@ export default function CreateOrderPage() {
           productName: responseProduct.name ?? "Unknown Product",
           variantName: `${newVariant.color || ''}${newVariant.color && newVariant.size ? ' / ' : ''}${newVariant.size || ''}`.trim() || 'Default',
           hsnCode: responseProduct.hsnCode,
-          quantity: 1, // Default quantity
+          quantity: 1, 
           mrp: mrp,
           discountRate: discountRate,
-          discountAmount: discountAmount, // Per unit
-          sellingPrice: sellingPrice,    // Per unit, after discount
-          unitPrice: sellingPrice,       // API's unitPrice is our sellingPrice before tax
+          discountAmount: lineDiscountAmount, 
+          sellingPrice: sellingPrice,    
+          unitPrice: sellingPrice,       
           gstTaxRate: gstTaxRate,
-          gstAmount: gstAmount,          // Per unit
-          finalItemPrice: (sellingPrice + gstAmount) * 1, // For one unit initially
+          gstAmount: lineGstAmount,
+          igstAmount: customerStateCode === SELLER_STATE_CODE ? 0 : lineGstAmount,
+          sgstAmount: customerStateCode === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
+          cgstAmount: customerStateCode === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
+          finalItemPrice: lineFinalPrice,
         };
         setOrderItems(prevItems => [...prevItems, newItem]);
-        setSelectedProductForDetails(null); // Clear selection area after adding
+        setSelectedProductForDetails(null); 
         setSelectedVariant(null);
         setSelectedQuantity(1);
         setProductSearchQuery(""); 
@@ -336,21 +377,29 @@ export default function CreateOrderPage() {
     
     const mrp = selectedVariant.mrp ?? selectedVariant.compareAtPrice ?? selectedVariant.price ?? selectedProductForDetails.unitPrice ?? 0;
     const sellingPrice = selectedVariant.sellingPrice ?? selectedVariant.price ?? selectedProductForDetails.unitPrice ?? 0;
-    const discountAmount = mrp - sellingPrice; // per unit
-    const discountRate = mrp > 0 ? (discountAmount / mrp) * 100 : 0;
+    const discountAmountPerUnit = mrp > 0 ? mrp - sellingPrice : 0;
+    const discountRate = mrp > 0 ? (discountAmountPerUnit / mrp) * 100 : 0;
     const gstTaxRate = selectedProductForDetails.gstTaxRate ?? 0; 
-    const gstAmount = sellingPrice * (gstTaxRate / 100); // per unit
+    const gstAmountPerUnit = sellingPrice * (gstTaxRate / 100);
 
     if (existingItemIndex > -1) {
       const updatedItems = [...orderItems];
       const currentItem = updatedItems[existingItemIndex];
-      currentItem.quantity += selectedQuantity;
-      // Recalculate amounts based on new quantity for the line item
-      currentItem.discountAmount = (currentItem.mrp - currentItem.sellingPrice) * currentItem.quantity; // total discount for line
-      currentItem.gstAmount = currentItem.sellingPrice * (currentItem.gstTaxRate / 100) * currentItem.quantity; // total GST for line
-      currentItem.finalItemPrice = (currentItem.sellingPrice * (1 + currentItem.gstTaxRate / 100)) * currentItem.quantity;
+      const newQuantity = currentItem.quantity + selectedQuantity;
+      
+      currentItem.quantity = newQuantity;
+      currentItem.discountAmount = discountAmountPerUnit * newQuantity; 
+      currentItem.gstAmount = gstAmountPerUnit * newQuantity; 
+      currentItem.finalItemPrice = (sellingPrice + gstAmountPerUnit) * newQuantity;
+      currentItem.igstAmount = customerStateCode === SELLER_STATE_CODE ? 0 : currentItem.gstAmount;
+      currentItem.sgstAmount = customerStateCode === SELLER_STATE_CODE ? currentItem.gstAmount / 2 : 0;
+      currentItem.cgstAmount = customerStateCode === SELLER_STATE_CODE ? currentItem.gstAmount / 2 : 0;
       setOrderItems(updatedItems);
     } else {
+      const lineDiscountAmount = discountAmountPerUnit * selectedQuantity;
+      const lineGstAmount = gstAmountPerUnit * selectedQuantity;
+      const lineFinalPrice = (sellingPrice + gstAmountPerUnit) * selectedQuantity;
+
       const newItem: OrderItemDisplay = {
         productId: selectedProductForDetails.id,
         variantId: selectedVariant.id,
@@ -358,19 +407,21 @@ export default function CreateOrderPage() {
         variantName: `${selectedVariant.color || ''}${selectedVariant.color && selectedVariant.size ? ' / ' : ''}${selectedVariant.size || ''}`.trim() || 'Default',
         hsnCode: selectedProductForDetails.hsnCode,
         quantity: selectedQuantity,
-        mrp: mrp,
-        discountRate: discountRate,
-        discountAmount: discountAmount * selectedQuantity, // For total quantity
+        mrp: mrp, // Per unit
+        discountRate: discountRate, // Per unit
+        discountAmount: lineDiscountAmount, // Total for line
         sellingPrice: sellingPrice, // Per unit selling price
         unitPrice: sellingPrice,    // API's unitPrice
-        gstTaxRate: gstTaxRate,
-        gstAmount: gstAmount * selectedQuantity,         // For total quantity
-        finalItemPrice: (sellingPrice + gstAmount) * selectedQuantity,
+        gstTaxRate: gstTaxRate, // Per unit
+        gstAmount: lineGstAmount, // Total for line
+        igstAmount: customerStateCode === SELLER_STATE_CODE ? 0 : lineGstAmount,
+        sgstAmount: customerStateCode === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
+        cgstAmount: customerStateCode === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
+        finalItemPrice: lineFinalPrice, // Total for line
       };
       setOrderItems(prevItems => [...prevItems, newItem]);
     }
     
-    // Reset selection area after adding
     setSelectedProductForDetails(null);
     setSelectedVariant(null);
     setSelectedQuantity(1);
@@ -388,10 +439,12 @@ export default function CreateOrderPage() {
       prevItems.map(item => {
         if (item.variantId === variantId) {
           const qty = Math.max(1, newQuantity);
-          // Recalculate based on existing per-unit prices from when item was added
-          const lineDiscountAmount = (item.mrp - item.sellingPrice) * qty;
-          const lineGstAmount = item.sellingPrice * (item.gstTaxRate / 100) * qty;
-          const lineFinalPrice = (item.sellingPrice * (1 + item.gstTaxRate / 100)) * qty;
+          const discountAmountPerUnit = item.mrp > 0 ? item.mrp - item.sellingPrice : 0;
+          const gstAmountPerUnit = item.sellingPrice * (item.gstTaxRate / 100);
+          
+          const lineDiscountAmount = discountAmountPerUnit * qty;
+          const lineGstAmount = gstAmountPerUnit * qty;
+          const lineFinalPrice = (item.sellingPrice + gstAmountPerUnit) * qty;
 
           return {
             ...item,
@@ -399,6 +452,9 @@ export default function CreateOrderPage() {
             discountAmount: lineDiscountAmount,
             gstAmount: lineGstAmount,
             finalItemPrice: lineFinalPrice,
+            igstAmount: customerStateCode === SELLER_STATE_CODE ? 0 : lineGstAmount,
+            sgstAmount: customerStateCode === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
+            cgstAmount: customerStateCode === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
           };
         }
         return item;
@@ -406,33 +462,66 @@ export default function CreateOrderPage() {
     );
   }
   
-  const handleOrderItemDetailChangeStep3 = (variantId: string, field: keyof OrderItemDisplay, value: string) => {
+  const handleOrderItemDetailChangeStep3 = (variantId: string, field: keyof OrderItemDisplay | 'directSellingPrice', value: string) => {
     setOrderItems(prevItems => 
       prevItems.map(item => {
         if (item.variantId === variantId) {
           let updatedItem = { ...item };
+          const numericValue = parseFloat(value);
 
-          if (field === 'quantity') updatedItem.quantity = Math.max(1, parseInt(value, 10) || 1);
-          else if (field === 'mrp') updatedItem.mrp = parseFloat(value) || 0;
-          else if (field === 'discountRate') updatedItem.discountRate = parseFloat(value) || 0;
-          else if (field === 'gstTaxRate') updatedItem.gstTaxRate = parseFloat(value) || 0;
+          if (field === 'quantity') {
+            updatedItem.quantity = Math.max(1, parseInt(value, 10) || 1);
+          } else if (field === 'mrp') {
+            updatedItem.mrp = numericValue || 0;
+            // When MRP changes, recalculate sellingPrice based on current discountRate
+            updatedItem.discountAmount = updatedItem.mrp * (updatedItem.discountRate / 100);
+            updatedItem.sellingPrice = updatedItem.mrp - updatedItem.discountAmount;
+          } else if (field === 'discountRate') {
+            updatedItem.discountRate = numericValue || 0;
+            // When DiscountRate changes, recalculate sellingPrice
+            updatedItem.discountAmount = updatedItem.mrp * (updatedItem.discountRate / 100);
+            updatedItem.sellingPrice = updatedItem.mrp - updatedItem.discountAmount;
+          } else if (field === 'directSellingPrice') { // Direct edit of selling price
+            updatedItem.sellingPrice = numericValue || 0;
+            // When SellingPrice changes, recalculate discountRate and discountAmount
+            updatedItem.discountAmount = updatedItem.mrp > 0 ? updatedItem.mrp - updatedItem.sellingPrice : 0;
+            if (updatedItem.discountAmount < 0) updatedItem.discountAmount = 0; // No negative discount
+            updatedItem.discountRate = updatedItem.mrp > 0 ? (updatedItem.discountAmount / updatedItem.mrp) * 100 : 0;
+            if (updatedItem.discountRate < 0) updatedItem.discountRate = 0;
+             if (updatedItem.sellingPrice > updatedItem.mrp && updatedItem.mrp > 0) { // If selling price is more than MRP, discount is 0
+                updatedItem.discountRate = 0;
+                updatedItem.discountAmount = 0;
+            }
 
-          // Recalculate pricing based on potentially changed MRP, DiscountRate, GSTRate
-          updatedItem.discountAmount = updatedItem.mrp * (updatedItem.discountRate / 100); // per unit
-          updatedItem.sellingPrice = updatedItem.mrp - updatedItem.discountAmount; // per unit
-          updatedItem.unitPrice = updatedItem.sellingPrice; // API unit price is selling price
+          } else if (field === 'gstTaxRate') {
+            updatedItem.gstTaxRate = numericValue || 0;
+          }
+
+          // Common recalculations for financial fields based on per-unit sellingPrice and quantity
+          updatedItem.unitPrice = updatedItem.sellingPrice; // API unit price is our selling price before tax
+
+          const totalSellingPriceForLine = updatedItem.sellingPrice * updatedItem.quantity;
+          const totalGstForLine = totalSellingPriceForLine * (updatedItem.gstTaxRate / 100);
           
-          // Line item totals
-          const totalDiscountForLine = updatedItem.discountAmount * updatedItem.quantity;
-          const totalGstForLine = updatedItem.sellingPrice * (updatedItem.gstTaxRate / 100) * updatedItem.quantity;
-          const finalPriceForLine = (updatedItem.sellingPrice * (1 + updatedItem.gstTaxRate/100)) * updatedItem.quantity;
+          updatedItem.gstAmount = totalGstForLine;
+          updatedItem.finalItemPrice = totalSellingPriceForLine + totalGstForLine;
 
-          return {
-            ...updatedItem,
-            discountAmount: totalDiscountForLine, // Store total discount for the line
-            gstAmount: totalGstForLine,           // Store total GST for the line
-            finalItemPrice: finalPriceForLine,    // Store final price for the line
-          };
+          // GST Split
+          if (customerStateCode === SELLER_STATE_CODE) {
+            updatedItem.sgstAmount = totalGstForLine / 2;
+            updatedItem.cgstAmount = totalGstForLine / 2;
+            updatedItem.igstAmount = 0;
+          } else {
+            updatedItem.igstAmount = totalGstForLine;
+            updatedItem.sgstAmount = 0;
+            updatedItem.cgstAmount = 0;
+          }
+          
+          // Total discount amount for the line
+          updatedItem.discountAmount = (updatedItem.mrp - updatedItem.sellingPrice) * updatedItem.quantity;
+
+
+          return updatedItem;
         }
         return item;
       })
@@ -440,16 +529,16 @@ export default function CreateOrderPage() {
   };
 
 
-  const calculateOrderSubtotal = (): number => { // Sum of (sellingPrice * quantity) for all items
+  const calculateOrderSubtotal = (): number => { 
     return orderItems.reduce((sum, item) => sum + item.sellingPrice * item.quantity, 0);
   };
-  const calculateTotalDiscount = (): number => { // Sum of discountAmount for all items (which is already line total discount)
+  const calculateTotalLineDiscount = (): number => { 
     return orderItems.reduce((sum, item) => sum + item.discountAmount, 0);
   }
-  const calculateTotalGst = (): number => { // Sum of gstAmount for all items (which is already line total GST)
+  const calculateTotalOrderGst = (): number => { 
     return orderItems.reduce((sum, item) => sum + item.gstAmount, 0);
   };
-  const calculateGrandTotal = (): number => { // Sum of finalItemPrice for all items
+  const calculateGrandTotal = (): number => { 
     return orderItems.reduce((sum, item) => sum + item.finalItemPrice, 0);
   };
 
@@ -458,8 +547,8 @@ export default function CreateOrderPage() {
   const prevStep = () => setCurrentStep(prev => prev - 1);
 
   const canProceedToStep2 = selectedUserId !== null && (customerType === 'B2C' || (customerType === 'B2B' && selectedBusinessProfileId !== null));
-  const canProceedToStep3Pricing = orderItems.length > 0; // To Step 3 (Pricing)
-  const canProceedToStep4Review = orderItems.length > 0; // From Step 3 (Pricing) to Step 4 (Review)
+  const canProceedToStep3Pricing = orderItems.length > 0; 
+  const canProceedToStep4Review = orderItems.length > 0; 
 
 
   const handleSubmitOrder = async () => {
@@ -467,59 +556,82 @@ export default function CreateOrderPage() {
       toast({ title: "Error", description: "User and order items are required.", variant: "destructive" });
       return;
     }
+    
+    // Determine billing and shipping addresses for the order
+    let finalBillingAddress: AddressCreateDto | null = null;
+    let finalShippingAddress: AddressCreateDto | null = null;
+    let targetAddresses: AddressDto[] = [];
 
-    // Construct customerDetails
-    const customerDetailsPayload: CreateOrderRequest['customerDetails'] = {
-      userId: selectedUserId,
+    if (customerType === 'B2C' && selectedUserDisplay?.addresses) {
+        targetAddresses = selectedUserDisplay.addresses;
+    } else if (customerType === 'B2B' && foundBusinessProfile?.addresses) {
+        targetAddresses = foundBusinessProfile.addresses;
+    }
+
+    const defaultBilling = targetAddresses.find(a => a.isDefault && a.type === "BILLING");
+    const anyBilling = targetAddresses.find(a => a.type === "BILLING");
+    const defaultShipping = targetAddresses.find(a => a.isDefault && a.type === "SHIPPING");
+    const anyShipping = targetAddresses.find(a => a.type === "SHIPPING");
+    const firstAddress = targetAddresses[0];
+
+    const getAddressCreateDto = (addr?: AddressDto): AddressCreateDto | null => {
+        if (!addr) return null;
+        const { id, ...rest } = addr; // Exclude id for CreateDto
+        return rest;
+    };
+    
+    finalBillingAddress = getAddressCreateDto(defaultBilling || anyBilling || firstAddress);
+    finalShippingAddress = getAddressCreateDto(defaultShipping || anyShipping || firstAddress || finalBillingAddress); // Fallback to billing if no shipping
+
+    const customerDetailsPayload: CustomerDetailsDto = {
+      userId: selectedUserId, // This is the end customer ID
       name: selectedUserDisplay?.name || undefined,
       phone: selectedUserDisplay?.phone || undefined,
       email: selectedUserDisplay?.email || undefined,
-      // TODO: Populate addresses from selectedUserDisplay or foundBusinessProfile if needed
-      // For now, sending minimal details. Full address mapping needed later.
-      billingAddress: undefined, 
-      shippingAddress: undefined,
+      billingAddress: finalBillingAddress, 
+      shippingAddress: finalShippingAddress,
+      stateCode: customerStateCode, // Derived customer state code for GST
     };
 
     if (customerType === 'B2B' && foundBusinessProfile) {
       customerDetailsPayload.businessProfileId = foundBusinessProfile.id;
       customerDetailsPayload.companyName = foundBusinessProfile.name;
       customerDetailsPayload.gstin = foundBusinessProfile.gstin;
-      // customerDetailsPayload.stateCode = foundBusinessProfile.addresses?.[0]?.state; // Example
     }
     
     const orderPayload: CreateOrderRequest = {
-      placedByUserId: selectedUserId, // Assuming POS user ID, might need a different source for this
+      placedByUserId: "TODO_CURRENT_LOGGED_IN_STAFF_ID", // Placeholder: This should be the ID of the POS user creating the order
       businessProfileId: customerType === 'B2B' ? selectedBusinessProfileId : undefined,
       customerDetails: customerDetailsPayload,
       items: orderItems.map(item => ({
         productId: item.productId,
         variantId: item.variantId,
-        size: item.variantName.split(' / ')[1] || undefined, // Infer from variantName
-        color: item.variantName.split(' / ')[0] || undefined, // Infer from variantName
+        size: item.variantName.split(' / ')[1]?.trim() || undefined, 
+        color: item.variantName.split(' / ')[0]?.trim() || undefined, 
         quantity: item.quantity,
-        unitPrice: item.unitPrice, // This is sellingPrice before tax
-        discountRate: item.discountRate,
-        discountAmount: item.discountAmount / item.quantity, // API expects per unit discount amount
+        unitPrice: item.unitPrice, // This is sellingPrice before tax per unit
+        discountRate: item.mrp > 0 ? parseFloat(((item.mrp - item.sellingPrice) / item.mrp * 100).toFixed(2)) : 0, // Recalculate for safety
+        discountAmount: parseFloat((item.mrp - item.sellingPrice).toFixed(2)), // Per unit discount
         hsnCode: item.hsnCode,
         gstTaxRate: item.gstTaxRate,
       })),
-      paymentMethod: "PENDING", // Placeholder
+      paymentMethod: "PENDING", // Placeholder, will be set in payment step
       status: "PENDING",       // Placeholder
-      notes: "",               // Placeholder
+      notes: "",               // Placeholder for order notes
     };
 
-    console.log("Submitting Order:", JSON.stringify(orderPayload, null, 2)); // For debugging
+    console.log("Submitting Order Payload:", JSON.stringify(orderPayload, null, 2)); 
 
     try {
-      setIsSubmitting(true); // Assuming you have an isSubmitting state for Step 4
+      setIsSubmittingOrder(true); 
       const createdOrder = await createOrder(orderPayload);
       toast({ title: "Success", description: `Order ${createdOrder.id} created successfully!` });
-      // router.push(`/orders/${createdOrder.id}`); // Navigate to order detail page
-      router.push('/orders'); // Or back to orders list
+      // router.push(`/orders/${createdOrder.id}`); 
+      router.push('/orders'); 
     } catch (error: any) {
       toast({ title: "Error Creating Order", description: error.message || "Failed to create order.", variant: "destructive" });
     } finally {
-      setIsSubmitting(false);
+      setIsSubmittingOrder(false);
     }
   };
 
@@ -532,7 +644,7 @@ export default function CreateOrderPage() {
             <ChevronLeft className="h-4 w-4" />
           </Button>
         )}
-        <h1 className="text-2xl font-bold tracking-tight">Create New Order - Step {currentStep} of 4</h1>
+        <h1 className="text-xl md:text-2xl font-bold tracking-tight">Create New Order - Step {currentStep} of 4</h1>
       </div>
 
       {/* Step 1: Customer Selection */}
@@ -545,6 +657,7 @@ export default function CreateOrderPage() {
               setSelectedUserDisplay(null); setSelectedUserId(null);
               setFoundBusinessProfile(null); setSelectedBusinessProfileId(null);
               setPhoneSearch(""); setGstinSearch(""); setSearchedUsers([]);
+              setCustomerStateCode(SELLER_STATE_CODE); // Reset customer state on type change
             }} className="flex gap-4">
               <div className="flex items-center space-x-2"><RadioGroupItem value="B2C" id="r_b2c" /><Label htmlFor="r_b2c">Retail Customer (B2C)</Label></div>
               <div className="flex items-center space-x-2"><RadioGroupItem value="B2B" id="r_b2b" /><Label htmlFor="r_b2b">Business Customer (B2B)</Label></div>
@@ -597,6 +710,7 @@ export default function CreateOrderPage() {
                         <CardDescription className="font-medium text-green-700">Selected User:</CardDescription>
                         <p className="text-sm text-green-800">{selectedUserDisplay.name} ({selectedUserDisplay.phone})</p>
                         {selectedUserDisplay.email && <p className="text-xs text-green-600">{selectedUserDisplay.email}</p>}
+                        <p className="text-xs text-green-600">Customer State for GST: {customerStateCode || 'N/A (Assuming Seller State)'}</p>
                     </Card>
                 )}
               </div>
@@ -643,6 +757,7 @@ export default function CreateOrderPage() {
                     <p className="text-sm text-green-800">{foundBusinessProfile.name} ({foundBusinessProfile.gstin})</p>
                     {selectedUserDisplay && <p className="mt-1 text-xs text-green-600">Associated User: {selectedUserDisplay.name} ({selectedUserDisplay.phone})</p>}
                      {!selectedUserDisplay && foundBusinessProfile.userIds && foundBusinessProfile.userIds.length === 0 && <p className="mt-1 text-xs text-orange-600">No primary user linked. Order can proceed, or link user via BP Management.</p>}
+                     <p className="text-xs text-green-600">Customer State for GST: {customerStateCode || 'N/A (Assuming Seller State)'}</p>
                   </Card>
                 )}
               </div>
@@ -825,6 +940,7 @@ export default function CreateOrderPage() {
                             <span>Subtotal:</span>
                             <span>₹{orderItems.reduce((sum, item) => sum + item.sellingPrice * item.quantity, 0).toFixed(2)}</span>
                         </div>
+                         <p className="text-xs text-muted-foreground text-right">Discounts & Taxes applied in next step.</p>
                     </div>
                 )}
               </CardContent>
@@ -849,67 +965,91 @@ export default function CreateOrderPage() {
              {orderItems.length === 0 ? (
                 <p className="text-muted-foreground text-center py-6">No items in order to adjust pricing for.</p>
              ) : (
-                <ScrollArea className="max-h-[60vh]">
-                    <Table>
+                <div className="overflow-x-auto">
+                    <Table className="min-w-full text-xs sm:text-sm">
                         <TableHeader>
                             <TableRow>
-                                <TableHead className="min-w-[150px]">Item</TableHead>
-                                <TableHead className="w-20">Qty</TableHead>
-                                <TableHead className="w-24">MRP</TableHead>
-                                <TableHead className="w-28">Disc. Rate (%)</TableHead>
-                                <TableHead className="w-24">Selling Price</TableHead>
-                                <TableHead className="w-28">GST Rate (%)</TableHead>
-                                <TableHead className="w-28 text-right">Final Price</TableHead>
+                                <TableHead className="min-w-[150px] px-2 py-2">Item</TableHead>
+                                <TableHead className="w-16 sm:w-20 px-1 py-2 text-center">Qty</TableHead>
+                                <TableHead className="w-20 sm:w-24 px-1 py-2">MRP</TableHead>
+                                <TableHead className="w-24 sm:w-28 px-1 py-2">Disc. Rate (%)</TableHead>
+                                <TableHead className="w-24 sm:w-28 px-1 py-2">Selling Price</TableHead>
+                                <TableHead className="w-24 sm:w-28 px-1 py-2">GST Rate (%)</TableHead>
+                                {customerStateCode === SELLER_STATE_CODE ? (
+                                    <>
+                                        <TableHead className="w-20 sm:w-24 px-1 py-2 text-right">SGST</TableHead>
+                                        <TableHead className="w-20 sm:w-24 px-1 py-2 text-right">CGST</TableHead>
+                                    </>
+                                ) : (
+                                    <TableHead className="w-20 sm:w-24 px-1 py-2 text-right">IGST</TableHead>
+                                )}
+                                <TableHead className="w-24 sm:w-28 px-1 py-2 text-right">Final Price</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {orderItems.map(item => (
                                 <TableRow key={item.variantId}>
-                                    <TableCell>
-                                        <p className="font-medium text-sm">{item.productName}</p>
-                                        <p className="text-xs text-muted-foreground">{item.variantName}</p>
+                                    <TableCell className="px-2 py-2">
+                                        <p className="font-medium">{item.productName}</p>
+                                        <p className="text-muted-foreground">{item.variantName}</p>
                                     </TableCell>
-                                    <TableCell>
+                                    <TableCell className="px-1 py-2">
                                         <Input type="number" value={item.quantity} min="1"
                                                onChange={(e) => handleOrderItemDetailChangeStep3(item.variantId, 'quantity', e.target.value)}
-                                               className="h-9 w-full text-sm p-2"/>
+                                               className="h-8 w-full p-1 text-center"/>
                                     </TableCell>
-                                    <TableCell>
+                                    <TableCell className="px-1 py-2">
                                         <Input type="number" step="0.01" value={item.mrp.toFixed(2)}
                                                onChange={(e) => handleOrderItemDetailChangeStep3(item.variantId, 'mrp', e.target.value)}
-                                               className="h-9 w-full text-sm p-2"/>
+                                               className="h-8 w-full p-1"/>
                                     </TableCell>
-                                    <TableCell>
+                                    <TableCell className="px-1 py-2">
                                         <Input type="number" step="0.01" value={item.discountRate.toFixed(2)}
                                                onChange={(e) => handleOrderItemDetailChangeStep3(item.variantId, 'discountRate', e.target.value)}
-                                               className="h-9 w-full text-sm p-2"/>
-                                        <p className="text-xs text-muted-foreground mt-1">Disc: ₹{(item.mrp * item.quantity * (item.discountRate / 100)).toFixed(2)}</p>
+                                               className="h-8 w-full p-1"/>
+                                        <p className="text-xs text-muted-foreground mt-0.5">Amt: ₹{((item.mrp - item.sellingPrice) * item.quantity).toFixed(2)}</p>
                                     </TableCell>
-                                    <TableCell>
-                                        <Input type="number" step="0.01" value={item.sellingPrice.toFixed(2)} readOnly disabled
-                                               className="h-9 w-full text-sm p-2 bg-muted/50"/>
+                                    <TableCell className="px-1 py-2">
+                                         <Input type="number" step="0.01" value={item.sellingPrice.toFixed(2)} 
+                                               onChange={(e) => handleOrderItemDetailChangeStep3(item.variantId, 'directSellingPrice', e.target.value)}
+                                               className="h-8 w-full p-1"/>
                                     </TableCell>
-                                     <TableCell>
-                                        <Input type="number" step="0.01" value={item.gstTaxRate.toFixed(2)}
-                                               onChange={(e) => handleOrderItemDetailChangeStep3(item.variantId, 'gstTaxRate', e.target.value)}
-                                               className="h-9 w-full text-sm p-2"/>
-                                        <p className="text-xs text-muted-foreground mt-1">GST: ₹{(item.sellingPrice * item.quantity * (item.gstTaxRate / 100)).toFixed(2)}</p>
+                                     <TableCell className="px-1 py-2">
+                                        <Select value={item.gstTaxRate.toString()} onValueChange={(value) => handleOrderItemDetailChangeStep3(item.variantId, 'gstTaxRate', value)}>
+                                            <SelectTrigger className="h-8 w-full p-1 text-xs">
+                                                <SelectValue placeholder="GST %" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {STANDARD_GST_RATES.map(rate => (
+                                                    <SelectItem key={rate} value={rate.toString()}>{rate}%</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground mt-0.5">Amt: ₹{(item.gstAmount).toFixed(2)}</p>
                                     </TableCell>
-                                    <TableCell className="text-right font-semibold">
+                                    {customerStateCode === SELLER_STATE_CODE ? (
+                                        <>
+                                            <TableCell className="px-1 py-2 text-right">₹{item.sgstAmount.toFixed(2)}</TableCell>
+                                            <TableCell className="px-1 py-2 text-right">₹{item.cgstAmount.toFixed(2)}</TableCell>
+                                        </>
+                                    ) : (
+                                        <TableCell className="px-1 py-2 text-right">₹{item.igstAmount.toFixed(2)}</TableCell>
+                                    )}
+                                    <TableCell className="px-1 py-2 text-right font-semibold">
                                         ₹{item.finalItemPrice.toFixed(2)}
                                     </TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
                     </Table>
-                </ScrollArea>
+                </div>
              )}
              {orderItems.length > 0 && (
                 <div className="mt-6 pt-4 border-t">
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm font-medium">
-                        <p>Subtotal (Pre-tax):</p><p className="text-right">₹{calculateOrderSubtotal().toFixed(2)}</p>
-                        <p>Total Discount:</p><p className="text-right text-green-600">- ₹{calculateTotalDiscount().toFixed(2)}</p>
-                        <p>Total GST:</p><p className="text-right">₹{calculateTotalGst().toFixed(2)}</p>
+                        <p>Subtotal (Excl. Tax):</p><p className="text-right">₹{calculateOrderSubtotal().toFixed(2)}</p>
+                        <p>Total Discount:</p><p className="text-right text-green-600">- ₹{calculateTotalLineDiscount().toFixed(2)}</p>
+                        <p>Total GST:</p><p className="text-right">₹{calculateTotalOrderGst().toFixed(2)}</p>
                         <p className="text-lg font-semibold mt-1">Grand Total:</p><p className="text-lg font-semibold text-right mt-1">₹{calculateGrandTotal().toFixed(2)}</p>
                     </div>
                 </div>
@@ -943,15 +1083,20 @@ export default function CreateOrderPage() {
                                 <p className="font-medium">{item.productName} <span className="text-xs text-muted-foreground">({item.variantName})</span></p>
                                 <p className="text-xs">Qty: {item.quantity} @ ₹{item.sellingPrice.toFixed(2)}/unit (MRP: ₹{item.mrp.toFixed(2)})</p>
                                 <p className="text-xs text-muted-foreground">Discount: {item.discountRate.toFixed(1)}% | GST: {item.gstTaxRate.toFixed(1)}%</p>
+                                {customerStateCode === SELLER_STATE_CODE ? (
+                                    <p className="text-xs text-muted-foreground">SGST: ₹{item.sgstAmount.toFixed(2)}, CGST: ₹{item.cgstAmount.toFixed(2)}</p>
+                                ) : (
+                                    <p className="text-xs text-muted-foreground">IGST: ₹{item.igstAmount.toFixed(2)}</p>
+                                )}
                             </div>
                             <p className="font-medium">₹{item.finalItemPrice.toFixed(2)}</p>
                         </div>
                     ))}
                   </ScrollArea>
                   <div className="mt-3 pt-3 border-t">
-                    <div className="flex justify-between text-sm"><span>Subtotal (Pre-tax):</span><span>₹{calculateOrderSubtotal().toFixed(2)}</span></div>
-                    <div className="flex justify-between text-sm"><span>Total Discount:</span><span className="text-green-600">- ₹{calculateTotalDiscount().toFixed(2)}</span></div>
-                    <div className="flex justify-between text-sm"><span>Total GST:</span><span>₹{calculateTotalGst().toFixed(2)}</span></div>
+                    <div className="flex justify-between text-sm"><span>Subtotal (Excl. Tax):</span><span>₹{calculateOrderSubtotal().toFixed(2)}</span></div>
+                    <div className="flex justify-between text-sm"><span>Total Discount:</span><span className="text-green-600">- ₹{calculateTotalLineDiscount().toFixed(2)}</span></div>
+                    <div className="flex justify-between text-sm"><span>Total GST:</span><span>₹{calculateTotalOrderGst().toFixed(2)}</span></div>
                     <div className="flex justify-between font-bold text-xl mt-1">
                         <span>Grand Total:</span>
                         <span>₹{calculateGrandTotal().toFixed(2)}</span>
@@ -969,9 +1114,9 @@ export default function CreateOrderPage() {
              <Button onClick={prevStep} variant="outline">
                 <ChevronLeft className="h-4 w-4 mr-2" /> Back to Adjust Pricing
              </Button>
-            <Button onClick={handleSubmitOrder} disabled={isSubmitting || orderItems.length === 0}>
-               {isSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : null}
-               Place Order
+            <Button onClick={handleSubmitOrder} disabled={isSubmittingOrder || orderItems.length === 0}>
+               {isSubmittingOrder ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : null}
+               Place Order & Proceed to Payment
             </Button>
           </CardFooter>
         </Card>
@@ -979,6 +1124,3 @@ export default function CreateOrderPage() {
     </div>
   );
 }
-
-
-    
