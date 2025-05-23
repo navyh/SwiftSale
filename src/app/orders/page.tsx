@@ -1,8 +1,10 @@
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PlusCircle, Search, Eye, Filter, UserPlus, ShoppingBag } from "lucide-react";
+import Link from "next/link"; // Added Link import
 
 const orders = [
   { id: "ORD001", customer: "Alice Wonderland", date: "2024-07-20", total: "$125.50", status: "Processing", items: 3 },
@@ -20,9 +22,11 @@ export default function OrdersPage() {
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Order Management</h1>
           <p className="text-muted-foreground">Streamlined order processing and tracking.</p>
         </div>
-        <Button>
-          <PlusCircle className="mr-2 h-4 w-4" /> Create New Order
-        </Button>
+        <Link href="/orders/new" passHref> {/* Wrapped Button with Link */}
+          <Button>
+            <PlusCircle className="mr-2 h-4 w-4" /> Create New Order
+          </Button>
+        </Link>
       </div>
 
       <Card className="shadow-md">
