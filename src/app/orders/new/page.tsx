@@ -3,7 +3,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { useForm, useFieldArray, Controller } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  ChevronLeft, ChevronRight, PlusCircle, Trash2, Search as SearchIcon, UserPlus, Building, ShoppingCart, Loader2, X
+  ChevronLeft, ChevronRight, PlusCircle, Trash2, Search as SearchIcon, UserPlus, Building, ShoppingCart, Loader2, X, Edit2
 } from "lucide-react";
 import {
   fetchUserById, createUser, type CreateUserRequest, type UserDto,
@@ -65,10 +65,20 @@ const quickProductCreateDialogSchema = z.object({
 type QuickProductCreateDialogValues = z.infer<typeof quickProductCreateDialogSchema>;
 
 
-interface OrderItemDisplay extends OrderItemRequest {
+export interface OrderItemDisplay extends OrderItemRequest {
+  productId: string;
+  variantId: string;
   productName: string;
   variantName: string; // e.g., "Red / M"
-  totalPrice: number;
+  quantity: number;
+  mrp: number; 
+  discountRate: number; // percentage
+  discountAmount: number; // calculated
+  sellingPrice: number; // calculated: mrp - discountAmount (this becomes unitPrice for API)
+  gstTaxRate: number; // percentage
+  gstAmount: number; // calculated
+  finalItemPrice: number; // calculated: sellingPrice + gstAmount
+  // unitPrice from OrderItemRequest will be the sellingPrice before tax
 }
 
 
@@ -106,8 +116,6 @@ export default function CreateOrderPage() {
   const [showQuickProductDialog, setShowQuickProductDialog] = React.useState(false);
   const [isQuickProductSubmitting, setIsQuickProductSubmitting] = React.useState(false);
 
-
-  // Dialog Forms
   const userCreateForm = useForm<UserCreateDialogValues>({ resolver: zodResolver(userCreateDialogSchema) });
   const bpWithUserCreateForm = useForm<BpWithUserCreateDialogValues>({ resolver: zodResolver(bpWithUserCreateDialogSchema) });
   const quickProductCreateForm = useForm<QuickProductCreateDialogValues>({ resolver: zodResolver(quickProductCreateDialogSchema) });
@@ -123,6 +131,7 @@ export default function CreateOrderPage() {
       setSearchedUsers(users);
       if (users.length === 0) {
         setShowUserCreateDialog(true);
+        userCreateForm.setValue("phone", phoneSearch); // Pre-fill phone in create dialog
       }
     } catch (error: any) {
       toast({ title: "Error Searching User", description: error.message || "Failed to search user.", variant: "destructive" });
@@ -134,7 +143,7 @@ export default function CreateOrderPage() {
   const handleSelectUserFromList = (user: UserDto) => {
     setSelectedUserId(user.id);
     setSelectedUserDisplay(user);
-    setSearchedUsers([]); // Clear search results after selection
+    setSearchedUsers([]); 
   };
 
   const handleBusinessProfileSearch = async () => {
@@ -142,7 +151,7 @@ export default function CreateOrderPage() {
     setIsSearchingBp(true); 
     setFoundBusinessProfile(null); 
     setSelectedBusinessProfileId(null); 
-    setSelectedUserId(null); // Clear user if searching for new BP
+    setSelectedUserId(null); 
     setSelectedUserDisplay(null);
     try {
       const bp = await searchBusinessProfileByGstin(gstinSearch);
@@ -154,10 +163,11 @@ export default function CreateOrderPage() {
           setSelectedUserDisplay(user); 
           if (user && user.id) setSelectedUserId(user.id);
         } else {
-          toast({ title: "Info", description: "Business profile found, but no primary user linked. You can proceed, or link a user via Business Profile Management.", variant: "default" });
+          toast({ title: "Info", description: "Business profile found, but no primary user linked. Order can proceed.", variant: "default" });
         }
       } else {
         setShowBpWithUserCreateDialog(true);
+        bpWithUserCreateForm.setValue("bpGstin", gstinSearch); // Pre-fill gstin
       }
     } catch (error: any) {
       toast({ title: "Error Searching BP", description: error.message || "Failed to search business profile.", variant: "destructive" });
@@ -174,7 +184,7 @@ export default function CreateOrderPage() {
       if (newUser && newUser.id) setSelectedUserId(newUser.id);
       setShowUserCreateDialog(false);
       userCreateForm.reset();
-      setPhoneSearch(""); // Clear search after creation
+      setPhoneSearch(""); 
       toast({ title: "Success", description: "User created successfully." });
     } catch (error: any) {
       toast({ title: "Error Creating User", description: error.message || "Failed to create user.", variant: "destructive" });
@@ -234,7 +244,7 @@ export default function CreateOrderPage() {
   React.useEffect(() => {
     const timer = setTimeout(() => {
         if (productSearchQuery) handleProductSearch();
-        else setProductSearchResults([]); // Clear results if query is empty
+        else setProductSearchResults([]);
     }, 500); 
     return () => clearTimeout(timer);
   }, [productSearchQuery, handleProductSearch]);
@@ -266,7 +276,7 @@ export default function CreateOrderPage() {
       categoryName: data.categoryName,
       colorVariants: data.colors.split(',').map(c => c.trim()).filter(Boolean),
       sizeVariants: data.sizes.split(',').map(s => s.trim()).filter(Boolean),
-      unitPrice: data.unitPrice,
+      unitPrice: data.unitPrice, // This is likely the default selling price
     };
     try {
       const responseProduct = await quickCreateProduct(payload); 
@@ -276,16 +286,28 @@ export default function CreateOrderPage() {
       
       if (responseProduct.id && responseProduct.variants && responseProduct.variants.length > 0 && responseProduct.variants[0] && responseProduct.variants[0].id) {
         const newVariant = responseProduct.variants[0];
-        // Use variant price if available, otherwise product unit price, then form unit price as fallback
-        const unitPrice = newVariant.price ?? responseProduct.unitPrice ?? data.unitPrice; 
+        const mrp = newVariant.mrp ?? newVariant.compareAtPrice ?? responseProduct.unitPrice ?? data.unitPrice; // Best guess for MRP
+        const sellingPrice = newVariant.sellingPrice ?? newVariant.price ?? responseProduct.unitPrice ?? data.unitPrice;
+        const discountAmount = mrp - sellingPrice;
+        const discountRate = mrp > 0 ? (discountAmount / mrp) * 100 : 0;
+        const gstTaxRate = responseProduct.gstTaxRate ?? 0; // Default to 0 if not set
+        const gstAmount = sellingPrice * (gstTaxRate / 100);
+
         const newItem: OrderItemDisplay = {
           productId: responseProduct.id,
           variantId: newVariant.id,
-          quantity: 1, 
-          unitPrice: unitPrice,
           productName: responseProduct.name ?? "Unknown Product",
           variantName: `${newVariant.color || ''}${newVariant.color && newVariant.size ? ' / ' : ''}${newVariant.size || ''}`.trim() || 'Default',
-          totalPrice: unitPrice * 1,
+          quantity: 1,
+          mrp: mrp,
+          discountRate: discountRate,
+          discountAmount: discountAmount,
+          sellingPrice: sellingPrice,
+          unitPrice: sellingPrice, // unitPrice for API is selling price before tax
+          gstTaxRate: gstTaxRate,
+          gstAmount: gstAmount,
+          finalItemPrice: sellingPrice + gstAmount,
+          hsnCode: responseProduct.hsnCode, // from product
         };
         setOrderItems(prevItems => [...prevItems, newItem]);
         setSelectedProductForDetails(responseProduct); 
@@ -308,23 +330,42 @@ export default function CreateOrderPage() {
       toast({ title: "Warning", description: "Please select a product, variant, and valid quantity.", variant: "default" });
       return;
     }
+    
     const existingItemIndex = orderItems.findIndex(item => item.variantId === selectedVariant!.id);
-    const unitPrice = selectedVariant.price || selectedProductForDetails.unitPrice || 0;
+    
+    const mrp = selectedVariant.mrp ?? selectedVariant.compareAtPrice ?? selectedVariant.price ?? selectedProductForDetails.unitPrice ?? 0;
+    const sellingPrice = selectedVariant.sellingPrice ?? selectedVariant.price ?? selectedProductForDetails.unitPrice ?? 0;
+    const discountAmount = mrp - sellingPrice;
+    const discountRate = mrp > 0 ? (discountAmount / mrp) * 100 : 0;
+    const gstTaxRate = selectedProductForDetails.gstTaxRate ?? 0; // Product level GST
+    const gstAmount = sellingPrice * (gstTaxRate / 100);
+    const finalItemPrice = (sellingPrice + gstAmount) * selectedQuantity;
     
     if (existingItemIndex > -1) {
       const updatedItems = [...orderItems];
-      updatedItems[existingItemIndex].quantity += selectedQuantity;
-      updatedItems[existingItemIndex].totalPrice = updatedItems[existingItemIndex].quantity * unitPrice;
+      const currentItem = updatedItems[existingItemIndex];
+      currentItem.quantity += selectedQuantity;
+      // Recalculate amounts based on new quantity, assuming prices/rates don't change on re-add
+      currentItem.discountAmount = (currentItem.mrp - currentItem.sellingPrice) * currentItem.quantity;
+      currentItem.gstAmount = currentItem.sellingPrice * (currentItem.gstTaxRate / 100) * currentItem.quantity;
+      currentItem.finalItemPrice = (currentItem.sellingPrice * (1 + currentItem.gstTaxRate / 100)) * currentItem.quantity;
       setOrderItems(updatedItems);
     } else {
       const newItem: OrderItemDisplay = {
         productId: selectedProductForDetails.id,
         variantId: selectedVariant.id,
-        quantity: selectedQuantity,
-        unitPrice: unitPrice,
         productName: selectedProductForDetails.name ?? "Unknown Product",
         variantName: `${selectedVariant.color || ''}${selectedVariant.color && selectedVariant.size ? ' / ' : ''}${selectedVariant.size || ''}`.trim() || 'Default',
-        totalPrice: unitPrice * selectedQuantity,
+        quantity: selectedQuantity,
+        mrp: mrp,
+        discountRate: discountRate,
+        discountAmount: discountAmount * selectedQuantity, // For total quantity
+        sellingPrice: sellingPrice,
+        unitPrice: sellingPrice, // unitPrice for API
+        gstTaxRate: gstTaxRate,
+        gstAmount: gstAmount * selectedQuantity, // For total quantity
+        finalItemPrice: finalItemPrice,
+        hsnCode: selectedProductForDetails.hsnCode,
       };
       setOrderItems(prevItems => [...prevItems, newItem]);
     }
@@ -335,9 +376,69 @@ export default function CreateOrderPage() {
   const handleRemoveOrderItem = (variantIdToRemove: string) => {
     setOrderItems(prevItems => prevItems.filter(item => item.variantId !== variantIdToRemove));
   };
+  
+  const handleOrderItemDetailChange = (variantId: string, field: keyof OrderItemDisplay, value: string) => {
+    setOrderItems(prevItems => 
+      prevItems.map(item => {
+        if (item.variantId === variantId) {
+          const newQuantity = field === 'quantity' ? Math.max(1, parseInt(value, 10) || 1) : item.quantity;
+          const newMrp = field === 'mrp' ? parseFloat(value) || 0 : item.mrp;
+          const newDiscountRate = field === 'discountRate' ? parseFloat(value) || 0 : item.discountRate;
+          const newGstTaxRate = field === 'gstTaxRate' ? parseFloat(value) || 0 : item.gstTaxRate;
 
-  const calculateSubtotal = (): number => {
-    return orderItems.reduce((sum, item) => sum + item.totalPrice, 0);
+          let newDiscountAmount = item.discountAmount;
+          let newSellingPrice = item.sellingPrice;
+
+          if (field === 'mrp' || field === 'discountRate') {
+            newDiscountAmount = newMrp * (newDiscountRate / 100);
+            newSellingPrice = newMrp - newDiscountAmount;
+          } else if (field === 'discountAmount') { // Allow direct discount amount editing
+             newDiscountAmount = parseFloat(value) || 0;
+             newSellingPrice = newMrp - newDiscountAmount;
+             // Recalculate discountRate if amount is changed
+             // newDiscountRate = newMrp > 0 ? (newDiscountAmount / newMrp) * 100 : 0;
+          }
+
+
+          const newGstAmount = newSellingPrice * (newGstTaxRate / 100);
+          const newFinalItemPrice = (newSellingPrice + newGstAmount) * newQuantity;
+          
+          // Update unitPrice which is sent to API as sellingPrice
+          const updatedItem: OrderItemDisplay = {
+            ...item,
+            quantity: newQuantity,
+            mrp: newMrp,
+            discountRate: newDiscountRate, // Keep this for display, even if amount was edited
+            discountAmount: newDiscountAmount * newQuantity, // Store total discount for all units
+            sellingPrice: newSellingPrice, // Per unit selling price
+            unitPrice: newSellingPrice, // API's unitPrice is our sellingPrice
+            gstTaxRate: newGstTaxRate,
+            gstAmount: newGstAmount * newQuantity, // Store total GST for all units
+            finalItemPrice: newFinalItemPrice,
+          };
+          
+          // If a specific field was directly edited, ensure that value is set
+          if (field === 'quantity') updatedItem.quantity = newQuantity;
+          else if (field === 'mrp') updatedItem.mrp = newMrp;
+          else if (field === 'discountRate') updatedItem.discountRate = newDiscountRate;
+          else if (field === 'gstTaxRate') updatedItem.gstTaxRate = newGstTaxRate;
+
+          return updatedItem;
+        }
+        return item;
+      })
+    );
+  };
+
+
+  const calculateOrderSubtotal = (): number => {
+    return orderItems.reduce((sum, item) => sum + item.sellingPrice * item.quantity, 0);
+  };
+  const calculateTotalGst = (): number => {
+    return orderItems.reduce((sum, item) => sum + item.gstAmount, 0);
+  };
+  const calculateGrandTotal = (): number => {
+    return orderItems.reduce((sum, item) => sum + item.finalItemPrice, 0);
   };
 
 
@@ -397,20 +498,15 @@ export default function CreateOrderPage() {
                     </ScrollArea>
                   </Card>
                 )}
-                {selectedUserDisplay && (
-                    <Card className="mt-2 p-3 bg-green-50 border-green-200">
-                        <CardDescription>Selected User: {selectedUserDisplay.name} ({selectedUserDisplay.phone})</CardDescription>
-                    </Card>
-                )}
                  {!isSearchingUser && searchedUsers.length === 0 && phoneSearch && !selectedUserDisplay && (
                     <Dialog open={showUserCreateDialog} onOpenChange={setShowUserCreateDialog}>
-                        <DialogTrigger asChild><Button variant="outline" className="mt-2">Create New User</Button></DialogTrigger>
+                        <DialogTrigger asChild><Button variant="outline" className="mt-2"><UserPlus className="mr-2 h-4 w-4" />Create New User</Button></DialogTrigger>
                         <DialogContent>
                         <DialogHeader><DialogTitle>Create New User</DialogTitle></DialogHeader>
                         <form onSubmit={userCreateForm.handleSubmit(handleCreateUserDialogSubmit)} className="space-y-4">
                             <Input {...userCreateForm.register("name")} placeholder="Full Name" />
                             {userCreateForm.formState.errors.name && <p className="text-xs text-destructive">{userCreateForm.formState.errors.name.message}</p>}
-                            <Input {...userCreateForm.register("phone")} placeholder="Phone Number" defaultValue={phoneSearch} />
+                            <Input {...userCreateForm.register("phone")} placeholder="Phone Number" />
                             {userCreateForm.formState.errors.phone && <p className="text-xs text-destructive">{userCreateForm.formState.errors.phone.message}</p>}
                             <Input {...userCreateForm.register("email")} placeholder="Email (Optional)" />
                             {userCreateForm.formState.errors.email && <p className="text-xs text-destructive">{userCreateForm.formState.errors.email.message}</p>}
@@ -419,6 +515,13 @@ export default function CreateOrderPage() {
                         </form>
                         </DialogContent>
                     </Dialog>
+                )}
+                {selectedUserDisplay && (
+                    <Card className="mt-2 p-3 bg-green-50 border-green-200 shadow-sm">
+                        <CardDescription className="font-medium text-green-700">Selected User:</CardDescription>
+                        <p className="text-sm text-green-800">{selectedUserDisplay.name} ({selectedUserDisplay.phone})</p>
+                        {selectedUserDisplay.email && <p className="text-xs text-green-600">{selectedUserDisplay.email}</p>}
+                    </Card>
                 )}
               </div>
             )}
@@ -429,27 +532,21 @@ export default function CreateOrderPage() {
                 <div className="flex gap-2">
                   <Input id="gstin_search" value={gstinSearch} onChange={e => setGstinSearch(e.target.value)} placeholder="Enter GSTIN" />
                   <Button onClick={handleBusinessProfileSearch} disabled={isSearchingBp || !gstinSearch}>
-                     {isSearchingBp ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <SearchIcon className="mr-2 h-4 w-4" />} Search
+                     {isSearchingBp ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <Building className="mr-2 h-4 w-4" />} Search BP
                   </Button>
                 </div>
                  {isSearchingBp && <div className="text-sm text-muted-foreground p-2"><Loader2 className="animate-spin mr-2 h-3 w-3 inline-block"/>Searching business profile...</div>}
-                {foundBusinessProfile && (
-                  <Card className="mt-2 p-3 bg-green-50 border-green-200">
-                    <CardDescription>Selected Business: {foundBusinessProfile.name} ({foundBusinessProfile.gstin})</CardDescription>
-                    {selectedUserDisplay && <CardDescription className="mt-1">Associated User: {selectedUserDisplay.name} ({selectedUserDisplay.phone})</CardDescription>}
-                     {!selectedUserDisplay && <CardDescription className="mt-1 text-orange-600">No primary user linked. Order can proceed, or link user via BP Management.</CardDescription>}
-                  </Card>
-                )}
+                
                 {!isSearchingBp && !foundBusinessProfile && gstinSearch && (
                      <Dialog open={showBpWithUserCreateDialog} onOpenChange={setShowBpWithUserCreateDialog}>
-                        <DialogTrigger asChild><Button variant="outline" className="mt-2">Create BP & New User</Button></DialogTrigger>
+                        <DialogTrigger asChild><Button variant="outline" className="mt-2"><Building className="mr-2 h-4 w-4" /><UserPlus className="mr-1 h-4 w-4"/>Create BP & New User</Button></DialogTrigger>
                         <DialogContent className="max-h-[80vh] overflow-y-auto">
                         <DialogHeader><DialogTitle>Create Business Profile & New User</DialogTitle></DialogHeader>
                         <form onSubmit={bpWithUserCreateForm.handleSubmit(handleBpWithUserCreateDialogSubmit)} className="space-y-3">
                             <Label className="font-medium">Business Profile Details</Label>
                             <Input {...bpWithUserCreateForm.register("bpName")} placeholder="Business Name" />
                             {bpWithUserCreateForm.formState.errors.bpName && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.bpName.message}</p>}
-                            <Input {...bpWithUserCreateForm.register("bpGstin")} placeholder="GSTIN" defaultValue={gstinSearch} />
+                            <Input {...bpWithUserCreateForm.register("bpGstin")} placeholder="GSTIN" />
                             {bpWithUserCreateForm.formState.errors.bpGstin && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.bpGstin.message}</p>}
                             <Label className="font-medium pt-2 block">User Details</Label>
                             <Input {...bpWithUserCreateForm.register("userName")} placeholder="User Full Name" />
@@ -463,6 +560,14 @@ export default function CreateOrderPage() {
                         </form>
                         </DialogContent>
                     </Dialog>
+                )}
+                {foundBusinessProfile && (
+                  <Card className="mt-2 p-3 bg-green-50 border-green-200 shadow-sm">
+                    <CardDescription className="font-medium text-green-700">Selected Business:</CardDescription>
+                    <p className="text-sm text-green-800">{foundBusinessProfile.name} ({foundBusinessProfile.gstin})</p>
+                    {selectedUserDisplay && <p className="mt-1 text-xs text-green-600">Associated User: {selectedUserDisplay.name} ({selectedUserDisplay.phone})</p>}
+                     {!selectedUserDisplay && foundBusinessProfile.userIds && foundBusinessProfile.userIds.length === 0 && <p className="mt-1 text-xs text-orange-600">No primary user linked. Order can proceed, or link user via BP Management.</p>}
+                  </Card>
                 )}
               </div>
             )}
@@ -501,7 +606,6 @@ export default function CreateOrderPage() {
                             <p className="text-xs text-muted-foreground">
                                 {product.brand && `${product.brand} | `}
                                 {product.category && `${product.category} | `}
-                                {/* Price display adjusted, or remove if not directly available here */}
                                 {product.sku && `SKU: ${product.sku}`}
                             </p>
                         </div>
@@ -513,7 +617,7 @@ export default function CreateOrderPage() {
                     <div className="text-center py-4">
                         <p className="text-muted-foreground">No products found matching "{productSearchQuery}".</p>
                         <Dialog open={showQuickProductDialog} onOpenChange={setShowQuickProductDialog}>
-                            <DialogTrigger asChild><Button variant="outline" className="mt-2">Quick Add Product</Button></DialogTrigger>
+                            <DialogTrigger asChild><Button variant="outline" className="mt-2"><PlusCircle className="mr-2 h-4 w-4" />Quick Add Product</Button></DialogTrigger>
                             <DialogContent className="max-h-[80vh] overflow-y-auto">
                                 <DialogHeader><DialogTitle>Quick Add New Product</DialogTitle></DialogHeader>
                                 <form onSubmit={quickProductCreateForm.handleSubmit(handleQuickProductCreateDialogSubmit)} className="space-y-3">
@@ -597,30 +701,59 @@ export default function CreateOrderPage() {
           <div className="lg:col-span-1">
             <Card className="shadow-md sticky top-20">
               <CardHeader><CardTitle>Current Order</CardTitle></CardHeader>
-              <CardContent>
+              <CardContent className="-mx-1"> {/* Adjust padding for Table */}
                 {orderItems.length === 0 ? (
-                  <div className="text-center py-10">
+                  <div className="text-center py-10 px-6">
                     <ShoppingCart className="mx-auto h-12 w-12 text-muted-foreground opacity-50" />
                     <p className="mt-2 text-sm text-muted-foreground">Your order is empty.</p>
                     <p className="text-xs text-muted-foreground">Add products using the search panel.</p>
                   </div>
                 ) : (
-                  <ScrollArea className="h-[calc(100vh-22rem)] max-h-[500px] -mx-6 px-6"> 
-                    <Table>
-                      <TableHeader><TableRow><TableHead>Item</TableHead><TableHead className="text-center">Qty</TableHead><TableHead className="text-right">Total</TableHead><TableHead></TableHead></TableRow></TableHeader>
+                  <ScrollArea className="h-[calc(100vh-30rem)] max-h-[600px]"> 
+                    <Table className="text-xs">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="p-2">Item</TableHead>
+                          <TableHead className="w-16 p-2 text-center">Qty</TableHead>
+                          <TableHead className="w-20 p-2">MRP</TableHead>
+                          <TableHead className="w-16 p-2">Disc%</TableHead>
+                          <TableHead className="w-20 p-2">GST%</TableHead>
+                          <TableHead className="w-24 p-2 text-right">Total</TableHead>
+                          <TableHead className="w-10 p-2"></TableHead>
+                        </TableRow>
+                      </TableHeader>
                       <TableBody>
                         {orderItems.map(item => (
                           <TableRow key={item.variantId}>
-                            <TableCell className="py-2">
-                              <p className="font-medium text-sm">{item.productName}</p>
-                              <p className="text-xs text-muted-foreground">{item.variantName} (@ ₹{item.unitPrice.toFixed(2)})</p>
+                            <TableCell className="py-1 px-2">
+                              <p className="font-medium text-xs">{item.productName}</p>
+                              <p className="text-[11px] text-muted-foreground">{item.variantName}</p>
+                              <p className="text-[11px] text-muted-foreground">SP: ₹{item.sellingPrice.toFixed(2)}</p>
                             </TableCell>
-                            <TableCell className="text-center py-2">{item.quantity}</TableCell>
-                            <TableCell className="text-right py-2 font-medium">₹{item.totalPrice.toFixed(2)}</TableCell>
-                            <TableCell className="py-2 pl-1 pr-2">
+                            <TableCell className="py-1 px-2 text-center">
+                              <Input type="number" value={item.quantity} 
+                                     onChange={(e) => handleOrderItemDetailChange(item.variantId, 'quantity', e.target.value)} 
+                                     className="h-8 w-14 text-xs p-1 text-center" min="1"/>
+                            </TableCell>
+                            <TableCell className="py-1 px-2">
+                               <Input type="number" step="0.01" value={item.mrp} 
+                                      onChange={(e) => handleOrderItemDetailChange(item.variantId, 'mrp', e.target.value)} 
+                                      className="h-8 w-full text-xs p-1"/>
+                            </TableCell>
+                            <TableCell className="py-1 px-2">
+                                <Input type="number" step="0.01" value={item.discountRate} 
+                                       onChange={(e) => handleOrderItemDetailChange(item.variantId, 'discountRate', e.target.value)}
+                                       className="h-8 w-full text-xs p-1"/>
+                            </TableCell>
+                            <TableCell className="py-1 px-2">
+                                <Input type="number" step="0.01" value={item.gstTaxRate} 
+                                       onChange={(e) => handleOrderItemDetailChange(item.variantId, 'gstTaxRate', e.target.value)}
+                                       className="h-8 w-full text-xs p-1"/>
+                            </TableCell>
+                            <TableCell className="py-1 px-2 text-right font-medium">₹{item.finalItemPrice.toFixed(2)}</TableCell>
+                            <TableCell className="py-1 px-1">
                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRemoveOrderItem(item.variantId)}>
                                     <X className="h-3.5 w-3.5 text-destructive"/>
-                                    <span className="sr-only">Remove item</span>
                                 </Button>
                             </TableCell>
                           </TableRow>
@@ -630,10 +763,12 @@ export default function CreateOrderPage() {
                   </ScrollArea>
                 )}
                 {orderItems.length > 0 && (
-                    <div className="mt-4 pt-4 border-t">
+                    <div className="mt-4 pt-4 border-t px-6">
+                        <div className="flex justify-between text-sm mb-1"><span>Subtotal:</span><span>₹{calculateOrderSubtotal().toFixed(2)}</span></div>
+                        <div className="flex justify-between text-sm mb-1"><span>Total GST:</span><span>₹{calculateTotalGst().toFixed(2)}</span></div>
                         <div className="flex justify-between font-semibold text-lg">
-                            <span>Subtotal:</span>
-                            <span>₹{calculateSubtotal().toFixed(2)}</span>
+                            <span>Grand Total:</span>
+                            <span>₹{calculateGrandTotal().toFixed(2)}</span>
                         </div>
                     </div>
                 )}
@@ -665,15 +800,20 @@ export default function CreateOrderPage() {
                         <div key={item.variantId} className="flex justify-between items-center text-sm py-2 border-b last:border-b-0">
                             <div>
                                 <p className="font-medium">{item.productName} <span className="text-xs text-muted-foreground">({item.variantName})</span></p>
-                                <p className="text-xs">{item.quantity} x ₹{item.unitPrice.toFixed(2)}</p>
+                                <p className="text-xs">{item.quantity} x ₹{item.sellingPrice.toFixed(2)} (MRP: ₹{item.mrp.toFixed(2)}, Disc: {item.discountRate.toFixed(1)}%, GST: {item.gstTaxRate.toFixed(1)}%)</p>
                             </div>
-                            <p className="font-medium">₹{item.totalPrice.toFixed(2)}</p>
+                            <p className="font-medium">₹{item.finalItemPrice.toFixed(2)}</p>
                         </div>
                     ))}
                   </ScrollArea>
-                  <div className="flex justify-between font-bold text-xl pt-3 mt-3 border-t">
-                      <span>Subtotal:</span>
-                      <span>₹{calculateSubtotal().toFixed(2)}</span>
+                  <div className="mt-3 pt-3 border-t">
+                    <div className="flex justify-between text-sm"><span>Subtotal:</span><span>₹{calculateOrderSubtotal().toFixed(2)}</span></div>
+                    <div className="flex justify-between text-sm"><span>Total Discount:</span><span className="text-green-600">- ₹{orderItems.reduce((sum, item) => sum + (item.discountAmount), 0).toFixed(2)}</span></div>
+                    <div className="flex justify-between text-sm"><span>Total GST:</span><span>₹{calculateTotalGst().toFixed(2)}</span></div>
+                    <div className="flex justify-between font-bold text-xl mt-1">
+                        <span>Grand Total:</span>
+                        <span>₹{calculateGrandTotal().toFixed(2)}</span>
+                    </div>
                   </div>
                 </Card>
             </div>
@@ -691,9 +831,6 @@ export default function CreateOrderPage() {
           </CardFooter>
         </Card>
       )}
-
     </div>
   );
 }
-
-    
