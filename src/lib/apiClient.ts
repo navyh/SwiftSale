@@ -148,8 +148,10 @@ export async function searchUserByPhone(phone: string): Promise<UserDto | null> 
   try {
     return await fetchAPI<UserDto>(`/users/by-phone?phone=${encodeURIComponent(phone)}`);
   } catch (error: any) {
-    if (error.message.includes("404")) return null;
-    throw error;
+    if (error.message && error.message.includes("404")) return null; // Check specific error message if API returns structured error
+    // if (error instanceof Error && error.message.includes("404")) return null; // More type-safe check
+    console.warn(`Search user by phone for "${phone}" failed or user not found:`, error);
+    return null;
   }
 }
 
@@ -247,8 +249,9 @@ export async function searchBusinessProfileByGstin(gstin: string): Promise<Busin
    try {
     return await fetchAPI<BusinessProfileDto>(`/business-profiles/by-gstin?gstin=${encodeURIComponent(gstin)}`);
   } catch (error: any) {
-    if (error.message.includes("404")) return null;
-    throw error;
+    if (error.message && error.message.includes("404")) return null;
+    console.warn(`Search BP by GSTIN for "${gstin}" failed or BP not found:`, error);
+    return null;
   }
 }
 
@@ -280,7 +283,7 @@ export interface CreateStaffRequest {
 }
 
 export interface UpdateStaffRequest {
-  roles?: string[];
+  roles?: string[]; // Roles are updated via a separate endpoint
   permissions?: string[] | null;
   status?: 'ACTIVE' | 'INACTIVE';
 }
@@ -302,7 +305,7 @@ export async function fetchStaffById(staffId: string): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/staff/${staffId}`);
 }
 
-export async function createStaffMember(userId: string, staffData: Omit<CreateStaffRequest, 'userId'>): Promise<StaffDto> {
+export async function createStaffMember(userId: string, staffData: CreateStaffRequest): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/users/${userId}/staff`, {
     method: 'POST',
     body: JSON.stringify(staffData),
@@ -310,9 +313,9 @@ export async function createStaffMember(userId: string, staffData: Omit<CreateSt
 }
 
 // For updating general staff details like permissions and status
-export async function updateStaffMember(staffId: string, staffData: Pick<UpdateStaffRequest, 'status' | 'permissions'>): Promise<StaffDto> {
-  return fetchAPI<StaffDto>(`/staff/${staffId}`, { // Assuming this endpoint updates status/permissions
-    method: 'PUT', // or PATCH, confirm with API spec
+export async function updateStaffMember(staffId: string, staffData: Omit<UpdateStaffRequest, 'roles'>): Promise<StaffDto> {
+  return fetchAPI<StaffDto>(`/staff/${staffId}`, { 
+    method: 'PUT', 
     body: JSON.stringify(staffData),
   });
 }
@@ -363,8 +366,8 @@ export interface ProductVariantDto {
   costPrice?: number | null;
   quantity?: number; // Stock quantity
   barcode?: string | null;
-  color?: string | null;
-  size?: string | null;
+  color?: string | null; // Changed from colorValue
+  size?: string | null;  // Changed from sizeValue
   imageUrls?: string[] | null;
   createdAt?: string;
   updatedAt?: string;
@@ -373,10 +376,10 @@ export interface ProductVariantDto {
 export interface ProductDto {
   id: string;
   name:string;
-  brand?: Brand | null;
-  brandId?: string | null;
-  category?: Category | null;
-  categoryId?: string | null;
+  brand?: Brand | null; // Could be object if API populates, or just name if flat
+  brandId?: string | null; // API might return ID
+  category?: Category | null; // Could be object if API populates, or just name if flat
+  categoryId?: string | null; // API might return ID
   subCategory?: string | null;
   hsnCode?: string | null;
   gstTaxRate?: number | null;
@@ -406,22 +409,24 @@ export interface ProductDto {
 
 export interface CreateProductRequest {
   name: string;
-  brand: string;
+  brand: string; // Expects brand name
   hsnCode?: string | null;
   description?: string | null;
   gstTaxRate?: number | null;
-  category: string;
+  category: string; // Expects category name
   subCategory?: string | null;
-  colorVariant?: string[] | null;
-  sizeVariant?: string[] | null;
+  colorVariant?: string[] | null; // For generating variants
+  sizeVariant?: string[] | null;  // For generating variants
   tags?: string[] | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
 
+  // Fields for when product has no variants or as default
   sku?: string | null;
   barcode?: string | null;
-  quantity?: number | null;
-  unitPrice?: number | null;
-  costPrice?: number | null;
+  quantity?: number | null; // Base quantity
+  unitPrice?: number | null; // Base price
+  costPrice?: number | null; // Base cost price
+
   imageUrls?: string[] | null;
   weight?: number | null;
   dimensions?: string | null;
@@ -439,8 +444,8 @@ export interface UpdateProductRequest {
   hsnCode?: string | null;
   gstTaxRate?: number | null;
   description?: string | null;
-  colorVariant?: string[] | null;
-  sizeVariant?: string[] | null;
+  colorVariant?: string[] | null; // For generating new variants during update
+  sizeVariant?: string[] | null;  // For generating new variants during update
   tags?: string[] | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
 
@@ -553,10 +558,10 @@ export interface ProductSearchResultDto {
 
 export interface QuickCreateProductRequest {
     name: string;
-    brandName: string;
-    categoryName: string;
-    colorVariants: string[];
-    sizeVariants: string[];
+    brandName: string; // Expects brand name as string
+    categoryName: string; // Expects category name as string
+    colorVariants: string[]; // Array of color names
+    sizeVariants: string[]; // Array of size names
     unitPrice: number;
 }
 export interface QuickCreateProductResponse extends ProductDto {} // API returns the full ProductDto

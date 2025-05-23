@@ -116,7 +116,7 @@ export default function CreateOrderPage() {
     try {
       const user = await searchUserByPhone(phoneSearch);
       setFoundUser(user);
-      if (user) setSelectedUserId(user.id);
+      if (user && user.id) setSelectedUserId(user.id); // Ensure ID is string
       else setShowUserCreateDialog(true);
     } catch (error: any) {
       toast({ title: "Error Searching User", description: error.message || "Failed to search user.", variant: "destructive" });
@@ -131,12 +131,12 @@ export default function CreateOrderPage() {
     try {
       const bp = await searchBusinessProfileByGstin(gstinSearch);
       setFoundBusinessProfile(bp);
-      if (bp) {
-        setSelectedBusinessProfileId(bp.id);
+      if (bp && bp.id) {
+        setSelectedBusinessProfileId(bp.id); // Ensure ID is string
         if (bp.userIds && bp.userIds.length > 0 && bp.userIds[0]) {
           const user = await fetchUserById(bp.userIds[0]); 
           setFoundUser(user); 
-          setSelectedUserId(user.id);
+          if (user && user.id) setSelectedUserId(user.id); // Ensure ID is string
         } else {
           toast({ title: "Info", description: "Business profile found, but no users are linked. Please link a user via Business Profile Management.", variant: "default" });
         }
@@ -155,7 +155,7 @@ export default function CreateOrderPage() {
     try {
       const newUser = await createUser({ name: data.name, phone: data.phone, email: data.email || undefined, status: 'ACTIVE' });
       setFoundUser(newUser);
-      setSelectedUserId(newUser.id);
+      if (newUser && newUser.id) setSelectedUserId(newUser.id); // Ensure ID is string
       setShowUserCreateDialog(false);
       userCreateForm.reset();
       toast({ title: "Success", description: "User created successfully." });
@@ -175,20 +175,20 @@ export default function CreateOrderPage() {
     try {
       const response = await createBusinessProfileWithUser(payload);
       setFoundBusinessProfile(response);
-      setSelectedBusinessProfileId(response.id);
+      if (response && response.id) setSelectedBusinessProfileId(response.id); // Ensure ID is string
       
-      if (response.user) { 
+      if (response.user && response.user.id) { 
         setFoundUser(response.user);
-        setSelectedUserId(response.user.id);
+        setSelectedUserId(response.user.id); // Ensure ID is string
       } else if (response.userIds && response.userIds.length > 0 && response.userIds[0]) { 
         const user = await fetchUserById(response.userIds[0]);
         setFoundUser(user);
-        setSelectedUserId(user.id);
+        if (user && user.id) setSelectedUserId(user.id); // Ensure ID is string
       }
       setShowBpWithUserCreateDialog(false);
       bpWithUserCreateForm.reset();
       toast({ title: "Success", description: "Business profile and user created successfully." });
-    } catch (error: any)
+    } catch (error: any) {
       toast({ title: "Error Creating BP & User", description: error.message || "Failed to create business profile with user.", variant: "destructive" });
     } finally {
       setIsBpWithUserCreateSubmitting(false);
@@ -226,7 +226,7 @@ export default function CreateOrderPage() {
     setSelectedVariant(null);
     setSelectedQuantity(1);
     try {
-      const product = await fetchProductById(productId);
+      const product = await fetchProductById(productId); // ID is already string
       setSelectedProductForDetails(product);
       if (product.variants && product.variants.length > 0) {
         // Auto-select first variant as a default, user can change
@@ -257,27 +257,23 @@ export default function CreateOrderPage() {
       quickProductCreateForm.reset();
       toast({ title: "Success", description: `Product "${response.name}" created quickly.` });
       
-      if (response.variants && response.variants.length > 0 && response.variants[0]) {
+      if (response.id && response.variants && response.variants.length > 0 && response.variants[0] && response.variants[0].id) {
         const newVariant = response.variants[0];
-        if (!newVariant.id || !response.id) {
-          toast({title: "Error", description: "Quick created product variant has missing ID.", variant: "destructive"});
-          return;
-        }
         const newItem: OrderItemDisplay = {
-          productId: response.id,
-          variantId: newVariant.id,
+          productId: response.id, // Ensure ID is string
+          variantId: newVariant.id, // Ensure ID is string
           quantity: 1, 
           unitPrice: newVariant.price || data.unitPrice, // Use variant price if available
           productName: response.name ?? "Unknown Product",
-          variantName: `${newVariant.color || ''} / ${newVariant.size || ''}`.trim() || 'Default',
+          variantName: `${newVariant.color || ''}${newVariant.color && newVariant.size ? ' / ' : ''}${newVariant.size || ''}`.trim() || 'Default',
           totalPrice: (newVariant.price || data.unitPrice) * 1,
         };
         setOrderItems(prevItems => [...prevItems, newItem]);
-        setSelectedProductForDetails(response); // Select this for potential further interactions
+        setSelectedProductForDetails(response); 
         setSelectedVariant(newVariant); 
         setSelectedQuantity(1);
       } else {
-         toast({ title: "Warning", description: "Quick created product has no variants to add to cart.", variant: "default"});
+         toast({ title: "Warning", description: "Quick created product has no variants or missing IDs to add to cart.", variant: "default"});
       }
        setProductSearchQuery(""); 
        setProductSearchResults([]);
@@ -303,20 +299,22 @@ export default function CreateOrderPage() {
       setOrderItems(updatedItems);
     } else {
       const newItem: OrderItemDisplay = {
-        productId: selectedProductForDetails.id,
-        variantId: selectedVariant.id,
+        productId: selectedProductForDetails.id, // Ensure ID is string
+        variantId: selectedVariant.id, // Ensure ID is string
         quantity: selectedQuantity,
         unitPrice: unitPrice,
         productName: selectedProductForDetails.name ?? "Unknown Product",
-        variantName: `${selectedVariant.color || ''} / ${selectedVariant.size || ''}`.trim() || 'Default',
+        variantName: `${selectedVariant.color || ''}${selectedVariant.color && selectedVariant.size ? ' / ' : ''}${selectedVariant.size || ''}`.trim() || 'Default',
         totalPrice: unitPrice * selectedQuantity,
       };
       setOrderItems(prevItems => [...prevItems, newItem]);
     }
+    // Reset selection for next item, but keep product details if user wants to add another variant of same product
+    setSelectedVariant(null);
     setSelectedQuantity(1); 
   };
 
-  const handleRemoveOrderItem = (variantIdToRemove: string) => {
+  const handleRemoveOrderItem = (variantIdToRemove: string) => { // ID is string
     setOrderItems(prevItems => prevItems.filter(item => item.variantId !== variantIdToRemove));
   };
 
