@@ -87,6 +87,8 @@ export default function CreateOrderPage() {
 
   const [isSearchingUser, setIsSearchingUser] = React.useState(false);
   const [isSearchingBp, setIsSearchingBp] = React.useState(false);
+  const [isUserCreateSubmitting, setIsUserCreateSubmitting] = React.useState(false);
+  const [isBpWithUserCreateSubmitting, setIsBpWithUserCreateSubmitting] = React.useState(false);
   const [showUserCreateDialog, setShowUserCreateDialog] = React.useState(false);
   const [showBpWithUserCreateDialog, setShowBpWithUserCreateDialog] = React.useState(false);
 
@@ -100,6 +102,8 @@ export default function CreateOrderPage() {
   const [selectedQuantity, setSelectedQuantity] = React.useState(1);
   const [orderItems, setOrderItems] = React.useState<OrderItemDisplay[]>([]);
   const [showQuickProductDialog, setShowQuickProductDialog] = React.useState(false);
+  const [isQuickProductSubmitting, setIsQuickProductSubmitting] = React.useState(false);
+
 
   // Dialog Forms
   const userCreateForm = useForm<UserCreateDialogValues>({ resolver: zodResolver(userCreateDialogSchema) });
@@ -115,7 +119,7 @@ export default function CreateOrderPage() {
       if (user) setSelectedUserId(user.id);
       else setShowUserCreateDialog(true);
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to search user.", variant: "destructive" });
+      toast({ title: "Error Searching User", description: error.message || "Failed to search user.", variant: "destructive" });
     } finally {
       setIsSearchingUser(false);
     }
@@ -129,9 +133,9 @@ export default function CreateOrderPage() {
       setFoundBusinessProfile(bp);
       if (bp) {
         setSelectedBusinessProfileId(bp.id);
-        if (bp.userIds && bp.userIds.length > 0) {
-          const user = await fetchUserById(bp.userIds[0]); // Assuming first user is primary contact
-          setFoundUser(user); // Set foundUser to display details
+        if (bp.userIds && bp.userIds.length > 0 && bp.userIds[0]) {
+          const user = await fetchUserById(bp.userIds[0]); 
+          setFoundUser(user); 
           setSelectedUserId(user.id);
         } else {
           toast({ title: "Info", description: "Business profile found, but no users are linked. Please link a user via Business Profile Management.", variant: "default" });
@@ -140,13 +144,14 @@ export default function CreateOrderPage() {
         setShowBpWithUserCreateDialog(true);
       }
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to search business profile.", variant: "destructive" });
+      toast({ title: "Error Searching BP", description: error.message || "Failed to search business profile.", variant: "destructive" });
     } finally {
       setIsSearchingBp(false);
     }
   };
 
   const handleCreateUserDialogSubmit = async (data: UserCreateDialogValues) => {
+    setIsUserCreateSubmitting(true);
     try {
       const newUser = await createUser({ name: data.name, phone: data.phone, email: data.email || undefined, status: 'ACTIVE' });
       setFoundUser(newUser);
@@ -155,11 +160,14 @@ export default function CreateOrderPage() {
       userCreateForm.reset();
       toast({ title: "Success", description: "User created successfully." });
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to create user.", variant: "destructive" });
+      toast({ title: "Error Creating User", description: error.message || "Failed to create user.", variant: "destructive" });
+    } finally {
+      setIsUserCreateSubmitting(false);
     }
   };
 
   const handleBpWithUserCreateDialogSubmit = async (data: BpWithUserCreateDialogValues) => {
+    setIsBpWithUserCreateSubmitting(true);
     const payload: CreateBusinessProfileWithUserRequest = {
       businessProfile: { name: data.bpName, gstin: data.bpGstin, status: 'ACTIVE' },
       user: { name: data.userName, phone: data.userPhone, email: data.userEmail || undefined, status: 'ACTIVE' }
@@ -169,10 +177,10 @@ export default function CreateOrderPage() {
       setFoundBusinessProfile(response);
       setSelectedBusinessProfileId(response.id);
       
-      if (response.user) { // If API returns the created user object directly
+      if (response.user) { 
         setFoundUser(response.user);
         setSelectedUserId(response.user.id);
-      } else if (response.userIds && response.userIds.length > 0) { // Fallback: fetch user by ID
+      } else if (response.userIds && response.userIds.length > 0 && response.userIds[0]) { 
         const user = await fetchUserById(response.userIds[0]);
         setFoundUser(user);
         setSelectedUserId(user.id);
@@ -180,8 +188,10 @@ export default function CreateOrderPage() {
       setShowBpWithUserCreateDialog(false);
       bpWithUserCreateForm.reset();
       toast({ title: "Success", description: "Business profile and user created successfully." });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to create business profile with user.", variant: "destructive" });
+    } catch (error: any)
+      toast({ title: "Error Creating BP & User", description: error.message || "Failed to create business profile with user.", variant: "destructive" });
+    } finally {
+      setIsBpWithUserCreateSubmitting(false);
     }
   };
 
@@ -195,7 +205,7 @@ export default function CreateOrderPage() {
       const results = await searchProductsFuzzy(productSearchQuery);
       setProductSearchResults(results);
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to search products.", variant: "destructive" });
+      toast({ title: "Error Searching Products", description: error.message || "Failed to search products.", variant: "destructive" });
       setProductSearchResults([]);
     } finally {
       setIsSearchingProducts(false);
@@ -205,7 +215,7 @@ export default function CreateOrderPage() {
   React.useEffect(() => {
     const timer = setTimeout(() => {
         if (productSearchQuery) handleProductSearch();
-    }, 500); // Debounce search
+    }, 500); 
     return () => clearTimeout(timer);
   }, [productSearchQuery, handleProductSearch]);
 
@@ -219,19 +229,20 @@ export default function CreateOrderPage() {
       const product = await fetchProductById(productId);
       setSelectedProductForDetails(product);
       if (product.variants && product.variants.length > 0) {
-        // Optionally auto-select first variant or let user choose
+        // Auto-select first variant as a default, user can change
         // setSelectedVariant(product.variants[0]); 
       } else {
         toast({title: "Info", description: "This product has no variants defined.", variant: "default"});
       }
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to fetch product details.", variant: "destructive" });
+      toast({ title: "Error Fetching Product", description: error.message || "Failed to fetch product details.", variant: "destructive" });
     } finally {
       setIsLoadingProductDetails(false);
     }
   };
   
   const handleQuickProductCreateDialogSubmit = async (data: QuickProductCreateDialogValues) => {
+    setIsQuickProductSubmitting(true);
     const payload: QuickCreateProductRequest = {
       name: data.name,
       brandName: data.brandName,
@@ -241,67 +252,68 @@ export default function CreateOrderPage() {
       unitPrice: data.unitPrice,
     };
     try {
-      const response = await quickCreateProduct(payload); // API should return full ProductDto
+      const response = await quickCreateProduct(payload); 
       setShowQuickProductDialog(false);
       quickProductCreateForm.reset();
       toast({ title: "Success", description: `Product "${response.name}" created quickly.` });
       
-      if (response.variants && response.variants.length > 0) {
+      if (response.variants && response.variants.length > 0 && response.variants[0]) {
         const newVariant = response.variants[0];
+        if (!newVariant.id || !response.id) {
+          toast({title: "Error", description: "Quick created product variant has missing ID.", variant: "destructive"});
+          return;
+        }
         const newItem: OrderItemDisplay = {
           productId: response.id,
           variantId: newVariant.id,
           quantity: 1, 
-          unitPrice: newVariant.price || data.unitPrice,
-          productName: response.name,
+          unitPrice: newVariant.price || data.unitPrice, // Use variant price if available
+          productName: response.name ?? "Unknown Product",
           variantName: `${newVariant.color || ''} / ${newVariant.size || ''}`.trim() || 'Default',
           totalPrice: (newVariant.price || data.unitPrice) * 1,
         };
         setOrderItems(prevItems => [...prevItems, newItem]);
-        // Also select this product for further variant selection if needed
-        setSelectedProductForDetails(response);
+        setSelectedProductForDetails(response); // Select this for potential further interactions
         setSelectedVariant(newVariant); 
         setSelectedQuantity(1);
       } else {
          toast({ title: "Warning", description: "Quick created product has no variants to add to cart.", variant: "default"});
       }
-       setProductSearchQuery(""); // Clear search to avoid confusion
+       setProductSearchQuery(""); 
        setProductSearchResults([]);
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to quick create product.", variant: "destructive" });
+      toast({ title: "Error Quick Creating Product", description: error.message || "Failed to quick create product.", variant: "destructive" });
+    } finally {
+      setIsQuickProductSubmitting(false);
     }
   };
 
   const handleAddOrderItem = () => {
-    if (!selectedProductForDetails || !selectedVariant || selectedQuantity <= 0) {
+    if (!selectedProductForDetails || !selectedProductForDetails.id || !selectedVariant || !selectedVariant.id || selectedQuantity <= 0) {
       toast({ title: "Warning", description: "Please select a product, variant, and valid quantity.", variant: "default" });
       return;
     }
-    const existingItemIndex = orderItems.findIndex(item => item.variantId === selectedVariant.id);
+    const existingItemIndex = orderItems.findIndex(item => item.variantId === selectedVariant!.id);
+    const unitPrice = selectedVariant.price || selectedProductForDetails.unitPrice || 0;
     
     if (existingItemIndex > -1) {
       const updatedItems = [...orderItems];
       updatedItems[existingItemIndex].quantity += selectedQuantity;
-      updatedItems[existingItemIndex].totalPrice = updatedItems[existingItemIndex].quantity * updatedItems[existingItemIndex].unitPrice;
+      updatedItems[existingItemIndex].totalPrice = updatedItems[existingItemIndex].quantity * unitPrice;
       setOrderItems(updatedItems);
     } else {
       const newItem: OrderItemDisplay = {
         productId: selectedProductForDetails.id,
         variantId: selectedVariant.id,
         quantity: selectedQuantity,
-        unitPrice: selectedVariant.price || 0,
-        productName: selectedProductForDetails.name,
+        unitPrice: unitPrice,
+        productName: selectedProductForDetails.name ?? "Unknown Product",
         variantName: `${selectedVariant.color || ''} / ${selectedVariant.size || ''}`.trim() || 'Default',
-        totalPrice: (selectedVariant.price || 0) * selectedQuantity,
+        totalPrice: unitPrice * selectedQuantity,
       };
       setOrderItems(prevItems => [...prevItems, newItem]);
     }
-    setSelectedQuantity(1); // Reset quantity for next addition
-    // Optionally reset selectedVariant and selectedProductForDetails if desired
-    // setSelectedVariant(null);
-    // setSelectedProductForDetails(null);
-    // setProductSearchQuery("");
-    // setProductSearchResults([]);
+    setSelectedQuantity(1); 
   };
 
   const handleRemoveOrderItem = (variantIdToRemove: string) => {
@@ -316,7 +328,7 @@ export default function CreateOrderPage() {
   const nextStep = () => setCurrentStep(prev => prev + 1);
   const prevStep = () => setCurrentStep(prev => prev - 1);
 
-  const canProceedToStep2 = selectedUserId !== null;
+  const canProceedToStep2 = selectedUserId !== null && (customerType === 'B2C' || (customerType === 'B2B' && selectedBusinessProfileId !== null));
   const canProceedToStep3 = orderItems.length > 0;
 
   return (
@@ -351,7 +363,7 @@ export default function CreateOrderPage() {
                 <div className="flex gap-2">
                   <Input id="phone_search" value={phoneSearch} onChange={e => setPhoneSearch(e.target.value)} placeholder="Enter phone number" />
                   <Button onClick={handleUserSearch} disabled={isSearchingUser || !phoneSearch}>
-                    {isSearchingUser ? <Loader2 className="animate-spin mr-2"/> : <SearchIcon className="mr-2 h-4 w-4" />} Search
+                    {isSearchingUser ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <SearchIcon className="mr-2 h-4 w-4" />} Search
                   </Button>
                 </div>
                 {foundUser && <Card className="mt-2 p-3 bg-green-50 border-green-200"><CardDescription>Selected User: {foundUser.name} ({foundUser.phone})</CardDescription></Card>}
@@ -367,7 +379,8 @@ export default function CreateOrderPage() {
                             {userCreateForm.formState.errors.phone && <p className="text-xs text-destructive">{userCreateForm.formState.errors.phone.message}</p>}
                             <Input {...userCreateForm.register("email")} placeholder="Email (Optional)" />
                             {userCreateForm.formState.errors.email && <p className="text-xs text-destructive">{userCreateForm.formState.errors.email.message}</p>}
-                            <DialogFooter><Button type="submit" disabled={userCreateForm.formState.isSubmitting}>Create User</Button></DialogFooter>
+                            <DialogFooter><Button type="submit" disabled={isUserCreateSubmitting}>
+                               {isUserCreateSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : null} Create User</Button></DialogFooter>
                         </form>
                         </DialogContent>
                     </Dialog>
@@ -381,7 +394,7 @@ export default function CreateOrderPage() {
                 <div className="flex gap-2">
                   <Input id="gstin_search" value={gstinSearch} onChange={e => setGstinSearch(e.target.value)} placeholder="Enter GSTIN" />
                   <Button onClick={handleBusinessProfileSearch} disabled={isSearchingBp || !gstinSearch}>
-                     {isSearchingBp ? <Loader2 className="animate-spin mr-2"/> : <SearchIcon className="mr-2 h-4 w-4" />} Search
+                     {isSearchingBp ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <SearchIcon className="mr-2 h-4 w-4" />} Search
                   </Button>
                 </div>
                 {foundBusinessProfile && (
@@ -393,7 +406,7 @@ export default function CreateOrderPage() {
                 {!isSearchingBp && !foundBusinessProfile && gstinSearch && (
                      <Dialog open={showBpWithUserCreateDialog} onOpenChange={setShowBpWithUserCreateDialog}>
                         <DialogTrigger asChild><Button variant="outline" className="mt-2">Create BP & New User</Button></DialogTrigger>
-                        <DialogContent>
+                        <DialogContent className="max-h-[80vh] overflow-y-auto">
                         <DialogHeader><DialogTitle>Create Business Profile & New User</DialogTitle></DialogHeader>
                         <form onSubmit={bpWithUserCreateForm.handleSubmit(handleBpWithUserCreateDialogSubmit)} className="space-y-3">
                             <Label className="font-medium">Business Profile Details</Label>
@@ -408,7 +421,8 @@ export default function CreateOrderPage() {
                             {bpWithUserCreateForm.formState.errors.userPhone && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.userPhone.message}</p>}
                             <Input {...bpWithUserCreateForm.register("userEmail")} placeholder="User Email (Optional)" />
                             {bpWithUserCreateForm.formState.errors.userEmail && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.userEmail.message}</p>}
-                            <DialogFooter><Button type="submit" disabled={bpWithUserCreateForm.formState.isSubmitting}>Create BP & User</Button></DialogFooter>
+                            <DialogFooter><Button type="submit" disabled={isBpWithUserCreateSubmitting}>
+                              {isBpWithUserCreateSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : null}  Create BP & User</Button></DialogFooter>
                         </form>
                         </DialogContent>
                     </Dialog>
@@ -436,7 +450,6 @@ export default function CreateOrderPage() {
                     <Label htmlFor="product_search">Search Products</Label>
                     <Input id="product_search" value={productSearchQuery} onChange={e => setProductSearchQuery(e.target.value)} placeholder="Enter product name, SKU, etc." />
                   </div>
-                  {/* Search button removed, search is debounced on input change */}
                 </div>
 
                 {isSearchingProducts && <div className="flex items-center justify-center p-4"><Loader2 className="animate-spin h-5 w-5 mr-2"/>Searching products...</div>}
@@ -463,7 +476,7 @@ export default function CreateOrderPage() {
                         <p className="text-muted-foreground">No products found matching "{productSearchQuery}".</p>
                         <Dialog open={showQuickProductDialog} onOpenChange={setShowQuickProductDialog}>
                             <DialogTrigger asChild><Button variant="outline" className="mt-2">Quick Add Product</Button></DialogTrigger>
-                            <DialogContent>
+                            <DialogContent className="max-h-[80vh] overflow-y-auto">
                                 <DialogHeader><DialogTitle>Quick Add New Product</DialogTitle></DialogHeader>
                                 <form onSubmit={quickProductCreateForm.handleSubmit(handleQuickProductCreateDialogSubmit)} className="space-y-3">
                                     <Input {...quickProductCreateForm.register("name")} placeholder="Product Name *" />
@@ -478,7 +491,8 @@ export default function CreateOrderPage() {
                                      {quickProductCreateForm.formState.errors.sizes && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.sizes.message}</p>}
                                     <Input type="number" step="0.01" {...quickProductCreateForm.register("unitPrice")} placeholder="Unit Price *" />
                                     {quickProductCreateForm.formState.errors.unitPrice && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.unitPrice.message}</p>}
-                                    <DialogFooter><Button type="submit" disabled={quickProductCreateForm.formState.isSubmitting}>Quick Create</Button></DialogFooter>
+                                    <DialogFooter><Button type="submit" disabled={isQuickProductSubmitting}>
+                                      {isQuickProductSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : null} Quick Create</Button></DialogFooter>
                                 </form>
                             </DialogContent>
                         </Dialog>
@@ -511,11 +525,11 @@ export default function CreateOrderPage() {
                                                 <p className="font-medium flex-grow">
                                                     {variant.color && <span className="mr-1.5 p-1 text-xs rounded bg-gray-200 text-gray-700">{variant.color}</span>}
                                                     {variant.size && <span className="border px-1.5 py-0.5 text-xs rounded">{variant.size}</span>}
-                                                    {!variant.color && !variant.size && <span className="text-xs text-muted-foreground italic">Default</span>}
+                                                    {(!variant.color && !variant.size) && <span className="text-xs text-muted-foreground italic">Default</span>}
                                                 </p>
                                             </div>
-                                            <p className="mt-1">Price: ₹{variant.price?.toFixed(2) || 'N/A'}</p>
-                                            <p className="text-xs text-muted-foreground">Stock: {variant.quantity}</p>
+                                            <p className="mt-1">Price: ₹{(variant.price || selectedProductForDetails.unitPrice || 0).toFixed(2)}</p>
+                                            <p className="text-xs text-muted-foreground">Stock: {variant.quantity ?? 'N/A'}</p>
                                         </div>
                                     </Label>
                                 ))}
@@ -525,7 +539,7 @@ export default function CreateOrderPage() {
                             <div className="flex items-end gap-3">
                                 <div>
                                     <Label htmlFor="quantity" className="font-medium">Quantity:</Label>
-                                    <Input id="quantity" type="number" value={selectedQuantity} onChange={e => setSelectedQuantity(parseInt(e.target.value))} min="1" className="w-24 mt-1" />
+                                    <Input id="quantity" type="number" value={selectedQuantity} onChange={e => setSelectedQuantity(parseInt(e.target.value) > 0 ? parseInt(e.target.value) : 1)} min="1" className="w-24 mt-1" />
                                 </div>
                                 <Button onClick={handleAddOrderItem} disabled={!selectedVariant || selectedQuantity <= 0} className="h-10">
                                   <PlusCircle className="mr-2 h-4 w-4" /> Add to Order
@@ -553,7 +567,7 @@ export default function CreateOrderPage() {
                     <p className="text-xs text-muted-foreground">Add products using the search panel.</p>
                   </div>
                 ) : (
-                  <ScrollArea className="h-[calc(100vh-20rem)] max-h-[500px]"> {/* Adjust height as needed */}
+                  <ScrollArea className="h-[calc(100vh-20rem)] max-h-[500px]"> 
                     <Table>
                       <TableHeader><TableRow><TableHead>Item</TableHead><TableHead className="text-center">Qty</TableHead><TableHead className="text-right">Total</TableHead><TableHead></TableHead></TableRow></TableHeader>
                       <TableBody>
