@@ -30,15 +30,21 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Separator } from "@/components/ui/separator";
 import { format } from 'date-fns';
-import { cn } from "@/lib/utils"; // Added import
+import { cn } from "@/lib/utils";
 
-function DetailItem({ label, value, icon: Icon, className }: { label: string; value?: string | null | number | boolean; icon?: React.ElementType, className?: string }) {
-  if (value === null || value === undefined || value === "") return null;
-  let displayValue: React.ReactNode = String(value);
-  if (typeof value === 'boolean') {
-    displayValue = value ? <CheckCircle className="h-5 w-5 text-green-600" /> : <span className="text-muted-foreground">No</span>;
-  } else if (typeof value === 'number' && (label.toLowerCase().includes('price') || label.toLowerCase().includes('mrp'))) {
-     displayValue = `₹${value.toFixed(2)}`;
+function DetailItem({ label, value, icon: Icon, className }: { label: string; value?: React.ReactNode; icon?: React.ElementType, className?: string }) {
+  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === "")) return null;
+
+  let displayValue: React.ReactNode = value;
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    if (typeof value === 'boolean') {
+      displayValue = value ? <CheckCircle className="h-5 w-5 text-green-600" /> : <span className="text-muted-foreground">No</span>;
+    } else if (typeof value === 'number' && (label.toLowerCase().includes('price') || label.toLowerCase().includes('mrp'))) {
+       displayValue = `₹${value.toFixed(2)}`;
+    } else {
+       displayValue = String(value);
+    }
   }
 
 
@@ -54,6 +60,19 @@ function DetailItem({ label, value, icon: Icon, className }: { label: string; va
     </div>
   );
 }
+
+const shouldShowColorBullet = (colorString?: string | null): boolean => {
+  if (!colorString) return false;
+  const lowerColor = colorString.toLowerCase();
+  if (lowerColor === 'n/a' || lowerColor === 'default' || lowerColor === 'various' || lowerColor === 'assorted' || colorString.length > 25) {
+    return false;
+  }
+  // Avoid if it has too many spaces (likely a description not a color), unless it's an rgb/hsl string
+  if (colorString.split(' ').length > 3 && !['rgb', 'hsl'].some(prefix => lowerColor.startsWith(prefix))) {
+      return false;
+  }
+  return true;
+};
 
 function VariantCard({ variant }: { variant: ProductVariantDto }) {
   return (
@@ -73,7 +92,24 @@ function VariantCard({ variant }: { variant: ProductVariantDto }) {
         {variant.sku && <CardDescription className="text-xs">SKU: {variant.sku}</CardDescription>}
       </CardHeader>
       <CardContent className="p-3 grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-2 text-xs">
-        <DetailItem label="Color" value={variant.color} icon={Palette} />
+        <DetailItem 
+          label="Color" 
+          value={
+            variant.color ? (
+              <div className="flex items-center gap-1.5">
+                <span>{variant.color}</span>
+                {shouldShowColorBullet(variant.color) && (
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full border border-gray-400"
+                    style={{ backgroundColor: variant.color }}
+                    title={variant.color}
+                  />
+                )}
+              </div>
+            ) : 'N/A'
+          } 
+          icon={Palette} 
+        />
         <DetailItem label="Size" value={variant.size} icon={Rows}/>
         <DetailItem label="Selling Price" value={variant.sellingPrice} />
         <DetailItem label="MRP" value={variant.mrp} />
@@ -343,4 +379,3 @@ export default function ProductDetailPage() {
     </div>
   );
 }
-
