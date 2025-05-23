@@ -89,16 +89,25 @@ export interface OrderItemDisplay {
 const SELLER_STATE_CODE = "KA"; 
 const STANDARD_GST_RATES = [0, 5, 12, 18, 28];
 
-
 interface EditPricingModalState {
   isOpen: boolean;
   item: OrderItemDisplay | null;
-  tempQuantity: number;
-  tempMrp: number;
-  tempDiscountRate: number;
-  tempSellingPrice: number;
+  tempQuantityString: string;
+  tempMrpString: string;
+  tempDiscountRateString: string;
+  tempSellingPriceString: string;
   tempGstTaxRate: number;
 }
+
+const initialEditPricingModalState: EditPricingModalState = {
+  isOpen: false,
+  item: null,
+  tempQuantityString: "1",
+  tempMrpString: "0.00",
+  tempDiscountRateString: "0.00",
+  tempSellingPriceString: "0.00",
+  tempGstTaxRate: 0,
+};
 
 export default function CreateOrderPage() {
   const router = useRouter();
@@ -106,7 +115,6 @@ export default function CreateOrderPage() {
   const [currentStep, setCurrentStep] = React.useState(1); 
   const [customerType, setCustomerType] = React.useState<"B2C" | "B2B">("B2C");
   
-  // Step 1 State
   const [phoneSearch, setPhoneSearch] = React.useState("");
   const [gstinSearch, setGstinSearch] = React.useState("");
   const [searchedUsers, setSearchedUsers] = React.useState<UserDto[]>([]); 
@@ -123,7 +131,6 @@ export default function CreateOrderPage() {
   const [showUserCreateDialog, setShowUserCreateDialog] = React.useState(false);
   const [showBpWithUserCreateDialog, setShowBpWithUserCreateDialog] = React.useState(false);
 
-  // Step 2 State
   const [productSearchQuery, setProductSearchQuery] = React.useState("");
   const [productSearchResults, setProductSearchResults] = React.useState<ProductSearchResultDto[]>([]);
   const [isSearchingProducts, setIsSearchingProducts] = React.useState(false);
@@ -135,10 +142,7 @@ export default function CreateOrderPage() {
   const [showQuickProductDialog, setShowQuickProductDialog] = React.useState(false);
   const [isQuickProductSubmitting, setIsQuickProductSubmitting] = React.useState(false);
   
-  // Step 3 State - Modal for editing pricing
-  const [editPricingModal, setEditPricingModal] = React.useState<EditPricingModalState>({
-    isOpen: false, item: null, tempQuantity: 1, tempMrp: 0, tempDiscountRate: 0, tempSellingPrice: 0, tempGstTaxRate: 0
-  });
+  const [editPricingModal, setEditPricingModal] = React.useState<EditPricingModalState>(initialEditPricingModalState);
 
   const userCreateForm = useForm<UserCreateDialogValues>({ resolver: zodResolver(userCreateDialogSchema) });
   const bpWithUserCreateForm = useForm<BpWithUserCreateDialogValues>({ resolver: zodResolver(bpWithUserCreateDialogSchema) });
@@ -475,20 +479,29 @@ export default function CreateOrderPage() {
     );
   }
   
-  const updateOrderItemPricing = (variantId: string, updates: Partial<OrderItemDisplay>) => {
+  const updateOrderItemPricing = (variantId: string, updates: Partial<Omit<OrderItemDisplay, 'productId' | 'variantId' | 'productName' | 'variantName' | 'hsnCode' | 'unitPrice' >>) => {
     setOrderItems(prevItems => 
       prevItems.map(item => {
         if (item.variantId === variantId) {
           let updatedItem = { ...item, ...updates };
-          const qty = updatedItem.quantity;
+          
+          // Recalculate dependent fields based on what was updated
+          if ('mrp' in updates || 'discountRate' in updates) {
+            updatedItem.discountAmount = (updatedItem.mrp * (updatedItem.discountRate / 100));
+            updatedItem.sellingPrice = updatedItem.mrp - updatedItem.discountAmount;
+          } else if ('sellingPrice' in updates) {
+            updatedItem.discountAmount = updatedItem.mrp - updatedItem.sellingPrice;
+            updatedItem.discountRate = updatedItem.mrp > 0 ? (updatedItem.discountAmount / updatedItem.mrp) * 100 : 0;
+          }
           
           updatedItem.unitPrice = updatedItem.sellingPrice; 
 
-          const totalSellingPriceForLine = updatedItem.sellingPrice * qty;
+          const totalSellingPriceForLine = updatedItem.sellingPrice * updatedItem.quantity;
           const totalGstForLine = totalSellingPriceForLine * (updatedItem.gstTaxRate / 100);
           
           updatedItem.gstAmount = totalGstForLine;
           updatedItem.finalItemPrice = totalSellingPriceForLine + totalGstForLine;
+          updatedItem.discountAmount = (updatedItem.mrp - updatedItem.sellingPrice) * updatedItem.quantity; // This is total discount for the line
 
           if (customerStateCode === SELLER_STATE_CODE) {
             updatedItem.sgstAmount = totalGstForLine / 2;
@@ -510,10 +523,10 @@ export default function CreateOrderPage() {
     setEditPricingModal({
       isOpen: true,
       item: itemToEdit,
-      tempQuantity: itemToEdit.quantity,
-      tempMrp: itemToEdit.mrp,
-      tempDiscountRate: itemToEdit.discountRate,
-      tempSellingPrice: itemToEdit.sellingPrice,
+      tempQuantityString: itemToEdit.quantity.toString(),
+      tempMrpString: itemToEdit.mrp.toFixed(2),
+      tempDiscountRateString: itemToEdit.discountRate.toFixed(2),
+      tempSellingPriceString: itemToEdit.sellingPrice.toFixed(2),
       tempGstTaxRate: itemToEdit.gstTaxRate,
     });
   };
@@ -521,14 +534,20 @@ export default function CreateOrderPage() {
   const handleSavePricingModal = () => {
     if (!editPricingModal.item) return;
     
+    const quantity = parseInt(editPricingModal.tempQuantityString) || 1;
+    const mrp = parseFloat(editPricingModal.tempMrpString) || 0;
+    const sellingPrice = parseFloat(editPricingModal.tempSellingPriceString) || 0;
+    const discountRate = parseFloat(editPricingModal.tempDiscountRateString) || 0;
+
+
     updateOrderItemPricing(editPricingModal.item.variantId, {
-      quantity: editPricingModal.tempQuantity,
-      mrp: editPricingModal.tempMrp,
-      discountRate: editPricingModal.tempDiscountRate, 
-      sellingPrice: editPricingModal.tempSellingPrice, 
+      quantity: quantity,
+      mrp: mrp,
+      discountRate: discountRate, 
+      sellingPrice: sellingPrice, 
       gstTaxRate: editPricingModal.tempGstTaxRate,
     });
-    setEditPricingModal({ isOpen: false, item: null, tempQuantity: 1, tempMrp: 0, tempDiscountRate: 0, tempSellingPrice: 0, tempGstTaxRate: 0 });
+    setEditPricingModal(initialEditPricingModalState);
   };
 
 
@@ -536,7 +555,7 @@ export default function CreateOrderPage() {
     return orderItems.reduce((sum, item) => sum + item.sellingPrice * item.quantity, 0);
   };
   const calculateTotalLineDiscount = (): number => { 
-    return orderItems.reduce((sum, item) => sum + item.discountAmount, 0);
+    return orderItems.reduce((sum, item) => sum + item.discountAmount, 0); // discountAmount is already total for line
   }
   const calculateTotalOrderGst = (): number => { 
     return orderItems.reduce((sum, item) => sum + item.gstAmount, 0);
@@ -611,9 +630,9 @@ export default function CreateOrderPage() {
         size: item.variantName.split(' / ')[1]?.trim() || undefined, 
         color: item.variantName.split(' / ')[0]?.trim() || undefined, 
         quantity: item.quantity,
-        unitPrice: item.unitPrice, 
+        unitPrice: item.sellingPrice, // This is unit selling price before tax
         discountRate: item.mrp > 0 ? parseFloat(((item.mrp - item.sellingPrice) / item.mrp * 100).toFixed(2)) : 0,
-        discountAmount: parseFloat((item.mrp - item.sellingPrice).toFixed(2)), 
+        discountAmount: parseFloat((item.mrp - item.sellingPrice).toFixed(2)), // This is per unit discount
         hsnCode: item.hsnCode,
         gstTaxRate: item.gstTaxRate,
       })),
@@ -1017,55 +1036,68 @@ export default function CreateOrderPage() {
             <div className="space-y-3 py-2">
               <div>
                 <Label htmlFor="modal_qty">Quantity</Label>
-                <Input id="modal_qty" type="number" min="1" value={editPricingModal.tempQuantity} 
-                       onChange={(e) => setEditPricingModal(prev => ({ ...prev, tempQuantity: parseInt(e.target.value) || 1 }))} />
+                <Input id="modal_qty" type="number" min="1" 
+                       value={editPricingModal.tempQuantityString} 
+                       onChange={(e) => setEditPricingModal(prev => ({ ...prev, tempQuantityString: e.target.value }))} />
               </div>
               <div>
                 <Label htmlFor="modal_mrp">MRP (₹)</Label>
-                <Input id="modal_mrp" type="number" step="0.01" value={editPricingModal.tempMrp.toFixed(2)} 
+                <Input id="modal_mrp" type="text" inputMode="decimal"
+                       value={editPricingModal.tempMrpString} 
                        onChange={(e) => {
-                           const newMrp = parseFloat(e.target.value) || 0;
-                           const currentDiscountRate = editPricingModal.tempDiscountRate;
-                           const newSellingPrice = newMrp * (1 - (currentDiscountRate / 100));
-                           setEditPricingModal(prev => ({
-                               ...prev,
-                               tempMrp: newMrp,
-                               tempSellingPrice: parseFloat(newSellingPrice.toFixed(2)),
-                           }));
+                           const newMrpString = e.target.value;
+                           if (/^\d*\.?\d{0,2}$/.test(newMrpString) || newMrpString === "") { // Allow valid decimal input
+                               const newMrp = parseFloat(newMrpString) || 0;
+                               const currentDiscountRate = parseFloat(editPricingModal.tempDiscountRateString) || 0;
+                               const newSellingPrice = newMrp * (1 - (currentDiscountRate / 100));
+                               setEditPricingModal(prev => ({
+                                   ...prev,
+                                   tempMrpString: newMrpString,
+                                   tempSellingPriceString: isNaN(newSellingPrice) ? "" : newSellingPrice.toFixed(2),
+                               }));
+                           }
                        }} />
               </div>
               <div>
                 <Label htmlFor="modal_discount_rate">Discount Rate (%)</Label>
-                <Input id="modal_discount_rate" type="number" step="0.01" value={editPricingModal.tempDiscountRate.toFixed(2)}
+                <Input id="modal_discount_rate" type="text" inputMode="decimal"
+                       value={editPricingModal.tempDiscountRateString}
                        onChange={(e) => {
-                           const newDiscountRate = parseFloat(e.target.value) || 0;
-                           const currentMrp = editPricingModal.tempMrp;
-                           const newSellingPrice = currentMrp * (1 - (newDiscountRate / 100));
-                           setEditPricingModal(prev => ({
-                               ...prev,
-                               tempDiscountRate: newDiscountRate,
-                               tempSellingPrice: parseFloat(newSellingPrice.toFixed(2)),
-                           }));
+                           const newDiscRateString = e.target.value;
+                            if (/^\d*\.?\d{0,2}$/.test(newDiscRateString) || newDiscRateString === "") {
+                               const newDiscountRate = parseFloat(newDiscRateString) || 0;
+                               const currentMrp = parseFloat(editPricingModal.tempMrpString) || 0;
+                               const newSellingPrice = currentMrp * (1 - (Math.max(0, Math.min(100, newDiscountRate)) / 100));
+                               setEditPricingModal(prev => ({
+                                   ...prev,
+                                   tempDiscountRateString: newDiscRateString,
+                                   tempSellingPriceString: isNaN(newSellingPrice) ? "" : newSellingPrice.toFixed(2),
+                               }));
+                           }
                        }} />
               </div>
                <div>
                 <Label htmlFor="modal_selling_price">Selling Price (₹) (before tax)</Label>
-                <Input id="modal_selling_price" type="number" step="0.01" value={editPricingModal.tempSellingPrice.toFixed(2)}
+                <Input id="modal_selling_price" type="text" inputMode="decimal"
+                       value={editPricingModal.tempSellingPriceString}
                        onChange={(e) => {
-                           const newSellingPrice = parseFloat(e.target.value) || 0;
-                           const currentMrp = editPricingModal.tempMrp;
-                           let newDiscountRate = 0;
-                           if (currentMrp > 0 && newSellingPrice <= currentMrp) { // ensure selling price not > mrp for discount calc
-                               const unitDiscount = currentMrp - newSellingPrice;
-                               newDiscountRate = (unitDiscount / currentMrp) * 100;
-                           } else if (newSellingPrice > currentMrp) { // If selling price > mrp, discount is 0 or negative (treat as 0)
-                               newDiscountRate = 0;
+                           const newSellingPriceString = e.target.value;
+                           if (/^\d*\.?\d{0,2}$/.test(newSellingPriceString) || newSellingPriceString === "") {
+                               const newSellingPrice = parseFloat(newSellingPriceString) || 0;
+                               const currentMrp = parseFloat(editPricingModal.tempMrpString) || 0;
+                               let newDiscountRate = 0;
+                               if (currentMrp > 0 && newSellingPrice <= currentMrp && newSellingPrice >= 0) {
+                                   const unitDiscount = currentMrp - newSellingPrice;
+                                   newDiscountRate = (unitDiscount / currentMrp) * 100;
+                               } else if (newSellingPrice > currentMrp) {
+                                   newDiscountRate = 0; // Selling price can't be > MRP for positive discount
+                               }
+                               setEditPricingModal(prev => ({
+                                   ...prev,
+                                   tempSellingPriceString: newSellingPriceString,
+                                   tempDiscountRateString: isNaN(newDiscountRate) ? "" : newDiscountRate.toFixed(2),
+                               }));
                            }
-                           setEditPricingModal(prev => ({
-                               ...prev,
-                               tempSellingPrice: newSellingPrice,
-                               tempDiscountRate: parseFloat(newDiscountRate.toFixed(2)),
-                           }));
                        }} />
               </div>
               <div>
@@ -1083,7 +1115,7 @@ export default function CreateOrderPage() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditPricingModal(prev => ({ ...prev, isOpen: false, item: null }))}>Cancel</Button>
+            <Button variant="outline" onClick={() => setEditPricingModal(initialEditPricingModalState)}>Cancel</Button>
             <Button onClick={handleSavePricingModal}>Save Changes</Button>
           </DialogFooter>
         </DialogContent>
