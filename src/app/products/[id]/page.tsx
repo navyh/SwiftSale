@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Separator } from "@/components/ui/separator";
 import { format } from 'date-fns';
+import { cn } from "@/lib/utils"; // Added import
 
 function DetailItem({ label, value, icon: Icon, className }: { label: string; value?: string | null | number | boolean; icon?: React.ElementType, className?: string }) {
   if (value === null || value === undefined || value === "") return null;
@@ -61,7 +62,11 @@ function VariantCard({ variant }: { variant: ProductVariantDto }) {
         <CardTitle className="text-base flex justify-between items-center">
           Variant: {variant.title || `${variant.color || ''} ${variant.size || ''}`.trim() || `ID: ${variant.id.substring(0,6)}...`}
           <Badge variant={variant.status?.toUpperCase() === "ACTIVE" ? "default" : "outline"} 
-                 className={variant.status?.toUpperCase() === "ACTIVE" ? "bg-green-500/20 text-green-700" : "bg-gray-500/20 text-gray-700"}>
+                 className={cn(
+                    variant.status?.toUpperCase() === "ACTIVE" ? "bg-green-500/20 text-green-700 border-green-500/30" : "bg-gray-500/20 text-gray-700 border-gray-500/30",
+                    "whitespace-nowrap"
+                 )}
+            >
             {variant.status || "N/A"}
           </Badge>
         </CardTitle>
@@ -93,7 +98,7 @@ function VariantCard({ variant }: { variant: ProductVariantDto }) {
 export default function ProductDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const productId = params.id as string; // ID is a string
+  const productId = params.id as string; 
   const { toast } = useToast();
 
   const [product, setProduct] = React.useState<ProductDto | null>(null);
@@ -268,7 +273,11 @@ export default function ProductDetailPage() {
                <div>
                   <p className="text-sm text-muted-foreground mb-1 flex items-center"><PackageSearch className="h-3.5 w-3.5 mr-1.5 shrink-0" />Status</p>
                   <Badge variant={productStatus === "ACTIVE" ? "default" : "outline"}
-                         className={productStatus === "ACTIVE" ? "bg-green-500/20 text-green-700 border-green-500/30" : "bg-gray-500/20 text-gray-700 border-gray-500/30"}>
+                         className={cn(
+                            productStatus === "ACTIVE" ? "bg-green-500/20 text-green-700 border-green-500/30" : "bg-gray-500/20 text-gray-700 border-gray-500/30",
+                            "whitespace-nowrap"
+                         )}
+                    >
                       {productStatus.replace(/_/g, " ")}
                   </Badge>
               </div>
