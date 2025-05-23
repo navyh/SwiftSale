@@ -33,7 +33,7 @@ import {
   searchBusinessProfileByGstin, createBusinessProfileWithUser, type CreateBusinessProfileWithUserRequest, type CreateBusinessProfileWithUserResponse,
   searchProductsFuzzy, type ProductSearchResultDto, type ProductDto, fetchProductById, type ProductVariantDto,
   quickCreateProduct, type QuickCreateProductRequest, type QuickCreateProductResponse,
-  type AddressCreateDto, type OrderItemRequest, type CreateOrderRequest
+  type AddressCreateDto, type OrderItemRequest, type CreateOrderRequest, type OrderDto
 } from "@/lib/apiClient";
 
 // Zod Schemas for Forms
@@ -41,7 +41,6 @@ const userCreateDialogSchema = z.object({
   name: z.string().min(1, "Name is required"),
   phone: z.string().min(1, "Phone is required").regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone format"),
   email: z.string().email("Invalid email").optional().or(z.literal("")),
-  // Addresses can be added if needed in this dialog, simplified for now
 });
 type UserCreateDialogValues = z.infer<typeof userCreateDialogSchema>;
 
@@ -83,8 +82,9 @@ export default function CreateOrderPage() {
   const [gstinSearch, setGstinSearch] = React.useState("");
   const [foundUser, setFoundUser] = React.useState<UserDto | null>(null);
   const [foundBusinessProfile, setFoundBusinessProfile] = React.useState<BusinessProfileDto | null>(null);
-  const [selectedUser, setSelectedUser] = React.useState<UserDto | null>(null);
-  const [selectedBusinessProfile, setSelectedBusinessProfile] = React.useState<BusinessProfileDto | null>(null);
+  const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
+  const [selectedBusinessProfileId, setSelectedBusinessProfileId] = React.useState<string | null>(null);
+
   const [isSearchingUser, setIsSearchingUser] = React.useState(false);
   const [isSearchingBp, setIsSearchingBp] = React.useState(false);
   const [showUserCreateDialog, setShowUserCreateDialog] = React.useState(false);
@@ -106,15 +106,14 @@ export default function CreateOrderPage() {
   const bpWithUserCreateForm = useForm<BpWithUserCreateDialogValues>({ resolver: zodResolver(bpWithUserCreateDialogSchema) });
   const quickProductCreateForm = useForm<QuickProductCreateDialogValues>({ resolver: zodResolver(quickProductCreateDialogSchema) });
 
-
   const handleUserSearch = async () => {
     if (!phoneSearch) return;
-    setIsSearchingUser(true); setFoundUser(null); setSelectedUser(null);
+    setIsSearchingUser(true); setFoundUser(null); setSelectedUserId(null);
     try {
       const user = await searchUserByPhone(phoneSearch);
       setFoundUser(user);
-      if (user) setSelectedUser(user);
-      else setShowUserCreateDialog(true); // Open dialog if user not found
+      if (user) setSelectedUserId(user.id);
+      else setShowUserCreateDialog(true);
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to search user.", variant: "destructive" });
     } finally {
@@ -124,23 +123,21 @@ export default function CreateOrderPage() {
 
   const handleBusinessProfileSearch = async () => {
     if (!gstinSearch) return;
-    setIsSearchingBp(true); setFoundBusinessProfile(null); setSelectedBusinessProfile(null); setSelectedUser(null);
+    setIsSearchingBp(true); setFoundBusinessProfile(null); setSelectedBusinessProfileId(null); setSelectedUserId(null); setFoundUser(null);
     try {
       const bp = await searchBusinessProfileByGstin(gstinSearch);
       setFoundBusinessProfile(bp);
       if (bp) {
-        setSelectedBusinessProfile(bp);
-        // Attempt to fetch and select the first linked user if available
+        setSelectedBusinessProfileId(bp.id);
         if (bp.userIds && bp.userIds.length > 0) {
-          const user = await fetchUserById(bp.userIds[0]);
-          setSelectedUser(user);
+          const user = await fetchUserById(bp.userIds[0]); // Assuming first user is primary contact
+          setFoundUser(user); // Set foundUser to display details
+          setSelectedUserId(user.id);
         } else {
-          // If BP exists but no users linked, this scenario needs clarification.
-          // For now, we might prompt to link or create a user for this BP, or assume one must exist.
           toast({ title: "Info", description: "Business profile found, but no users are linked. Please link a user via Business Profile Management.", variant: "default" });
         }
       } else {
-        setShowBpWithUserCreateDialog(true); // Open dialog if BP not found
+        setShowBpWithUserCreateDialog(true);
       }
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to search business profile.", variant: "destructive" });
@@ -152,8 +149,8 @@ export default function CreateOrderPage() {
   const handleCreateUserDialogSubmit = async (data: UserCreateDialogValues) => {
     try {
       const newUser = await createUser({ name: data.name, phone: data.phone, email: data.email || undefined, status: 'ACTIVE' });
-      setSelectedUser(newUser);
       setFoundUser(newUser);
+      setSelectedUserId(newUser.id);
       setShowUserCreateDialog(false);
       userCreateForm.reset();
       toast({ title: "Success", description: "User created successfully." });
@@ -164,22 +161,21 @@ export default function CreateOrderPage() {
 
   const handleBpWithUserCreateDialogSubmit = async (data: BpWithUserCreateDialogValues) => {
     const payload: CreateBusinessProfileWithUserRequest = {
-      businessProfile: { name: data.bpName, gstin: data.bpGstin },
-      user: { name: data.userName, phone: data.userPhone, email: data.userEmail || undefined }
+      businessProfile: { name: data.bpName, gstin: data.bpGstin, status: 'ACTIVE' },
+      user: { name: data.userName, phone: data.userPhone, email: data.userEmail || undefined, status: 'ACTIVE' }
     };
     try {
       const response = await createBusinessProfileWithUser(payload);
-      setSelectedBusinessProfile(response);
       setFoundBusinessProfile(response);
-      // Assuming the response.user contains the created user details
-      if (response.user) {
-        setSelectedUser(response.user);
+      setSelectedBusinessProfileId(response.id);
+      
+      if (response.user) { // If API returns the created user object directly
         setFoundUser(response.user);
-      } else if (response.userIds && response.userIds.length > 0) {
-        // Fallback if only userIds are returned
+        setSelectedUserId(response.user.id);
+      } else if (response.userIds && response.userIds.length > 0) { // Fallback: fetch user by ID
         const user = await fetchUserById(response.userIds[0]);
-        setSelectedUser(user);
         setFoundUser(user);
+        setSelectedUserId(user.id);
       }
       setShowBpWithUserCreateDialog(false);
       bpWithUserCreateForm.reset();
@@ -189,7 +185,7 @@ export default function CreateOrderPage() {
     }
   };
 
-  const handleProductSearch = async () => {
+  const handleProductSearch = React.useCallback(async () => {
     if (!productSearchQuery.trim()) {
       setProductSearchResults([]);
       return;
@@ -204,7 +200,15 @@ export default function CreateOrderPage() {
     } finally {
       setIsSearchingProducts(false);
     }
-  };
+  }, [productSearchQuery, toast]);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+        if (productSearchQuery) handleProductSearch();
+    }, 500); // Debounce search
+    return () => clearTimeout(timer);
+  }, [productSearchQuery, handleProductSearch]);
+
 
   const handleSelectSearchedProduct = async (productId: string) => {
     setIsLoadingProductDetails(true);
@@ -214,9 +218,11 @@ export default function CreateOrderPage() {
     try {
       const product = await fetchProductById(productId);
       setSelectedProductForDetails(product);
-      // Auto-select first variant if available
       if (product.variants && product.variants.length > 0) {
-        setSelectedVariant(product.variants[0]);
+        // Optionally auto-select first variant or let user choose
+        // setSelectedVariant(product.variants[0]); 
+      } else {
+        toast({title: "Info", description: "This product has no variants defined.", variant: "default"});
       }
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to fetch product details.", variant: "destructive" });
@@ -235,29 +241,32 @@ export default function CreateOrderPage() {
       unitPrice: data.unitPrice,
     };
     try {
-      const response = await quickCreateProduct(payload);
+      const response = await quickCreateProduct(payload); // API should return full ProductDto
       setShowQuickProductDialog(false);
       quickProductCreateForm.reset();
       toast({ title: "Success", description: `Product "${response.name}" created quickly.` });
       
-      // Add the first created variant to the cart
       if (response.variants && response.variants.length > 0) {
         const newVariant = response.variants[0];
         const newItem: OrderItemDisplay = {
           productId: response.id,
           variantId: newVariant.id,
-          quantity: 1, // Default quantity
-          unitPrice: newVariant.price || data.unitPrice, // Use variant price if available, else form price
+          quantity: 1, 
+          unitPrice: newVariant.price || data.unitPrice,
           productName: response.name,
-          variantName: `${newVariant.color || ''} / ${newVariant.size || ''}`.trim(),
+          variantName: `${newVariant.color || ''} / ${newVariant.size || ''}`.trim() || 'Default',
           totalPrice: (newVariant.price || data.unitPrice) * 1,
         };
         setOrderItems(prevItems => [...prevItems, newItem]);
+        // Also select this product for further variant selection if needed
+        setSelectedProductForDetails(response);
+        setSelectedVariant(newVariant); 
+        setSelectedQuantity(1);
+      } else {
+         toast({ title: "Warning", description: "Quick created product has no variants to add to cart.", variant: "default"});
       }
-       setProductSearchQuery(response.name); // Optionally prefill search to show the new product
-       await handleProductSearch(); // Refresh search results
-       await handleSelectSearchedProduct(response.id); // Select the newly created product
-
+       setProductSearchQuery(""); // Clear search to avoid confusion
+       setProductSearchResults([]);
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to quick create product.", variant: "destructive" });
     }
@@ -271,37 +280,35 @@ export default function CreateOrderPage() {
     const existingItemIndex = orderItems.findIndex(item => item.variantId === selectedVariant.id);
     
     if (existingItemIndex > -1) {
-      // Update quantity if item already in cart
       const updatedItems = [...orderItems];
       updatedItems[existingItemIndex].quantity += selectedQuantity;
       updatedItems[existingItemIndex].totalPrice = updatedItems[existingItemIndex].quantity * updatedItems[existingItemIndex].unitPrice;
       setOrderItems(updatedItems);
     } else {
-      // Add new item
       const newItem: OrderItemDisplay = {
         productId: selectedProductForDetails.id,
         variantId: selectedVariant.id,
         quantity: selectedQuantity,
         unitPrice: selectedVariant.price || 0,
         productName: selectedProductForDetails.name,
-        variantName: `${selectedVariant.color || ''} / ${selectedVariant.size || ''}`.trim(),
+        variantName: `${selectedVariant.color || ''} / ${selectedVariant.size || ''}`.trim() || 'Default',
         totalPrice: (selectedVariant.price || 0) * selectedQuantity,
       };
       setOrderItems(prevItems => [...prevItems, newItem]);
     }
-    // Reset selection for next item
-    // setSelectedProductForDetails(null); 
+    setSelectedQuantity(1); // Reset quantity for next addition
+    // Optionally reset selectedVariant and selectedProductForDetails if desired
     // setSelectedVariant(null);
-    // setProductSearchResults([]);
+    // setSelectedProductForDetails(null);
     // setProductSearchQuery("");
-    setSelectedQuantity(1);
+    // setProductSearchResults([]);
   };
 
-  const handleRemoveOrderItem = (variantId: string) => {
-    setOrderItems(prevItems => prevItems.filter(item => item.variantId !== variantId));
+  const handleRemoveOrderItem = (variantIdToRemove: string) => {
+    setOrderItems(prevItems => prevItems.filter(item => item.variantId !== variantIdToRemove));
   };
 
-  const calculateSubtotal = () => {
+  const calculateSubtotal = (): number => {
     return orderItems.reduce((sum, item) => sum + item.totalPrice, 0);
   };
 
@@ -309,7 +316,7 @@ export default function CreateOrderPage() {
   const nextStep = () => setCurrentStep(prev => prev + 1);
   const prevStep = () => setCurrentStep(prev => prev - 1);
 
-  const canProceedToStep2 = selectedUser !== null;
+  const canProceedToStep2 = selectedUserId !== null;
   const canProceedToStep3 = orderItems.length > 0;
 
   return (
@@ -320,7 +327,7 @@ export default function CreateOrderPage() {
             <ChevronLeft className="h-4 w-4" />
           </Button>
         )}
-        <h1 className="text-2xl font-bold tracking-tight">Create New Order - Step {currentStep} of 4</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Create New Order - Step {currentStep} of 3</h1>
       </div>
 
       {/* Step 1: Customer Selection */}
@@ -330,8 +337,8 @@ export default function CreateOrderPage() {
           <CardContent className="space-y-6">
             <RadioGroup value={customerType} onValueChange={(value: "B2C" | "B2B") => {
               setCustomerType(value);
-              setFoundUser(null); setSelectedUser(null);
-              setFoundBusinessProfile(null); setSelectedBusinessProfile(null);
+              setFoundUser(null); setSelectedUserId(null);
+              setFoundBusinessProfile(null); setSelectedBusinessProfileId(null);
               setPhoneSearch(""); setGstinSearch("");
             }} className="flex gap-4">
               <div className="flex items-center space-x-2"><RadioGroupItem value="B2C" id="r_b2c" /><Label htmlFor="r_b2c">Retail Customer (B2C)</Label></div>
@@ -350,7 +357,7 @@ export default function CreateOrderPage() {
                 {foundUser && <Card className="mt-2 p-3 bg-green-50 border-green-200"><CardDescription>Selected User: {foundUser.name} ({foundUser.phone})</CardDescription></Card>}
                  {!isSearchingUser && !foundUser && phoneSearch && (
                     <Dialog open={showUserCreateDialog} onOpenChange={setShowUserCreateDialog}>
-                        <DialogTrigger asChild><Button variant="outline">Create New User</Button></DialogTrigger>
+                        <DialogTrigger asChild><Button variant="outline" className="mt-2">Create New User</Button></DialogTrigger>
                         <DialogContent>
                         <DialogHeader><DialogTitle>Create New User</DialogTitle></DialogHeader>
                         <form onSubmit={userCreateForm.handleSubmit(handleCreateUserDialogSubmit)} className="space-y-4">
@@ -380,12 +387,12 @@ export default function CreateOrderPage() {
                 {foundBusinessProfile && (
                   <Card className="mt-2 p-3 bg-green-50 border-green-200">
                     <CardDescription>Selected Business: {foundBusinessProfile.name} ({foundBusinessProfile.gstin})</CardDescription>
-                    {selectedUser && <CardDescription className="mt-1">Associated User: {selectedUser.name} ({selectedUser.phone})</CardDescription>}
+                    {foundUser && <CardDescription className="mt-1">Associated User: {foundUser.name} ({foundUser.phone})</CardDescription>}
                   </Card>
                 )}
                 {!isSearchingBp && !foundBusinessProfile && gstinSearch && (
                      <Dialog open={showBpWithUserCreateDialog} onOpenChange={setShowBpWithUserCreateDialog}>
-                        <DialogTrigger asChild><Button variant="outline">Create BP & New User</Button></DialogTrigger>
+                        <DialogTrigger asChild><Button variant="outline" className="mt-2">Create BP & New User</Button></DialogTrigger>
                         <DialogContent>
                         <DialogHeader><DialogTitle>Create Business Profile & New User</DialogTitle></DialogHeader>
                         <form onSubmit={bpWithUserCreateForm.handleSubmit(handleBpWithUserCreateDialogSubmit)} className="space-y-3">
@@ -429,22 +436,22 @@ export default function CreateOrderPage() {
                     <Label htmlFor="product_search">Search Products</Label>
                     <Input id="product_search" value={productSearchQuery} onChange={e => setProductSearchQuery(e.target.value)} placeholder="Enter product name, SKU, etc." />
                   </div>
-                  <Button onClick={handleProductSearch} disabled={isSearchingProducts}>
-                    {isSearchingProducts ? <Loader2 className="animate-spin mr-2"/> : <SearchIcon className="mr-2 h-4 w-4" />} Search
-                  </Button>
+                  {/* Search button removed, search is debounced on input change */}
                 </div>
 
-                {productSearchResults.length > 0 && (
+                {isSearchingProducts && <div className="flex items-center justify-center p-4"><Loader2 className="animate-spin h-5 w-5 mr-2"/>Searching products...</div>}
+                
+                {productSearchResults.length > 0 && !isSearchingProducts && (
                   <ScrollArea className="h-60 border rounded-md p-2">
                     <p className="text-sm text-muted-foreground mb-2">Search Results ({productSearchResults.length}):</p>
                     {productSearchResults.map(product => (
-                      <Button key={product.id} variant="ghost" className="w-full justify-start mb-1 h-auto py-2" onClick={() => handleSelectSearchedProduct(product.id)}>
+                      <Button key={product.id} variant="ghost" className="w-full justify-start mb-1 h-auto py-2 text-left" onClick={() => handleSelectSearchedProduct(product.id)}>
                         <div>
                             <p className="font-medium">{product.name}</p>
                             <p className="text-xs text-muted-foreground">
                                 {product.brandName && `${product.brandName} | `}
                                 {product.categoryName && `${product.categoryName} | `}
-                                Price: {product.unitPrice ? `$${product.unitPrice.toFixed(2)}` : 'N/A'}
+                                Price: {product.unitPrice ? `₹${product.unitPrice.toFixed(2)}` : 'N/A'}
                             </p>
                         </div>
                       </Button>
@@ -478,48 +485,53 @@ export default function CreateOrderPage() {
                     </div>
                 )}
 
-                {isLoadingProductDetails && <div className="flex items-center justify-center p-4"><Loader2 className="animate-spin h-6 w-6"/> Fetching product details...</div>}
+                {isLoadingProductDetails && <div className="flex items-center justify-center p-4"><Loader2 className="animate-spin h-6 w-6 mr-2"/> Fetching product details...</div>}
                 
                 {selectedProductForDetails && !isLoadingProductDetails && (
-                  <Card className="p-4 mt-4">
-                    <CardTitle className="text-lg mb-2">Configure: {selectedProductForDetails.name}</CardTitle>
+                  <Card className="p-4 mt-4 shadow-sm">
+                    <CardTitle className="text-lg mb-3">Configure: {selectedProductForDetails.name}</CardTitle>
                     {selectedProductForDetails.variants && selectedProductForDetails.variants.length > 0 ? (
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         <div>
-                          <Label>Select Variant:</Label>
+                          <Label className="font-medium">Select Variant:</Label>
                            <RadioGroup 
                                 onValueChange={(variantId) => {
                                     const v = selectedProductForDetails.variants?.find(va => va.id === variantId);
                                     setSelectedVariant(v || null);
                                 }}
                                 value={selectedVariant?.id || ""}
-                                className="mt-1 grid grid-cols-2 md:grid-cols-3 gap-2"
+                                className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"
                             >
                                 {selectedProductForDetails.variants.map(variant => (
                                     <Label key={variant.id} htmlFor={`variant-${variant.id}`} 
-                                           className={`flex items-center space-x-2 border rounded-md p-2 hover:bg-accent/50 cursor-pointer ${selectedVariant?.id === variant.id ? 'bg-accent border-primary ring-2 ring-primary' : 'border-border'}`}>
+                                           className={`flex flex-col items-start justify-between border rounded-md p-3 hover:bg-accent/50 cursor-pointer ${selectedVariant?.id === variant.id ? 'bg-accent border-primary ring-2 ring-primary' : 'border-border'}`}>
                                         <RadioGroupItem value={variant.id} id={`variant-${variant.id}`} className="sr-only"/>
-                                        <div className="text-sm">
-                                            <p className="font-medium">
-                                                {variant.color && <span className="mr-1 p-1 text-xs rounded" style={{backgroundColor: variant.color.startsWith('#') ? variant.color : 'transparent', color: variant.color.startsWith('#') ? (parseInt(variant.color.substring(1,3),16) > 128 ? 'black' : 'white') : 'inherit'}}>{variant.color}</span>}
-                                                {variant.size && <span className="border px-1.5 py-0.5 text-xs rounded">{variant.size}</span>}
-                                            </p>
-                                            <p>Price: ${variant.price?.toFixed(2) || 'N/A'}</p>
-                                            <p>Stock: {variant.quantity}</p>
+                                        <div className="text-sm w-full">
+                                            <div className="flex justify-between items-center">
+                                                <p className="font-medium flex-grow">
+                                                    {variant.color && <span className="mr-1.5 p-1 text-xs rounded bg-gray-200 text-gray-700">{variant.color}</span>}
+                                                    {variant.size && <span className="border px-1.5 py-0.5 text-xs rounded">{variant.size}</span>}
+                                                    {!variant.color && !variant.size && <span className="text-xs text-muted-foreground italic">Default</span>}
+                                                </p>
+                                            </div>
+                                            <p className="mt-1">Price: ₹{variant.price?.toFixed(2) || 'N/A'}</p>
+                                            <p className="text-xs text-muted-foreground">Stock: {variant.quantity}</p>
                                         </div>
                                     </Label>
                                 ))}
                             </RadioGroup>
                         </div>
                         {selectedVariant && (
-                            <div>
-                                <Label htmlFor="quantity">Quantity:</Label>
-                                <Input id="quantity" type="number" value={selectedQuantity} onChange={e => setSelectedQuantity(parseInt(e.target.value))} min="1" className="w-24 mt-1" />
+                            <div className="flex items-end gap-3">
+                                <div>
+                                    <Label htmlFor="quantity" className="font-medium">Quantity:</Label>
+                                    <Input id="quantity" type="number" value={selectedQuantity} onChange={e => setSelectedQuantity(parseInt(e.target.value))} min="1" className="w-24 mt-1" />
+                                </div>
+                                <Button onClick={handleAddOrderItem} disabled={!selectedVariant || selectedQuantity <= 0} className="h-10">
+                                  <PlusCircle className="mr-2 h-4 w-4" /> Add to Order
+                                </Button>
                             </div>
                         )}
-                        <Button onClick={handleAddOrderItem} disabled={!selectedVariant || selectedQuantity <= 0}>
-                          <PlusCircle className="mr-2 h-4 w-4" /> Add to Order
-                        </Button>
                       </div>
                     ) : (
                       <p className="text-muted-foreground">This product has no variants defined.</p>
@@ -535,23 +547,28 @@ export default function CreateOrderPage() {
               <CardHeader><CardTitle>Current Order</CardTitle></CardHeader>
               <CardContent>
                 {orderItems.length === 0 ? (
-                  <p className="text-muted-foreground">No items added yet.</p>
+                  <div className="text-center py-10">
+                    <ShoppingCart className="mx-auto h-12 w-12 text-muted-foreground opacity-50" />
+                    <p className="mt-2 text-sm text-muted-foreground">Your order is empty.</p>
+                    <p className="text-xs text-muted-foreground">Add products using the search panel.</p>
+                  </div>
                 ) : (
-                  <ScrollArea className="h-80">
+                  <ScrollArea className="h-[calc(100vh-20rem)] max-h-[500px]"> {/* Adjust height as needed */}
                     <Table>
-                      <TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Qty</TableHead><TableHead className="text-right">Total</TableHead><TableHead></TableHead></TableRow></TableHeader>
+                      <TableHeader><TableRow><TableHead>Item</TableHead><TableHead className="text-center">Qty</TableHead><TableHead className="text-right">Total</TableHead><TableHead></TableHead></TableRow></TableHeader>
                       <TableBody>
                         {orderItems.map(item => (
                           <TableRow key={item.variantId}>
-                            <TableCell>
-                              <p className="font-medium">{item.productName}</p>
-                              <p className="text-xs text-muted-foreground">{item.variantName} (@ ${item.unitPrice.toFixed(2)})</p>
+                            <TableCell className="py-2">
+                              <p className="font-medium text-sm">{item.productName}</p>
+                              <p className="text-xs text-muted-foreground">{item.variantName} (@ ₹{item.unitPrice.toFixed(2)})</p>
                             </TableCell>
-                            <TableCell>{item.quantity}</TableCell>
-                            <TableCell className="text-right">${item.totalPrice.toFixed(2)}</TableCell>
-                            <TableCell>
+                            <TableCell className="text-center py-2">{item.quantity}</TableCell>
+                            <TableCell className="text-right py-2">₹{item.totalPrice.toFixed(2)}</TableCell>
+                            <TableCell className="py-2">
                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRemoveOrderItem(item.variantId)}>
                                     <X className="h-3.5 w-3.5 text-destructive"/>
+                                    <span className="sr-only">Remove item</span>
                                 </Button>
                             </TableCell>
                           </TableRow>
@@ -564,12 +581,12 @@ export default function CreateOrderPage() {
                     <div className="mt-4 pt-4 border-t">
                         <div className="flex justify-between font-semibold text-lg">
                             <span>Subtotal:</span>
-                            <span>${calculateSubtotal().toFixed(2)}</span>
+                            <span>₹{calculateSubtotal().toFixed(2)}</span>
                         </div>
                     </div>
                 )}
               </CardContent>
-              <CardFooter className="flex-col space-y-2">
+              <CardFooter className="flex-col space-y-2 pt-4">
                  <Button onClick={nextStep} disabled={!canProceedToStep3} className="w-full">
                     Next: Review & Payment <ChevronRight className="h-4 w-4 ml-2" />
                  </Button>
@@ -587,24 +604,34 @@ export default function CreateOrderPage() {
         <Card className="shadow-md">
           <CardHeader><CardTitle>Step 3: Review Order & Payment</CardTitle></CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">Order summary and payment options will appear here.</p>
-             {/* Display orderItems summary again */}
+            <p className="text-muted-foreground mb-4">Please review your order items before proceeding to payment.</p>
              <div className="mt-4 space-y-2">
-                <h3 className="font-semibold">Order Items:</h3>
-                {orderItems.map(item => (
-                    <div key={item.variantId} className="flex justify-between text-sm p-2 border-b">
-                        <span>{item.productName} ({item.variantName}) x {item.quantity}</span>
-                        <span>${item.totalPrice.toFixed(2)}</span>
-                    </div>
-                ))}
-                <div className="flex justify-between font-bold text-md pt-2">
-                    <span>Subtotal:</span>
-                    <span>${calculateSubtotal().toFixed(2)}</span>
-                </div>
+                <h3 className="font-semibold text-lg mb-2">Order Summary:</h3>
+                <Card className="p-4 bg-secondary/30">
+                  <ScrollArea className="h-auto max-h-60">
+                    {orderItems.map(item => (
+                        <div key={item.variantId} className="flex justify-between items-center text-sm py-2 border-b last:border-b-0">
+                            <div>
+                                <p className="font-medium">{item.productName} <span className="text-xs text-muted-foreground">({item.variantName})</span></p>
+                                <p className="text-xs">{item.quantity} x ₹{item.unitPrice.toFixed(2)}</p>
+                            </div>
+                            <p className="font-medium">₹{item.totalPrice.toFixed(2)}</p>
+                        </div>
+                    ))}
+                  </ScrollArea>
+                  <div className="flex justify-between font-bold text-xl pt-3 mt-3 border-t">
+                      <span>Subtotal:</span>
+                      <span>₹{calculateSubtotal().toFixed(2)}</span>
+                  </div>
+                </Card>
             </div>
-            {/* Placeholder for payment details form */}
+            <div className="mt-6">
+              <h3 className="font-semibold text-lg mb-2">Payment Details</h3>
+              <p className="text-muted-foreground">Payment gateway integration or manual payment recording will appear here.</p>
+              {/* Placeholder for payment form/options */}
+            </div>
           </CardContent>
-          <CardFooter className="justify-between">
+          <CardFooter className="justify-between mt-6">
              <Button onClick={prevStep} variant="outline">
                 <ChevronLeft className="h-4 w-4 mr-2" /> Back to Items
              </Button>
@@ -613,23 +640,7 @@ export default function CreateOrderPage() {
         </Card>
       )}
 
-       {/* Step 4: Confirmation & Invoice (Placeholder) */}
-      {currentStep === 4 && (
-        <Card className="shadow-md">
-          <CardHeader><CardTitle>Step 4: Order Confirmation</CardTitle></CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">Order confirmation details and invoice options will appear here.</p>
-          </CardContent>
-           <CardFooter className="justify-between">
-             <Button onClick={() => {router.push('/orders')}} variant="outline">
-                Back to Orders List
-             </Button>
-            <Button onClick={() => {setCurrentStep(1); setOrderItems([]); /* Reset other states */}} >
-                Create New Order <PlusCircle className="h-4 w-4 ml-2" />
-             </Button>
-          </CardFooter>
-        </Card>
-      )}
     </div>
   );
 }
+
