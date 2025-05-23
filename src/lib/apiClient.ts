@@ -85,7 +85,7 @@ export interface UserDto {
   status?: 'ACTIVE' | 'INACTIVE' | string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
-  // type and gstin removed as per previous instructions
+  // type and gstin removed
 }
 
 export interface CreateUserRequest {
@@ -94,7 +94,6 @@ export interface CreateUserRequest {
   email?: string | null;
   status?: 'ACTIVE' | 'INACTIVE';
   addresses?: AddressCreateDto[] | null;
-  // type and gstin removed
 }
 
 export interface UpdateUserRequest {
@@ -102,7 +101,6 @@ export interface UpdateUserRequest {
   email?: string | null;
   status?: 'ACTIVE' | 'INACTIVE';
   addresses?: (AddressCreateDto | AddressDto)[] | null;
-   // type and gstin removed
 }
 
 
@@ -149,20 +147,17 @@ export async function deleteUser(userId: string): Promise<void> {
 
 export async function searchUserByPhone(phone: string): Promise<UserDto[]> {
   try {
-    // Assuming the API might return a single user or an array directly
-    // If it always returns a single object, we'd wrap it in an array here.
-    // If it returns 404 for no user, we catch and return [].
     const result = await fetchAPI<UserDto | UserDto[]>(`/users/by-phone?phone=${encodeURIComponent(phone)}`);
     if (Array.isArray(result)) {
       return result;
-    } else if (result) { // Single user found
+    } else if (result) { 
       return [result];
     }
-    return []; // Should not happen if API returns data or 404
+    return [];
   } catch (error: any) {
     if (error.message && error.message.includes("404")) return []; 
     console.warn(`Search user by phone for "${phone}" failed or user not found:`, error);
-    return []; // Return empty array on other errors too for consistent handling
+    return []; 
   }
 }
 
@@ -175,7 +170,7 @@ export interface BusinessProfileDto {
   status?: 'ACTIVE' | 'INACTIVE' | string | null;
   paymentTerms?: string | null;
   addresses?: AddressDto[] | null;
-  userIds?: string[] | null; // Array of string User IDs
+  userIds?: string[] | null; 
   createdAt?: string | null;
   updatedAt?: string | null;
   user?: UserDto; // Potentially returned when creating with user
@@ -186,7 +181,7 @@ export interface CreateBusinessProfileRequest {
   gstin: string;
   addresses?: AddressCreateDto[] | null;
   paymentTerms?: string | null;
-  userIds?: string[] | null; // Array of string User IDs
+  userIds?: string[] | null; 
   status?: 'ACTIVE' | 'INACTIVE';
 }
 
@@ -196,7 +191,7 @@ export interface UpdateBusinessProfileRequest {
   status?: 'ACTIVE' | 'INACTIVE' | undefined;
   addresses?: (AddressCreateDto | AddressDto)[] | null;
   paymentTerms?: string | null;
-  userIds?: string[] | null; // Array of string User IDs
+  userIds?: string[] | null; 
 }
 
 export interface CreateBusinessProfileWithUserRequest {
@@ -216,7 +211,7 @@ export interface CreateBusinessProfileWithUserRequest {
   };
 }
 export interface CreateBusinessProfileWithUserResponse extends BusinessProfileDto {
-  user?: UserDto; // Assuming the API returns the linked user details
+  user?: UserDto; 
 }
 
 
@@ -245,7 +240,7 @@ export async function createBusinessProfile(profileData: CreateBusinessProfileRe
 
 export async function updateBusinessProfile(profileId: string, profileData: UpdateBusinessProfileRequest): Promise<BusinessProfileDto> {
   return fetchAPI<BusinessProfileDto>(`/business-profiles/${profileId}`, {
-    method: 'PATCH', // Changed from PUT
+    method: 'PATCH',
     body: JSON.stringify(profileData),
   });
 }
@@ -276,26 +271,24 @@ export async function createBusinessProfileWithUser(data: CreateBusinessProfileW
 
 // === STAFF MANAGEMENT ===
 export interface StaffDto {
-  id: string; // Staff's own ID
-  userId: string; // Linked User's ID
-  user?: UserDto | null; // Optional User details if API populates
+  id: string; 
+  userId: string; 
+  user?: UserDto | null; 
   roles: string[];
   permissions?: string[] | null;
-  status: 'ACTIVE' | 'INACTIVE' | string; // API might return other strings, handle defensively
+  status: 'ACTIVE' | 'INACTIVE' | string; 
   createdAt?: string;
   updatedAt?: string;
 }
 
-// For POST /api/v2/users/{userId}/staff - userId is path param
 export interface CreateStaffRequest {
   roles: string[];
   permissions?: string[] | null;
   status?: 'ACTIVE' | 'INACTIVE';
 }
 
-// For PUT /api/v2/staff/{staffId}
 export interface UpdateStaffRequest {
-  roles?: string[]; // Roles are updated via a separate endpoint as per recent changes
+  roles?: string[]; 
   permissions?: string[] | null;
   status?: 'ACTIVE' | 'INACTIVE';
 }
@@ -317,7 +310,6 @@ export async function fetchStaffById(staffId: string): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/staff/${staffId}`);
 }
 
-// staffData does not contain userId as it's a path parameter
 export async function createStaffMember(userId: string, staffData: CreateStaffRequest): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/users/${userId}/staff`, {
     method: 'POST',
@@ -325,18 +317,16 @@ export async function createStaffMember(userId: string, staffData: CreateStaffRe
   });
 }
 
-// For updating general staff details like permissions and status via /staff/{staffId}
 export async function updateStaffMember(staffId: string, staffData: Omit<UpdateStaffRequest, 'roles'>): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/staff/${staffId}`, { 
     method: 'PUT', 
     body: JSON.stringify(staffData),
   });
 }
-// For updating only roles via /users/{userId}/staff-roles
-export async function updateStaffRoles(userId: string, roles: string[]): Promise<StaffDto> { // Assuming StaffDto is returned
+export async function updateStaffRoles(userId: string, roles: string[]): Promise<StaffDto> { 
   return fetchAPI<StaffDto>(`/users/${userId}/staff-roles`, {
     method: 'PUT',
-    body: JSON.stringify({ roles }), // API likely expects { "roles": ["ADMIN", "USER"] }
+    body: JSON.stringify({ roles }),
   });
 }
 
@@ -359,40 +349,40 @@ export interface MetaItem {
 export interface Brand extends MetaItem {}
 
 export interface Category extends MetaItem {
-  parentId?: string | null; // String ID
+  parentId?: string | null; 
 }
 export interface ProductCategoryNode extends Category {
   children?: ProductCategoryNode[] | null;
-  displayName?: string; // For UI display
-  depth?: number; // For UI display
+  displayName?: string; 
+  depth?: number; 
 }
 
 export interface ProductUnit extends MetaItem {}
 
 
 export interface ProductVariantDto {
-  id: string; // string ID
-  productId?: string | null; // string ID
+  id: string; 
+  productId?: string | null; 
   sku?: string | null;
   price?: number | null;
   compareAtPrice?: number | null;
   costPrice?: number | null;
-  quantity?: number; // Stock quantity
+  quantity?: number; 
   barcode?: string | null;
-  color?: string | null; // Was colorValue
-  size?: string | null;  // Was sizeValue
+  color?: string | null; 
+  size?: string | null;  
   imageUrls?: string[] | null;
   createdAt?: string;
   updatedAt?: string;
 }
 
 export interface ProductDto {
-  id: string; // string ID
+  id: string; 
   name:string;
   brand?: Brand | null; 
-  brandId?: string | null; // string ID
+  brandId?: string | null; 
   category?: Category | null; 
-  categoryId?: string | null; // string ID
+  categoryId?: string | null; 
   subCategory?: string | null;
   hsnCode?: string | null;
   gstTaxRate?: number | null;
@@ -405,7 +395,7 @@ export interface ProductDto {
   unitPrice?: number | null;
   costPrice?: number | null;
 
-  unitId?: string | null; // string ID
+  unitId?: string | null; 
   unit?: ProductUnit | null;
 
   imageUrls?: string[] | null;
@@ -418,6 +408,11 @@ export interface ProductDto {
   variants?: ProductVariantDto[] | null;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface VariantDefinitionDTO {
+  color: string;
+  size: string;
 }
 
 export interface CreateProductRequest {
@@ -555,17 +550,13 @@ export async function deleteProductVariant(productId: string, variantId: string)
 }
 
 // ORDER FLOW SPECIFIC DTOs & Functions
-export interface ProductSearchRequest {
-    query: string;
-}
 export interface ProductSearchResultDto {
-    id: string; // Product ID
+    id: string; 
     name: string;
     brandName?: string | null;
     categoryName?: string | null;
     unitPrice?: number | null;
     imageUrls?: string[] | null;
-    // Variants are not typically returned in search results for performance; fetchProductById for full details.
 }
 
 export interface QuickCreateProductRequest {
@@ -580,8 +571,8 @@ export interface QuickCreateProductResponse extends ProductDto {}
 
 
 export interface OrderItemRequest {
-    productId: string; // string ID
-    variantId: string; // string ID
+    productId: string; 
+    variantId: string; 
     quantity: number;
     unitPrice: number;
     discount?: number | null;
@@ -594,26 +585,26 @@ export interface PaymentDetailRequest {
     status: 'PENDING' | 'SUCCESS' | 'FAILED' | string;
 }
 export interface CreateOrderRequest {
-    placedByUserId: string; // string ID
-    businessProfileId?: string | null; // string ID
+    placedByUserId: string; 
+    businessProfileId?: string | null; 
     orderItems: OrderItemRequest[];
     totalAmount: number;
     discount?: number | null;
     taxAmount?: number | null;
-    shippingAddressId?: string | null; // string ID
-    billingAddressId?: string | null; // string ID
+    shippingAddressId?: string | null; 
+    billingAddressId?: string | null; 
     status?: string;
     paymentDetails?: PaymentDetailRequest[] | null;
     notes?: string | null;
 }
 export interface OrderDto {
-    id: string; // string ID
+    id: string; 
     orderNumber?: string | null;
-    placedByUserId: string; // string ID
+    placedByUserId: string; 
     user?: UserDto | null;
-    businessProfileId?: string | null; // string ID
+    businessProfileId?: string | null; 
     businessProfile?: BusinessProfileDto | null;
-    orderItems: (OrderItemRequest & {id?: string; product?: ProductDto | null, variant?: ProductVariantDto | null})[]; // id is order item id
+    orderItems: (OrderItemRequest & {id?: string; product?: ProductDto | null, variant?: ProductVariantDto | null})[]; 
     totalAmount: number;
     discount?: number | null;
     taxAmount?: number | null;
@@ -627,11 +618,11 @@ export interface OrderDto {
 }
 
 export interface GenerateInvoiceRequest {
-    orderId: string; // string ID
+    orderId: string; 
 }
 export interface InvoiceDto {
-    id: string; // string ID
-    orderId: string; // string ID
+    id: string; 
+    orderId: string; 
     invoiceNumber?: string | null;
     issueDate?: string | null;
     dueDate?: string | null;
@@ -640,8 +631,8 @@ export interface InvoiceDto {
 }
 
 
-export async function searchProductsFuzzy(query: string): Promise<ProductSearchResultDto[]> {
-  const data = await fetchAPI<ProductSearchResultDto[] | undefined>(`/products/search?query=${encodeURIComponent(query)}`);
+export async function searchProductsFuzzy(keyword: string): Promise<ProductSearchResultDto[]> {
+  const data = await fetchAPI<ProductSearchResultDto[] | undefined>(`/products/search?keyword=${encodeURIComponent(keyword)}`);
   return Array.isArray(data) ? data : [];
 }
 
@@ -705,14 +696,14 @@ export async function fetchProductCategoriesFlat(): Promise<Category[]> {
 }
 
 export interface CreateCategoryRequest extends Omit<Category, 'id' | 'createdAt' | 'updatedAt'> {
-  parentId?: string | null; // string ID
+  parentId?: string | null; 
 }
 export async function createProductCategory(data: CreateCategoryRequest): Promise<Category> {
   return fetchAPI<Category>('/meta/product/categories', { method: 'POST', body: JSON.stringify(data) });
 }
 
 export interface UpdateCategoryRequest extends Partial<Omit<Category, 'id' | 'createdAt' | 'updatedAt'>> {
-  parentId?: string | null; // string ID
+  parentId?: string | null; 
 }
 export async function updateProductCategory(id: string, data: UpdateCategoryRequest): Promise<Category> {
   return fetchAPI<Category>(`/meta/product/categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
@@ -753,19 +744,19 @@ export async function fetchInventoryAdjustmentReasons(): Promise<InventoryAdjust
   return Array.isArray(data) ? data : [];
 }
 
-export type UserRoleMeta = string; // Renamed from UserRole to avoid conflict with Staff's roles
+export type UserRoleMeta = string; 
 export async function fetchUserRolesMeta(): Promise<UserRoleMeta[]> {
-  const data = await fetchAPI<UserRoleMeta[] | undefined>('/meta/user/roles'); // Corrected this to UserRoleMeta
+  const data = await fetchAPI<UserRoleMeta[] | undefined>('/meta/user/roles'); 
   return Array.isArray(data) ? data : [];
 }
 
 
 export interface NotificationTemplate {
-  id: string; // string ID
+  id: string; 
   name: string;
   subject: string;
   body: string;
-  type: string; // Consider if this is an enum
+  type: string; 
   createdAt?: string;
   updatedAt?: string;
 }
@@ -798,11 +789,4 @@ export async function updateCurrentUser(data: UpdateUserRequest): Promise<Curren
   });
 }
 
-// Ensure ALL ID fields in DTOs and function parameters are strings.
-// Example: AddressDto.id should be string, UserDto.id should be string, etc.
-// ProductDto.brandId, categoryId, unitId should be string.
-// OrderDto.id, placedByUserId, businessProfileId, shippingAddressId, billingAddressId should be string.
-// OrderItemRequest.productId, variantId should be string.
-// InvoiceDto.id, orderId should be string.
-// MetaItem.id should be string.
-// All function parameters like `userId`, `profileId`, `productId`, `variantId`, `orderId`, `staffId` should be string.
+    
