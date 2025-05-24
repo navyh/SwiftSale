@@ -28,9 +28,9 @@ import {
 } from "lucide-react";
 import {
   fetchUserById, createUser, type CreateUserRequest, type UserDto,
-  searchUserByPhone,
+  searchUserByPhone, searchUsersByName,
   fetchBusinessProfileById, createBusinessProfile, type CreateBusinessProfileRequest, type BusinessProfileDto,
-  searchBusinessProfileByGstin, createBusinessProfileWithUser, type CreateBusinessProfileWithUserRequest,
+  searchBusinessProfileByGstin, searchBusinessProfilesByName, createBusinessProfileWithUser, type CreateBusinessProfileWithUserRequest,
   searchProductsFuzzy, type ProductSearchResultDto, type ProductDto, fetchProductById, type ProductVariantDto,
   quickCreateProduct, type QuickCreateProductRequest, type QuickCreateProductResponse,
   createOrder, type CreateOrderRequest, type OrderItemRequest, type CustomerDetailsDto, type AddressCreateDto, type AddressDto as ApiAddressDto,
@@ -75,15 +75,15 @@ export interface OrderItemDisplay {
   quantity: number;
   mrp: number; // GST-INCLUSIVE MRP
   discountRate: number; // percentage
-  discountAmount: number; // calculated: (preTaxMrp * (discountRate/100)) * quantity
-  sellingPrice: number; // GST-INCLUSIVE selling price per unit
+  discountAmount: number; // calculated on PRE-TAX value: (preTaxMrp * (discountRate/100)) * quantity
+  sellingPrice: number; // GST-INCLUSIVE selling price per unit (user input or derived)
   unitPrice: number; // PRE-TAX selling price per unit (for API payload & internal calcs)
   gstTaxRate: number; // percentage from select
   gstAmount: number; // calculated total GST for the line item: (unitPrice * quantity) * (gstTaxRate / 100)
   igstAmount: number;
   sgstAmount: number;
   cgstAmount: number;
-  finalItemPrice: number; // calculated: sellingPrice * quantity
+  finalItemPrice: number; // calculated: sellingPrice (inclusive) * quantity
 }
 
 const SELLER_STATE_CODE = "KA"; 
@@ -94,7 +94,7 @@ interface EditPricingModalState {
   isOpen: boolean;
   item: OrderItemDisplay | null;
   tempQuantityString: string;
-  tempMrpString: string;
+  tempMrpString: string; // GST-Inclusive MRP as string
   tempDiscountRateString: string;
   tempSellingPriceString: string; // GST-INCLUSIVE Selling Price as string
   tempGstTaxRate: number;
@@ -119,8 +119,13 @@ export default function CreateOrderPage() {
   const [customerType, setCustomerType] = React.useState<"B2C" | "B2B">("B2C");
 
   const [phoneSearch, setPhoneSearch] = React.useState("");
+  const [userNameSearch, setUserNameSearch] = React.useState("");
   const [gstinSearch, setGstinSearch] = React.useState("");
+  const [businessNameSearch, setBusinessNameSearch] = React.useState("");
+
   const [searchedUsers, setSearchedUsers] = React.useState<UserDto[]>([]);
+  const [searchedBusinessProfiles, setSearchedBusinessProfiles] = React.useState<BusinessProfileDto[]>([]);
+  
   const [selectedUserDisplay, setSelectedUserDisplay] = React.useState<UserDto | null>(null);
   const [foundBusinessProfile, setFoundBusinessProfile] = React.useState<BusinessProfileDto | null>(null);
   const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
@@ -129,7 +134,9 @@ export default function CreateOrderPage() {
   const [customerStateCode, setCustomerStateCode] = React.useState<string | null>(SELLER_STATE_CODE);
 
   const [isSearchingUser, setIsSearchingUser] = React.useState(false);
+  const [isSearchingUserByName, setIsSearchingUserByName] = React.useState(false);
   const [isSearchingBp, setIsSearchingBp] = React.useState(false);
+  const [isSearchingBpByName, setIsSearchingBpByName] = React.useState(false);
   const [isUserCreateSubmitting, setIsUserCreateSubmitting] = React.useState(false);
   const [isBpWithUserCreateSubmitting, setIsBpWithUserCreateSubmitting] = React.useState(false);
   const [showUserCreateDialog, setShowUserCreateDialog] = React.useState(false);
@@ -174,24 +181,23 @@ export default function CreateOrderPage() {
 
     const stateFromAddress = defaultBilling?.state || anyBilling?.state || firstAddress?.state || null;
     
-    setCustomerStateCode(stateFromAddress || SELLER_STATE_CODE); // Use seller state if no customer state found
+    const newCustomerStateCode = stateFromAddress || SELLER_STATE_CODE;
+    setCustomerStateCode(newCustomerStateCode); 
     
-    if (orderItems.length > 0 && (stateFromAddress || SELLER_STATE_CODE)) {
+    if (orderItems.length > 0) {
       setOrderItems(prevItems => prevItems.map(item => {
-        const derivedCustomerState = stateFromAddress || SELLER_STATE_CODE;
         const preTaxTotalForLine = item.unitPrice * item.quantity;
         const lineGstAmount = preTaxTotalForLine * (item.gstTaxRate / 100);
         return {
           ...item,
           gstAmount: lineGstAmount,
-          igstAmount: (derivedCustomerState !== SELLER_STATE_CODE) ? lineGstAmount : 0,
-          sgstAmount: (derivedCustomerState === SELLER_STATE_CODE) ? lineGstAmount / 2 : 0,
-          cgstAmount: (derivedCustomerState === SELLER_STATE_CODE) ? lineGstAmount / 2 : 0,
+          igstAmount: (newCustomerStateCode !== SELLER_STATE_CODE) ? lineGstAmount : 0,
+          sgstAmount: (newCustomerStateCode === SELLER_STATE_CODE) ? lineGstAmount / 2 : 0,
+          cgstAmount: (newCustomerStateCode === SELLER_STATE_CODE) ? lineGstAmount / 2 : 0,
         };
       }));
     }
-
-  }, [selectedUserDisplay, foundBusinessProfile, customerType, orderItems.length]); // Removed orderItems from dep to avoid loop if not necessary
+  }, [selectedUserDisplay, foundBusinessProfile, customerType]); 
 
 
   const handleUserSearch = async () => {
@@ -214,15 +220,37 @@ export default function CreateOrderPage() {
     }
   };
 
+  const handleUserNameSearch = async () => {
+    if (!userNameSearch) return;
+    setIsSearchingUserByName(true);
+    setSearchedUsers([]);
+    setSelectedUserId(null);
+    setSelectedUserDisplay(null);
+    try {
+      const usersPage = await searchUsersByName(userNameSearch);
+      setSearchedUsers(usersPage.content);
+      if (usersPage.content.length === 0) {
+         toast({ title: "Info", description: "No users found by that name. Try phone search or create new.", variant: "default" });
+      }
+    } catch (error: any) {
+      toast({ title: "Error Searching User by Name", description: error.message || "Failed to search user.", variant: "destructive" });
+    } finally {
+      setIsSearchingUserByName(false);
+    }
+  };
+
   const handleSelectUserFromList = (user: UserDto) => {
     setSelectedUserId(user.id);
     setSelectedUserDisplay(user);
     setSearchedUsers([]);
+    setPhoneSearch("");
+    setUserNameSearch("");
   };
 
   const handleBusinessProfileSearch = async () => {
     if (!gstinSearch) return;
     setIsSearchingBp(true);
+    setSearchedBusinessProfiles([]);
     setFoundBusinessProfile(null);
     setSelectedBusinessProfileId(null);
     setSelectedUserId(null); 
@@ -230,25 +258,58 @@ export default function CreateOrderPage() {
     try {
       const bp = await searchBusinessProfileByGstin(gstinSearch);
       if (bp && bp.id) {
-        setFoundBusinessProfile(bp);
-        setSelectedBusinessProfileId(bp.id);
-        if (bp.userIds && bp.userIds.length > 0 && bp.userIds[0]) {
-          const user = await fetchUserById(bp.userIds[0]);
-          setSelectedUserDisplay(user);
-          if (user && user.id) setSelectedUserId(user.id);
-        } else {
-           toast({ title: "Info", description: "Business profile found, but no primary user linked. Order can proceed, or link user via BP Management.", variant: "default", duration: 7000 });
-        }
+        setSearchedBusinessProfiles([bp]); // API returns single object or null
       } else {
         setShowBpWithUserCreateDialog(true);
         bpWithUserCreateForm.setValue("bpGstin", gstinSearch);
       }
     } catch (error: any) {
-      toast({ title: "Error Searching BP", description: error.message || "Failed to search business profile.", variant: "destructive" });
+      toast({ title: "Error Searching BP by GSTIN", description: error.message || "Failed to search business profile.", variant: "destructive" });
     } finally {
       setIsSearchingBp(false);
     }
   };
+  
+  const handleBusinessNameSearch = async () => {
+    if (!businessNameSearch) return;
+    setIsSearchingBpByName(true);
+    setSearchedBusinessProfiles([]);
+    setFoundBusinessProfile(null);
+    setSelectedBusinessProfileId(null);
+    setSelectedUserId(null);
+    setSelectedUserDisplay(null);
+    try {
+      const bpPage = await searchBusinessProfilesByName(businessNameSearch);
+      setSearchedBusinessProfiles(bpPage.content);
+      if (bpPage.content.length === 0) {
+        toast({ title: "Info", description: "No business profiles found by that name. Try GSTIN search or create new.", variant: "default" });
+      }
+    } catch (error: any) {
+      toast({ title: "Error Searching BP by Name", description: error.message || "Failed to search business profile.", variant: "destructive" });
+    } finally {
+      setIsSearchingBpByName(false);
+    }
+  };
+
+  const handleSelectBusinessProfileFromList = async (bp: BusinessProfileDto) => {
+    setFoundBusinessProfile(bp);
+    setSelectedBusinessProfileId(bp.id);
+    if (bp.userIds && bp.userIds.length > 0 && bp.userIds[0]) {
+      try {
+        const user = await fetchUserById(bp.userIds[0]);
+        setSelectedUserDisplay(user);
+        if (user && user.id) setSelectedUserId(user.id);
+      } catch (userError: any) {
+         toast({ title: "Warning", description: `Could not fetch primary user for BP: ${userError.message}`, variant: "default" });
+      }
+    } else {
+      toast({ title: "Info", description: "Business profile selected, but no primary user linked. Order can proceed, or link user via BP Management.", variant: "default", duration: 7000 });
+    }
+    setSearchedBusinessProfiles([]);
+    setGstinSearch("");
+    setBusinessNameSearch("");
+  };
+
 
   const handleCreateUserDialogSubmit = async (data: UserCreateDialogValues) => {
     setIsUserCreateSubmitting(true);
@@ -259,6 +320,7 @@ export default function CreateOrderPage() {
       setShowUserCreateDialog(false);
       userCreateForm.reset();
       setPhoneSearch("");
+      setUserNameSearch("");
       toast({ title: "Success", description: "User created successfully." });
     } catch (error: any) {
       toast({ title: "Error Creating User", description: error.message || "Failed to create user.", variant: "destructive" });
@@ -290,6 +352,7 @@ export default function CreateOrderPage() {
       setShowBpWithUserCreateDialog(false);
       bpWithUserCreateForm.reset();
       setGstinSearch("");
+      setBusinessNameSearch("");
       toast({ title: "Success", description: "Business profile and user created successfully." });
     } catch (error: any) {
       toast({ title: "Error Creating BP & User", description: error.message || "Failed to create business profile with user.", variant: "destructive" });
@@ -345,8 +408,9 @@ export default function CreateOrderPage() {
   const handleQuickProductCreateDialogSubmit = async (data: QuickProductCreateDialogValues) => {
     setIsQuickProductSubmitting(true);
 
-    const inclusiveUnitPriceFromForm = data.unitPrice;
-    const gstRateForQuickCreate = DEFAULT_GST_FOR_QUICK_CREATE; 
+    const inclusiveUnitPriceFromForm = data.unitPrice; // This is GST-Inclusive from the form
+    const gstRateForQuickCreate = DEFAULT_GST_FOR_QUICK_CREATE; // Use a default GST rate
+    
     const preTaxUnitPriceForApi = gstRateForQuickCreate > 0
         ? inclusiveUnitPriceFromForm / (1 + (gstRateForQuickCreate / 100))
         : inclusiveUnitPriceFromForm;
@@ -357,7 +421,7 @@ export default function CreateOrderPage() {
       categoryName: data.categoryName,
       colorVariants: data.colors.split(',').map(c => c.trim()).filter(Boolean),
       sizeVariants: data.sizes.split(',').map(s => s.trim()).filter(Boolean),
-      unitPrice: preTaxUnitPriceForApi,
+      unitPrice: preTaxUnitPriceForApi, // Send pre-tax to API
     };
 
     try {
@@ -370,22 +434,21 @@ export default function CreateOrderPage() {
         const newVariant = responseProduct.variants[0];
         const variantGstRate = responseProduct.gstTaxRate ?? DEFAULT_GST_FOR_QUICK_CREATE;
         
-        const variantInclusiveSellingPrice = newVariant.sellingPrice 
-          ? newVariant.sellingPrice * (1 + (variantGstRate / 100)) // If API returns pre-tax, make it inclusive
-          : payload.unitPrice * (1 + (variantGstRate / 100)); // Fallback to form input if necessary
+        // API's variant.sellingPrice for quick create might be pre-tax or post-tax. Assuming pre-tax from API.
+        const variantPreTaxSellingPrice = newVariant.sellingPrice ?? payload.unitPrice; // Fallback to pre-tax from input
+        const variantInclusiveSellingPrice = variantPreTaxSellingPrice * (1 + (variantGstRate / 100));
 
         const variantInclusiveMrp = newVariant.mrp 
-          ? newVariant.mrp * (1 + (variantGstRate / 100)) // If API returns pre-tax, make it inclusive
-          : variantInclusiveSellingPrice; 
-        
-        const preTaxSellingPriceForCalc = variantInclusiveSellingPrice / (1 + (variantGstRate / 100));
-        const preTaxMrpForCalc = variantInclusiveMrp / (1 + (variantGstRate / 100));
+            ? newVariant.mrp * (1 + (variantGstRate / 100)) // If API provides pre-tax MRP
+            : variantInclusiveSellingPrice; // Default MRP to selling price if not provided
 
-        const discountAmountPerUnit = preTaxMrpForCalc - preTaxSellingPriceForCalc;
+        const preTaxMrpForCalc = variantInclusiveMrp / (1 + (variantGstRate / 100));
+        const discountAmountPerUnit = preTaxMrpForCalc - variantPreTaxSellingPrice;
         const discountRate = preTaxMrpForCalc > 0 ? (discountAmountPerUnit / preTaxMrpForCalc) * 100 : 0;
 
-        const linePreTaxTotal = preTaxSellingPriceForCalc * 1;
+        const linePreTaxTotal = variantPreTaxSellingPrice * 1;
         const lineGstAmount = linePreTaxTotal * (variantGstRate / 100);
+        const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;
 
         const newItem: OrderItemDisplay = {
           productId: responseProduct.id,
@@ -394,16 +457,16 @@ export default function CreateOrderPage() {
           variantName: `${newVariant.color || ''}${newVariant.color && newVariant.size ? ' / ' : ''}${newVariant.size || ''}`.trim() || 'Default',
           hsnCode: responseProduct.hsnCode,
           quantity: 1,
-          mrp: variantInclusiveMrp,
+          mrp: variantInclusiveMrp, 
           discountRate: discountRate,
-          discountAmount: discountAmountPerUnit * 1, // total discount for the line
+          discountAmount: discountAmountPerUnit * 1, 
           sellingPrice: variantInclusiveSellingPrice, // Store inclusive selling price per unit
-          unitPrice: preTaxSellingPriceForCalc, // Store pre-tax selling price per unit
+          unitPrice: variantPreTaxSellingPrice, // Store pre-tax selling price per unit
           gstTaxRate: variantGstRate,
-          gstAmount: lineGstAmount, // total GST for line
-          igstAmount: customerStateCode !== SELLER_STATE_CODE ? lineGstAmount : 0,
-          sgstAmount: customerStateCode === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
-          cgstAmount: customerStateCode === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
+          gstAmount: lineGstAmount, 
+          igstAmount: derivedCustomerState !== SELLER_STATE_CODE ? lineGstAmount : 0,
+          sgstAmount: derivedCustomerState === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
+          cgstAmount: derivedCustomerState === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
           finalItemPrice: variantInclusiveSellingPrice * 1,
         };
         setOrderItems(prevItems => [...prevItems, newItem]);
@@ -428,11 +491,13 @@ export default function CreateOrderPage() {
     const existingItemIndex = orderItems.findIndex(item => item.variantId === selectedVariant!.id);
     const productGstRate = selectedProductForDetails.gstTaxRate ?? 0;
   
-    const variantInclusiveSellingPrice = (selectedVariant.sellingPrice ?? selectedVariant.price ?? 0) * (1 + (productGstRate / 100));
-    const variantInclusiveMrp = (selectedVariant.mrp ?? selectedVariant.compareAtPrice ?? (selectedVariant.sellingPrice ?? selectedVariant.price ?? 0)) * (1 + (productGstRate / 100));
+    // Assume variant.sellingPrice from API is GST-INCLUSIVE, or variant.price as fallback
+    const variantInclusiveSellingPrice = selectedVariant.sellingPrice ?? selectedVariant.price ?? 0;
+    // Assume variant.mrp from API is GST-INCLUSIVE, or compareAtPrice, or default to sellingPrice
+    const variantInclusiveMrp = selectedVariant.mrp ?? selectedVariant.compareAtPrice ?? variantInclusiveSellingPrice;
 
-    const preTaxSellingPriceForCalc = variantInclusiveSellingPrice / (1 + (productGstRate / 100));
-    const preTaxMrpForCalc = variantInclusiveMrp / (1 + (productGstRate / 100));
+    const preTaxSellingPriceForCalc = productGstRate > 0 ? variantInclusiveSellingPrice / (1 + (productGstRate / 100)) : variantInclusiveSellingPrice;
+    const preTaxMrpForCalc = productGstRate > 0 ? variantInclusiveMrp / (1 + (productGstRate / 100)) : variantInclusiveMrp;
 
     const discountAmountPerUnit = preTaxMrpForCalc - preTaxSellingPriceForCalc;
     const discountRate = preTaxMrpForCalc > 0 ? (discountAmountPerUnit / preTaxMrpForCalc) * 100 : 0;
@@ -443,10 +508,10 @@ export default function CreateOrderPage() {
       const newQuantity = currentItem.quantity + selectedQuantity;
       
       currentItem.quantity = newQuantity;
-      currentItem.finalItemPrice = currentItem.sellingPrice * newQuantity; // sellingPrice is inclusive
-      currentItem.discountAmount = (currentItem.mrp / (1 + currentItem.gstTaxRate/100) - currentItem.unitPrice) * newQuantity;
+      currentItem.finalItemPrice = currentItem.sellingPrice * newQuantity; // currentItem.sellingPrice is inclusive
+      currentItem.discountAmount = (preTaxMrpForCalc - currentItem.unitPrice) * newQuantity; // Recalculate discount amount based on pre-tax values
       currentItem.gstAmount = currentItem.unitPrice * newQuantity * (currentItem.gstTaxRate / 100);
-      // IGST/SGST/CGST need re-calc
+
       const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;
       currentItem.igstAmount = (derivedCustomerState !== SELLER_STATE_CODE) ? currentItem.gstAmount : 0;
       currentItem.sgstAmount = (derivedCustomerState === SELLER_STATE_CODE) ? currentItem.gstAmount / 2 : 0;
@@ -506,13 +571,10 @@ export default function CreateOrderPage() {
         if (item.variantId === variantId) {
           const { quantity, mrp: inclusiveMrpFromModal, discountRate: newDiscountRate, sellingPrice: inclusiveSellingPriceFromModal, gstTaxRate: newGstTaxRate } = updates;
 
-          // Ensure pre-tax values are derived correctly for internal calculation and API
-          const preTaxMrp = newGstTaxRate > 0 ? inclusiveMrpFromModal / (1 + (newGstTaxRate / 100)) : inclusiveMrpFromModal;
           const preTaxSellingPrice = newGstTaxRate > 0 ? inclusiveSellingPriceFromModal / (1 + (newGstTaxRate / 100)) : inclusiveSellingPriceFromModal;
+          const preTaxMrp = newGstTaxRate > 0 ? inclusiveMrpFromModal / (1 + (newGstTaxRate / 100)) : inclusiveMrpFromModal;
           
           const actualDiscountAmountPerUnit = preTaxMrp - preTaxSellingPrice;
-          // const actualDiscountRate = preTaxMrp > 0 ? (actualDiscountAmountPerUnit / preTaxMrp) * 100 : 0; // Use newDiscountRate from modal if it drove the change
-
           const lineDiscountAmountTotal = actualDiscountAmountPerUnit * quantity;
           const totalPreTaxValueForLine = preTaxSellingPrice * quantity;
           const totalGstAmountForLine = totalPreTaxValueForLine * (newGstTaxRate / 100);
@@ -522,11 +584,11 @@ export default function CreateOrderPage() {
           return {
             ...item,
             quantity,
-            mrp: inclusiveMrpFromModal, // Store inclusive MRP
-            discountRate: newDiscountRate, // Store direct discount rate from modal
+            mrp: inclusiveMrpFromModal, 
+            discountRate: newDiscountRate, 
             discountAmount: lineDiscountAmountTotal,
-            sellingPrice: inclusiveSellingPriceFromModal, // Store inclusive selling price per unit
-            unitPrice: preTaxSellingPrice, // Store pre-tax selling price (for API)
+            sellingPrice: inclusiveSellingPriceFromModal, 
+            unitPrice: preTaxSellingPrice, 
             gstTaxRate: newGstTaxRate,
             gstAmount: totalGstAmountForLine,
             finalItemPrice: finalItemPriceForLine,
@@ -558,6 +620,7 @@ export default function CreateOrderPage() {
 
     const quantity = parseInt(editPricingModal.tempQuantityString) || 1;
     const inclusiveMrp = parseFloat(editPricingModal.tempMrpString) || 0;
+    // discountRate is already calculated and stored in tempDiscountRateString by live updates
     const discountRate = parseFloat(editPricingModal.tempDiscountRateString) || 0;
     const inclusiveSellingPrice = parseFloat(editPricingModal.tempSellingPriceString) || 0;
     const gstTaxRate = editPricingModal.tempGstTaxRate;
@@ -577,17 +640,15 @@ export default function CreateOrderPage() {
      prevItems.map(item => {
        if (item.variantId === variantId) {
          const qty = Math.max(1, newQuantity);
-         // Recalculate based on new quantity, ensuring all derived fields are updated
-         const preTaxSellingPrice = item.unitPrice;
-         const preTaxMrp = item.mrp / (1 + item.gstTaxRate/100); // approx, better to use item.unitPrice directly
+         const preTaxSellingPrice = item.unitPrice; 
+         const preTaxMrp = item.gstTaxRate > 0 ? item.mrp / (1 + item.gstTaxRate/100) : item.mrp;
          const discountAmountPerUnit = preTaxMrp - preTaxSellingPrice;
 
          const lineDiscountAmountTotal = discountAmountPerUnit * qty;
          const totalPreTaxValueForLine = preTaxSellingPrice * qty;
          const totalGstAmountForLine = totalPreTaxValueForLine * (item.gstTaxRate / 100);
-         const finalItemPriceForLine = item.sellingPrice * qty; // item.sellingPrice is inclusive
+         const finalItemPriceForLine = item.sellingPrice * qty; 
          const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;
-
 
          return {
            ...item,
@@ -609,12 +670,14 @@ export default function CreateOrderPage() {
     return orderItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
   };
   const calculateTotalLineDiscountPreTax = (): number => {
+     // Discount amount is already calculated on pre-tax value per line item
     return orderItems.reduce((sum, item) => sum + item.discountAmount, 0);
   }
   const calculateTotalOrderGst = (): number => {
     return orderItems.reduce((sum, item) => sum + item.gstAmount, 0);
   };
   const calculateGrandTotal = (): number => {
+    // finalItemPrice is already GST inclusive * quantity
     return orderItems.reduce((sum, item) => sum + item.finalItemPrice, 0);
   };
 
@@ -627,7 +690,7 @@ export default function CreateOrderPage() {
 
 
   const handleSubmitOrder = async () => {
-    if (!selectedUserId) { // Check if a customer is selected
+    if (!selectedUserId) {
       toast({ title: "Error", description: "Customer selection is required to place an order.", variant: "destructive" });
       return;
     }
@@ -671,7 +734,7 @@ export default function CreateOrderPage() {
     }
 
     const customerDetailsPayload: CustomerDetailsDto = {
-      userId: selectedUserId, // End customer ID
+      userId: selectedUserId,
       name: selectedUserDisplay?.name || undefined,
       phone: selectedUserDisplay?.phone || undefined,
       email: selectedUserDisplay?.email || undefined,
@@ -687,7 +750,7 @@ export default function CreateOrderPage() {
     }
 
     const orderPayload: CreateOrderRequest = {
-      placedByUserId: selectedUserId!, // End customer's ID for whom the order is created
+      placedByUserId: selectedUserId!, 
       businessProfileId: customerType === 'B2B' && selectedBusinessProfileId ? selectedBusinessProfileId : undefined,
       customerDetails: customerDetailsPayload,
       items: orderItems.map(item => {
@@ -695,9 +758,7 @@ export default function CreateOrderPage() {
         const color = variantParts[0]?.trim() || undefined;
         const size = variantParts[1]?.trim() || undefined;
         
-        const preTaxMrpForApi = item.gstTaxRate > 0 ? item.mrp / (1 + item.gstTaxRate/100) : item.mrp;
-        const preTaxSellingPriceForApi = item.unitPrice; // item.unitPrice is already pre-tax
-        const perUnitPreTaxDiscount = preTaxMrpForApi - preTaxSellingPriceForApi;
+        const perUnitPreTaxDiscount = (item.mrp / (1 + item.gstTaxRate/100)) - item.unitPrice;
 
         return {
             productId: item.productId,
@@ -705,7 +766,7 @@ export default function CreateOrderPage() {
             size: size,
             color: color,
             quantity: item.quantity,
-            unitPrice: preTaxSellingPriceForApi, 
+            unitPrice: item.unitPrice, // This is pre-tax selling price
             discountRate: parseFloat(item.discountRate.toFixed(2)),
             discountAmount: parseFloat(perUnitPreTaxDiscount.toFixed(2)), 
             hsnCode: item.hsnCode,
@@ -750,7 +811,8 @@ export default function CreateOrderPage() {
               setCustomerType(value);
               setSelectedUserDisplay(null); setSelectedUserId(null);
               setFoundBusinessProfile(null); setSelectedBusinessProfileId(null);
-              setPhoneSearch(""); setGstinSearch(""); setSearchedUsers([]);
+              setPhoneSearch(""); setGstinSearch(""); setUserNameSearch(""); setBusinessNameSearch("");
+              setSearchedUsers([]); setSearchedBusinessProfiles([]);
               setCustomerStateCode(SELLER_STATE_CODE); 
             }} className="flex gap-4">
               <div className="flex items-center space-x-2"><RadioGroupItem value="B2C" id="r_b2c" /><Label htmlFor="r_b2c">Retail Customer (B2C)</Label></div>
@@ -758,18 +820,31 @@ export default function CreateOrderPage() {
             </RadioGroup>
 
             {customerType === 'B2C' && (
-              <div className="space-y-2">
-                <Label htmlFor="phone_search">Search by Phone</Label>
-                <div className="flex gap-2">
-                  <Input id="phone_search" value={phoneSearch} onChange={e => setPhoneSearch(e.target.value)} placeholder="Enter phone number" />
-                  <Button onClick={handleUserSearch} disabled={isSearchingUser || !phoneSearch}>
-                    {isSearchingUser ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <SearchIcon className="mr-2 h-4 w-4" />} Search
-                  </Button>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="phone_search">Search by Phone</Label>
+                    <div className="flex gap-2 mt-1">
+                      <Input id="phone_search" value={phoneSearch} onChange={e => setPhoneSearch(e.target.value)} placeholder="Enter phone number" />
+                      <Button onClick={handleUserSearch} disabled={isSearchingUser || !phoneSearch} className="shrink-0">
+                        {isSearchingUser ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <SearchIcon className="mr-2 h-4 w-4" />} Search
+                      </Button>
+                    </div>
+                  </div>
+                   <div>
+                    <Label htmlFor="user_name_search">Search by Name</Label>
+                    <div className="flex gap-2 mt-1">
+                      <Input id="user_name_search" value={userNameSearch} onChange={e => setUserNameSearch(e.target.value)} placeholder="Enter user name" />
+                      <Button onClick={handleUserNameSearch} disabled={isSearchingUserByName || !userNameSearch} className="shrink-0">
+                        {isSearchingUserByName ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <SearchIcon className="mr-2 h-4 w-4" />} Search
+                      </Button>
+                    </div>
+                  </div>
                 </div>
 
-                {isSearchingUser && <div className="text-sm text-muted-foreground p-2 flex items-center"><Loader2 className="animate-spin mr-2 h-3 w-3"/>Searching users...</div>}
+                {(isSearchingUser || isSearchingUserByName) && <div className="text-sm text-muted-foreground p-2 flex items-center"><Loader2 className="animate-spin mr-2 h-3 w-3"/>Searching users...</div>}
 
-                {searchedUsers.length > 0 && !isSearchingUser && (
+                {searchedUsers.length > 0 && !isSearchingUser && !isSearchingUserByName && (
                   <Card className="mt-2 p-2 bg-secondary/30">
                     <CardDescription className="mb-1 text-xs px-2">Multiple users found. Please select one:</CardDescription>
                     <ScrollArea className="h-40">
@@ -781,7 +856,7 @@ export default function CreateOrderPage() {
                     </ScrollArea>
                   </Card>
                 )}
-                 {!isSearchingUser && searchedUsers.length === 0 && phoneSearch && !selectedUserDisplay && (
+                 {!isSearchingUser && !isSearchingUserByName && searchedUsers.length === 0 && (phoneSearch || userNameSearch) && !selectedUserDisplay && (
                     <Dialog open={showUserCreateDialog} onOpenChange={setShowUserCreateDialog}>
                         <DialogTrigger asChild><Button variant="outline" className="mt-2"><UserPlus className="mr-2 h-4 w-4" />Create New User</Button></DialogTrigger>
                         <DialogContent>
@@ -789,7 +864,7 @@ export default function CreateOrderPage() {
                         <form onSubmit={userCreateForm.handleSubmit(handleCreateUserDialogSubmit)} className="space-y-4">
                             <Input {...userCreateForm.register("name")} placeholder="Full Name" />
                             {userCreateForm.formState.errors.name && <p className="text-xs text-destructive">{userCreateForm.formState.errors.name.message}</p>}
-                            <Input {...userCreateForm.register("phone")} placeholder="Phone Number" />
+                            <Input {...userCreateForm.register("phone")} placeholder="Phone Number" defaultValue={phoneSearch} />
                             {userCreateForm.formState.errors.phone && <p className="text-xs text-destructive">{userCreateForm.formState.errors.phone.message}</p>}
                             <Input {...userCreateForm.register("email")} placeholder="Email (Optional)" />
                             {userCreateForm.formState.errors.email && <p className="text-xs text-destructive">{userCreateForm.formState.errors.email.message}</p>}
@@ -818,17 +893,43 @@ export default function CreateOrderPage() {
             )}
 
             {customerType === 'B2B' && (
-              <div className="space-y-2">
-                <Label htmlFor="gstin_search">Search by GSTIN</Label>
-                <div className="flex gap-2">
-                  <Input id="gstin_search" value={gstinSearch} onChange={e => setGstinSearch(e.target.value)} placeholder="Enter GSTIN" />
-                  <Button onClick={handleBusinessProfileSearch} disabled={isSearchingBp || !gstinSearch}>
-                     {isSearchingBp ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <Building className="mr-2 h-4 w-4" />} Search BP
-                  </Button>
-                </div>
-                 {isSearchingBp && <div className="text-sm text-muted-foreground p-2 flex items-center"><Loader2 className="animate-spin mr-2 h-3 w-3"/>Searching business profile...</div>}
+              <div className="space-y-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="gstin_search">Search by GSTIN</Label>
+                      <div className="flex gap-2 mt-1">
+                        <Input id="gstin_search" value={gstinSearch} onChange={e => setGstinSearch(e.target.value)} placeholder="Enter GSTIN" />
+                        <Button onClick={handleBusinessProfileSearch} disabled={isSearchingBp || !gstinSearch} className="shrink-0">
+                          {isSearchingBp ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <Building className="mr-2 h-4 w-4" />} Search
+                        </Button>
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="bp_name_search">Search by Business Name</Label>
+                      <div className="flex gap-2 mt-1">
+                        <Input id="bp_name_search" value={businessNameSearch} onChange={e => setBusinessNameSearch(e.target.value)} placeholder="Enter business name" />
+                        <Button onClick={handleBusinessNameSearch} disabled={isSearchingBpByName || !businessNameSearch} className="shrink-0">
+                          {isSearchingBpByName ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <Building className="mr-2 h-4 w-4" />} Search
+                        </Button>
+                      </div>
+                    </div>
+                 </div>
+                 {(isSearchingBp || isSearchingBpByName) && <div className="text-sm text-muted-foreground p-2 flex items-center"><Loader2 className="animate-spin mr-2 h-3 w-3"/>Searching business profiles...</div>}
 
-                {!isSearchingBp && !foundBusinessProfile && gstinSearch && (
+                {searchedBusinessProfiles.length > 0 && !isSearchingBp && !isSearchingBpByName && (
+                  <Card className="mt-2 p-2 bg-secondary/30">
+                    <CardDescription className="mb-1 text-xs px-2">Multiple business profiles found. Please select one:</CardDescription>
+                    <ScrollArea className="h-40">
+                      {searchedBusinessProfiles.map(bp => (
+                        <Button key={bp.id} variant="ghost" className="w-full justify-start text-left h-auto py-1.5 px-2 mb-1" onClick={() => handleSelectBusinessProfileFromList(bp)}>
+                          {bp.name} ({bp.gstin})
+                        </Button>
+                      ))}
+                    </ScrollArea>
+                  </Card>
+                )}
+
+                {!isSearchingBp && !isSearchingBpByName && searchedBusinessProfiles.length === 0 && (gstinSearch || businessNameSearch) && !foundBusinessProfile && (
                      <Dialog open={showBpWithUserCreateDialog} onOpenChange={setShowBpWithUserCreateDialog}>
                         <DialogTrigger asChild><Button variant="outline" className="mt-2"><Building className="mr-2 h-4 w-4" /><UserPlus className="mr-1 h-4 w-4"/>Create BP & New User</Button></DialogTrigger>
                         <DialogContent className="max-h-[80vh] overflow-y-auto">
@@ -837,7 +938,7 @@ export default function CreateOrderPage() {
                             <Label className="font-medium">Business Profile Details</Label>
                             <Input {...bpWithUserCreateForm.register("bpName")} placeholder="Business Name" />
                             {bpWithUserCreateForm.formState.errors.bpName && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.bpName.message}</p>}
-                            <Input {...bpWithUserCreateForm.register("bpGstin")} placeholder="GSTIN" />
+                            <Input {...bpWithUserCreateForm.register("bpGstin")} placeholder="GSTIN" defaultValue={gstinSearch} />
                             {bpWithUserCreateForm.formState.errors.bpGstin && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.bpGstin.message}</p>}
                             <Label className="font-medium pt-2 block">User Details</Label>
                             <Input {...bpWithUserCreateForm.register("userName")} placeholder="User Full Name" />
@@ -1047,7 +1148,7 @@ export default function CreateOrderPage() {
                 {orderItems.length > 0 && (
                     <div className="mt-4 pt-4 border-t px-6">
                         <div className="flex justify-between font-semibold text-base">
-                            <span>Subtotal:</span>
+                            <span>Subtotal (Incl. Tax):</span>
                             <span>₹{orderItems.reduce((sum, item) => sum + item.finalItemPrice, 0).toFixed(2)}</span>
                         </div>
                          <p className="text-xs text-muted-foreground text-right">Further adjustments in next step.</p>
@@ -1079,7 +1180,6 @@ export default function CreateOrderPage() {
                     {orderItems.map(item => (
                     <Card key={item.variantId} className="p-3 shadow-sm">
                         <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
-                            {/* Left Side: Product Info & Pricing Details */}
                             <div className="flex-grow space-y-0.5">
                                 <div className="flex justify-between items-baseline">
                                     <p className="font-semibold text-base">{item.productName}</p>
@@ -1087,18 +1187,16 @@ export default function CreateOrderPage() {
                                 </div>
                                 <p className="text-xs text-muted-foreground -mt-1">({item.variantName})</p>
                                 
-                                <div className="grid grid-cols-2 gap-x-4 text-xs mt-1.5">
-                                    <p>MRP: <span className="font-medium">₹{item.mrp.toFixed(2)}</span></p>
-                                    <p>Unit S.Price (Incl. GST): <span className="font-medium">₹{item.sellingPrice.toFixed(2)}</span></p>
-                                    <p>GST Rate: <span className="font-medium">{item.gstTaxRate.toFixed(0)}%</span></p>
-                                    <p>GST Amt: <span className="font-medium">₹{item.gstAmount.toFixed(2)}</span>
+                                <div className="mt-1.5 text-xs">
+                                  <p>MRP: <span className="font-medium">₹{item.mrp.toFixed(2)}</span> | Disc: <span className="font-medium">{item.discountRate.toFixed(1)}%</span></p>
+                                  <p>Unit S.Price (Incl. GST): <span className="font-medium">₹{item.sellingPrice.toFixed(2)}</span></p>
+                                  <p>GST Rate: <span className="font-medium">{item.gstTaxRate.toFixed(0)}%</span> | GST Amt: <span className="font-medium">₹{item.gstAmount.toFixed(2)}</span>
                                     <span className="text-muted-foreground text-[10px] ml-1">
                                         ({customerStateCode !== SELLER_STATE_CODE ? `IGST: ₹${item.igstAmount.toFixed(2)}` : `SGST: ₹${item.sgstAmount.toFixed(2)}, CGST: ₹${item.cgstAmount.toFixed(2)}`})
                                     </span>
-                                    </p>
+                                  </p>
                                 </div>
                             </div>
-                            {/* Right Side: Total Amount & Edit Button */}
                             <div className="flex flex-col items-end justify-between sm:ml-4 shrink-0 space-y-1 sm:space-y-0 mt-2 sm:mt-0 w-full sm:w-auto">
                                 <p className="font-semibold text-lg text-right">₹{item.finalItemPrice.toFixed(2)}</p>
                                 <Button size="sm" variant="outline" onClick={() => openEditPricingModal(item)} className="mt-1 sm:mt-0 self-end w-full sm:w-auto">
@@ -1177,7 +1275,7 @@ export default function CreateOrderPage() {
                        onChange={(e) => {
                            const newDiscRateString = e.target.value;
                             if (/^\d*\.?\d{0,2}$/.test(newDiscRateString) || newDiscRateString === "") {
-                               const newDiscountRate = Math.max(0, parseFloat(newDiscRateString) || 0); // Do not clamp to 100, allow >100 if needed for data entry
+                               const newDiscountRate = parseFloat(newDiscRateString) || 0;
                                const currentInclusiveMrp = parseFloat(editPricingModal.tempMrpString) || 0;
                                const currentGstRate = editPricingModal.tempGstTaxRate;
 
@@ -1208,7 +1306,7 @@ export default function CreateOrderPage() {
                                if (currentInclusiveMrp > 0) {
                                    const preTaxMrp = currentGstRate > 0 ? currentInclusiveMrp / (1 + (currentGstRate / 100)) : currentInclusiveMrp;
                                    const preTaxSellingPrice = currentGstRate > 0 ? newInclusiveSellingPrice / (1 + (currentGstRate / 100)) : newInclusiveSellingPrice;
-                                   if (preTaxSellingPrice <= preTaxMrp) { // Ensure discount isn't negative
+                                   if (preTaxSellingPrice <= preTaxMrp && preTaxMrp > 0) { // Ensure discount isn't negative and MRP is positive
                                      const unitDiscount = preTaxMrp - preTaxSellingPrice;
                                      newDiscountRate = (unitDiscount / preTaxMrp) * 100;
                                    }
@@ -1217,7 +1315,7 @@ export default function CreateOrderPage() {
                                setEditPricingModal(prev => ({
                                    ...prev,
                                    tempSellingPriceString: newSellingPriceString,
-                                   tempDiscountRateString: isNaN(newDiscountRate) ? "0.00" : newDiscountRate.toFixed(2),
+                                   tempDiscountRateString: isNaN(newDiscountRate) ? "0.00" : Math.max(0, newDiscountRate).toFixed(2), // Ensure discount rate is not negative
                                }));
                            }
                        }} />
@@ -1233,18 +1331,20 @@ export default function CreateOrderPage() {
                         const currentInclusiveSellingPrice = parseFloat(currentInclusiveSellingPriceString) || 0;
                         
                         let preTaxEquivalent = currentInclusiveSellingPrice;
-                        if (previousGstRateInModal > 0) { // Back-calculate pre-tax value based on OLD GST rate
+                        if (previousGstRateInModal > 0) { 
                             preTaxEquivalent = currentInclusiveSellingPrice / (1 + (previousGstRateInModal / 100));
+                        } else if (previousGstRateInModal === 0 && currentInclusiveSellingPrice > 0) {
+                           // If old GST was 0, preTaxEquivalent is just the currentInclusiveSellingPrice
+                           preTaxEquivalent = currentInclusiveSellingPrice;
                         }
                         
-                        // Calculate new inclusive selling price using the NEW GST rate, keeping pre-tax value constant
                         const newCalculatedInclusiveSellingPrice = preTaxEquivalent * (1 + (newGstRate / 100));
 
                         setEditPricingModal(prev => ({
                             ...prev,
                             tempGstTaxRate: newGstRate,
-                            tempSellingPriceString: newCalculatedInclusiveSellingPrice.toFixed(2), // Update inclusive selling price
-                            previousGstRateInModal: newGstRate, // Store new rate as previous for next change
+                            tempSellingPriceString: newCalculatedInclusiveSellingPrice.toFixed(2), 
+                            previousGstRateInModal: newGstRate, 
                         }));
                     }}
                 >
@@ -1302,15 +1402,14 @@ export default function CreateOrderPage() {
                                     </div>
                                     <p className="text-xs text-muted-foreground -mt-1">({item.variantName})</p>
                                     
-                                    <div className="grid grid-cols-2 gap-x-4 text-xs mt-1.5">
-                                        <p>MRP: <span className="font-medium">₹{item.mrp.toFixed(2)}</span></p>
-                                        <p>Unit S.Price (Incl. GST): <span className="font-medium">₹{item.sellingPrice.toFixed(2)}</span></p>
-                                        <p>GST Rate: <span className="font-medium">{item.gstTaxRate.toFixed(0)}%</span></p>
-                                        <p>GST Amt: <span className="font-medium">₹{item.gstAmount.toFixed(2)}</span>
+                                    <div className="mt-1.5 text-xs">
+                                      <p>MRP: <span className="font-medium">₹{item.mrp.toFixed(2)}</span> | Disc: <span className="font-medium">{item.discountRate.toFixed(1)}%</span></p>
+                                      <p>Unit S.Price (Incl. GST): <span className="font-medium">₹{item.sellingPrice.toFixed(2)}</span></p>
+                                      <p>GST Rate: <span className="font-medium">{item.gstTaxRate.toFixed(0)}%</span> | GST Amt: <span className="font-medium">₹{item.gstAmount.toFixed(2)}</span>
                                         <span className="text-muted-foreground text-[10px] ml-1">
                                             ({customerStateCode !== SELLER_STATE_CODE ? `IGST: ₹${item.igstAmount.toFixed(2)}` : `SGST: ₹${item.sgstAmount.toFixed(2)}, CGST: ₹${item.cgstAmount.toFixed(2)}`})
                                         </span>
-                                        </p>
+                                      </p>
                                     </div>
                                 </div>
                                 <div className="flex flex-col items-end justify-between sm:ml-4 shrink-0 mt-2 sm:mt-0 w-full sm:w-auto">
@@ -1355,6 +1454,8 @@ export default function CreateOrderPage() {
     </div>
   );
 }
+    
+
     
 
     
