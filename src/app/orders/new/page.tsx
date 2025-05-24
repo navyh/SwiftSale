@@ -61,7 +61,7 @@ const quickProductCreateDialogSchema = z.object({
   categoryName: z.string().min(1, "Category name is required"),
   colors: z.string().min(1, "At least one color is required (comma-separated)"),
   sizes: z.string().min(1, "At least one size is required (comma-separated)"),
-  unitPrice: z.coerce.number().min(0.01, "GST-Inclusive Price must be greater than 0"), // User enters GST-inclusive price
+  unitPrice: z.coerce.number().min(0.01, "GST-Inclusive Price must be greater than 0"),
 });
 type QuickProductCreateDialogValues = z.infer<typeof quickProductCreateDialogSchema>;
 
@@ -73,32 +73,32 @@ export interface OrderItemDisplay {
   variantName: string; // e.g., "Red / S"
   hsnCode?: string | null;
   quantity: number;
-  mrp: number; // GST-INCLUSIVE MRP (user input or from variant)
-  discountRate: number; // percentage, applied on pre-tax MRP
-  discountAmount: number; // calculated total PRE-TAX discount for the line: (preTaxMrp - unitPrice) * quantity
-  sellingPrice: number; // GST-INCLUSIVE selling price (user input or derived)
-  unitPrice: number; // PRE-TAX selling price (derived from inclusive sellingPrice, for API payload & internal calcs)
+  mrp: number; // GST-INCLUSIVE MRP
+  discountRate: number; // percentage
+  discountAmount: number; // calculated: (preTaxMrp * (discountRate/100)) * quantity
+  sellingPrice: number; // GST-INCLUSIVE selling price per unit
+  unitPrice: number; // PRE-TAX selling price per unit (for API payload & internal calcs)
   gstTaxRate: number; // percentage from select
   gstAmount: number; // calculated total GST for the line item: (unitPrice * quantity) * (gstTaxRate / 100)
   igstAmount: number;
   sgstAmount: number;
   cgstAmount: number;
-  finalItemPrice: number; // calculated: sellingPrice * quantity (since sellingPrice is GST-inclusive here)
+  finalItemPrice: number; // calculated: sellingPrice * quantity
 }
 
-const SELLER_STATE_CODE = "KA"; // Example: Karnataka. TODO: Make configurable
+const SELLER_STATE_CODE = "KA"; 
 const STANDARD_GST_RATES = [0, 5, 12, 18, 28];
-const DEFAULT_GST_FOR_QUICK_CREATE = 18; // Used if product doesn't specify a rate
+const DEFAULT_GST_FOR_QUICK_CREATE = 18;
 
 interface EditPricingModalState {
   isOpen: boolean;
   item: OrderItemDisplay | null;
   tempQuantityString: string;
-  tempMrpString: string; // Stores GST-inclusive MRP as string
+  tempMrpString: string;
   tempDiscountRateString: string;
-  tempSellingPriceString: string; // Stores GST-inclusive Selling Price as string
+  tempSellingPriceString: string; // GST-INCLUSIVE Selling Price as string
   tempGstTaxRate: number;
-  previousGstRateInModal: number; // To handle GST rate changes correctly
+  previousGstRateInModal: number;
 }
 
 const initialEditPricingModalState: EditPricingModalState = {
@@ -172,25 +172,26 @@ export default function CreateOrderPage() {
     const anyBilling = targetAddresses.find(a => a.type === "BILLING");
     const firstAddress = targetAddresses.length > 0 ? targetAddresses[0] : null;
 
-    determinedStateCode = defaultBilling?.state || anyBilling?.state || firstAddress?.state || null;
+    const stateFromAddress = defaultBilling?.state || anyBilling?.state || firstAddress?.state || null;
     
-    setCustomerStateCode(determinedStateCode || SELLER_STATE_CODE);
+    setCustomerStateCode(stateFromAddress || SELLER_STATE_CODE); // Use seller state if no customer state found
     
-    // If customer state changes, re-calculate GST split for all items
-    if (orderItems.length > 0 && determinedStateCode) {
+    if (orderItems.length > 0 && (stateFromAddress || SELLER_STATE_CODE)) {
       setOrderItems(prevItems => prevItems.map(item => {
-        const gstAmount = item.unitPrice * item.quantity * (item.gstTaxRate / 100);
+        const derivedCustomerState = stateFromAddress || SELLER_STATE_CODE;
+        const preTaxTotalForLine = item.unitPrice * item.quantity;
+        const lineGstAmount = preTaxTotalForLine * (item.gstTaxRate / 100);
         return {
           ...item,
-          gstAmount,
-          igstAmount: (determinedStateCode !== SELLER_STATE_CODE) ? gstAmount : 0,
-          sgstAmount: (determinedStateCode === SELLER_STATE_CODE) ? gstAmount / 2 : 0,
-          cgstAmount: (determinedStateCode === SELLER_STATE_CODE) ? gstAmount / 2 : 0,
+          gstAmount: lineGstAmount,
+          igstAmount: (derivedCustomerState !== SELLER_STATE_CODE) ? lineGstAmount : 0,
+          sgstAmount: (derivedCustomerState === SELLER_STATE_CODE) ? lineGstAmount / 2 : 0,
+          cgstAmount: (derivedCustomerState === SELLER_STATE_CODE) ? lineGstAmount / 2 : 0,
         };
       }));
     }
 
-  }, [selectedUserDisplay, foundBusinessProfile, customerType, SELLER_STATE_CODE]);
+  }, [selectedUserDisplay, foundBusinessProfile, customerType, orderItems.length]); // Removed orderItems from dep to avoid loop if not necessary
 
 
   const handleUserSearch = async () => {
@@ -224,7 +225,7 @@ export default function CreateOrderPage() {
     setIsSearchingBp(true);
     setFoundBusinessProfile(null);
     setSelectedBusinessProfileId(null);
-    setSelectedUserId(null);
+    setSelectedUserId(null); 
     setSelectedUserDisplay(null);
     try {
       const bp = await searchBusinessProfileByGstin(gstinSearch);
@@ -232,7 +233,7 @@ export default function CreateOrderPage() {
         setFoundBusinessProfile(bp);
         setSelectedBusinessProfileId(bp.id);
         if (bp.userIds && bp.userIds.length > 0 && bp.userIds[0]) {
-          const user = await fetchUserById(bp.userIds[0]); // ID is string
+          const user = await fetchUserById(bp.userIds[0]);
           setSelectedUserDisplay(user);
           if (user && user.id) setSelectedUserId(user.id);
         } else {
@@ -254,7 +255,7 @@ export default function CreateOrderPage() {
     try {
       const newUser = await createUser({ name: data.name, phone: data.phone, email: data.email || undefined, status: 'ACTIVE' });
       setSelectedUserDisplay(newUser);
-      if (newUser && newUser.id) setSelectedUserId(newUser.id); // ID is string
+      if (newUser && newUser.id) setSelectedUserId(newUser.id);
       setShowUserCreateDialog(false);
       userCreateForm.reset();
       setPhoneSearch("");
@@ -275,14 +276,14 @@ export default function CreateOrderPage() {
     try {
       const response = await createBusinessProfileWithUser(payload);
       setFoundBusinessProfile(response);
-      if (response && response.id) setSelectedBusinessProfileId(response.id); // ID is string
+      if (response && response.id) setSelectedBusinessProfileId(response.id);
 
       const createdUserInResponse = response.user;
       if (createdUserInResponse && createdUserInResponse.id) {
         setSelectedUserDisplay(createdUserInResponse);
         setSelectedUserId(createdUserInResponse.id);
       } else if (response.userIds && response.userIds.length > 0 && response.userIds[0]) {
-        const user = await fetchUserById(response.userIds[0]); // ID is string
+        const user = await fetchUserById(response.userIds[0]);
         setSelectedUserDisplay(user);
         if (user && user.id) setSelectedUserId(user.id);
       }
@@ -329,7 +330,7 @@ export default function CreateOrderPage() {
     setSelectedVariant(null);
     setSelectedQuantity(1);
     try {
-      const product = await fetchProductById(productId); // ID is string
+      const product = await fetchProductById(productId);
       setSelectedProductForDetails(product);
       if (!product.variants || product.variants.length === 0) {
         toast({title: "Info", description: "This product has no variants defined.", variant: "default"});
@@ -345,18 +346,18 @@ export default function CreateOrderPage() {
     setIsQuickProductSubmitting(true);
 
     const inclusiveUnitPriceFromForm = data.unitPrice;
-    const gstRateForQuickCreate = DEFAULT_GST_FOR_QUICK_CREATE;
+    const gstRateForQuickCreate = DEFAULT_GST_FOR_QUICK_CREATE; 
     const preTaxUnitPriceForApi = gstRateForQuickCreate > 0
         ? inclusiveUnitPriceFromForm / (1 + (gstRateForQuickCreate / 100))
         : inclusiveUnitPriceFromForm;
-
+    
     const payload: QuickCreateProductRequest = {
       name: data.name,
       brandName: data.brandName,
       categoryName: data.categoryName,
       colorVariants: data.colors.split(',').map(c => c.trim()).filter(Boolean),
       sizeVariants: data.sizes.split(',').map(s => s.trim()).filter(Boolean),
-      unitPrice: preTaxUnitPriceForApi, 
+      unitPrice: preTaxUnitPriceForApi,
     };
 
     try {
@@ -369,18 +370,21 @@ export default function CreateOrderPage() {
         const newVariant = responseProduct.variants[0];
         const variantGstRate = responseProduct.gstTaxRate ?? DEFAULT_GST_FOR_QUICK_CREATE;
         
-        // Variant price from API (newVariant.sellingPrice or newVariant.price) is pre-tax.
-        // Variant MRP from API (newVariant.mrp) is also pre-tax.
-        const variantPreTaxSellingPrice = newVariant.sellingPrice ?? newVariant.price ?? preTaxUnitPriceForApi;
-        const variantPreTaxMrp = newVariant.mrp ?? variantPreTaxSellingPrice; // Default MRP to selling price if not available
+        const variantInclusiveSellingPrice = newVariant.sellingPrice 
+          ? newVariant.sellingPrice * (1 + (variantGstRate / 100)) // If API returns pre-tax, make it inclusive
+          : payload.unitPrice * (1 + (variantGstRate / 100)); // Fallback to form input if necessary
 
-        const inclusiveSellingPrice = variantPreTaxSellingPrice * (1 + (variantGstRate / 100));
-        const inclusiveMrp = variantPreTaxMrp * (1 + (variantGstRate / 100));
+        const variantInclusiveMrp = newVariant.mrp 
+          ? newVariant.mrp * (1 + (variantGstRate / 100)) // If API returns pre-tax, make it inclusive
+          : variantInclusiveSellingPrice; 
+        
+        const preTaxSellingPriceForCalc = variantInclusiveSellingPrice / (1 + (variantGstRate / 100));
+        const preTaxMrpForCalc = variantInclusiveMrp / (1 + (variantGstRate / 100));
 
-        const discountAmountPerUnit = variantPreTaxMrp - variantPreTaxSellingPrice;
-        const discountRate = variantPreTaxMrp > 0 ? (discountAmountPerUnit / variantPreTaxMrp) * 100 : 0;
+        const discountAmountPerUnit = preTaxMrpForCalc - preTaxSellingPriceForCalc;
+        const discountRate = preTaxMrpForCalc > 0 ? (discountAmountPerUnit / preTaxMrpForCalc) * 100 : 0;
 
-        const linePreTaxTotal = variantPreTaxSellingPrice * 1; // For quantity 1
+        const linePreTaxTotal = preTaxSellingPriceForCalc * 1;
         const lineGstAmount = linePreTaxTotal * (variantGstRate / 100);
 
         const newItem: OrderItemDisplay = {
@@ -390,17 +394,17 @@ export default function CreateOrderPage() {
           variantName: `${newVariant.color || ''}${newVariant.color && newVariant.size ? ' / ' : ''}${newVariant.size || ''}`.trim() || 'Default',
           hsnCode: responseProduct.hsnCode,
           quantity: 1,
-          mrp: inclusiveMrp,
+          mrp: variantInclusiveMrp,
           discountRate: discountRate,
-          discountAmount: discountAmountPerUnit * 1,
-          sellingPrice: inclusiveSellingPrice,
-          unitPrice: variantPreTaxSellingPrice,
+          discountAmount: discountAmountPerUnit * 1, // total discount for the line
+          sellingPrice: variantInclusiveSellingPrice, // Store inclusive selling price per unit
+          unitPrice: preTaxSellingPriceForCalc, // Store pre-tax selling price per unit
           gstTaxRate: variantGstRate,
-          gstAmount: lineGstAmount,
+          gstAmount: lineGstAmount, // total GST for line
           igstAmount: customerStateCode !== SELLER_STATE_CODE ? lineGstAmount : 0,
           sgstAmount: customerStateCode === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
           cgstAmount: customerStateCode === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
-          finalItemPrice: inclusiveSellingPrice * 1,
+          finalItemPrice: variantInclusiveSellingPrice * 1,
         };
         setOrderItems(prevItems => [...prevItems, newItem]);
         setSelectedProductForDetails(null); setSelectedVariant(null); setSelectedQuantity(1);
@@ -414,7 +418,7 @@ export default function CreateOrderPage() {
       setIsQuickProductSubmitting(false);
     }
   };
-
+  
   const handleAddOrderItem = () => {
     if (!selectedProductForDetails || !selectedProductForDetails.id || !selectedVariant || !selectedVariant.id || selectedQuantity <= 0) {
       toast({ title: "Warning", description: "Please select a product, variant, and valid quantity.", variant: "default" });
@@ -424,16 +428,14 @@ export default function CreateOrderPage() {
     const existingItemIndex = orderItems.findIndex(item => item.variantId === selectedVariant!.id);
     const productGstRate = selectedProductForDetails.gstTaxRate ?? 0;
   
-    // Variant.sellingPrice or price from API is pre-tax
-    // Variant.mrp or compareAtPrice from API is pre-tax
-    const variantPreTaxSellingPrice = selectedVariant.sellingPrice ?? selectedVariant.price ?? 0;
-    const variantPreTaxMrp = selectedVariant.mrp ?? selectedVariant.compareAtPrice ?? variantPreTaxSellingPrice; // Default MRP to selling price
+    const variantInclusiveSellingPrice = (selectedVariant.sellingPrice ?? selectedVariant.price ?? 0) * (1 + (productGstRate / 100));
+    const variantInclusiveMrp = (selectedVariant.mrp ?? selectedVariant.compareAtPrice ?? (selectedVariant.sellingPrice ?? selectedVariant.price ?? 0)) * (1 + (productGstRate / 100));
 
-    const inclusiveSellingPrice = variantPreTaxSellingPrice * (1 + (productGstRate / 100));
-    const inclusiveMrp = variantPreTaxMrp * (1 + (productGstRate / 100));
-  
-    const discountAmountPerUnit = variantPreTaxMrp - variantPreTaxSellingPrice;
-    const discountRate = variantPreTaxMrp > 0 ? (discountAmountPerUnit / variantPreTaxMrp) * 100 : 0;
+    const preTaxSellingPriceForCalc = variantInclusiveSellingPrice / (1 + (productGstRate / 100));
+    const preTaxMrpForCalc = variantInclusiveMrp / (1 + (productGstRate / 100));
+
+    const discountAmountPerUnit = preTaxMrpForCalc - preTaxSellingPriceForCalc;
+    const discountRate = preTaxMrpForCalc > 0 ? (discountAmountPerUnit / preTaxMrpForCalc) * 100 : 0;
     
     if (existingItemIndex > -1) {
       const updatedItems = [...orderItems];
@@ -441,15 +443,22 @@ export default function CreateOrderPage() {
       const newQuantity = currentItem.quantity + selectedQuantity;
       
       currentItem.quantity = newQuantity;
-      // All other calculations (discountAmount, gstAmount, finalItemPrice, etc.) will be updated
-      // when updateOrderItemPricing is called (implicitly via modal save or direct quantity change in Step 3).
-      // For now, just update quantity. Price display in Step 2 cart is simplified.
+      currentItem.finalItemPrice = currentItem.sellingPrice * newQuantity; // sellingPrice is inclusive
+      currentItem.discountAmount = (currentItem.mrp / (1 + currentItem.gstTaxRate/100) - currentItem.unitPrice) * newQuantity;
+      currentItem.gstAmount = currentItem.unitPrice * newQuantity * (currentItem.gstTaxRate / 100);
+      // IGST/SGST/CGST need re-calc
+      const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;
+      currentItem.igstAmount = (derivedCustomerState !== SELLER_STATE_CODE) ? currentItem.gstAmount : 0;
+      currentItem.sgstAmount = (derivedCustomerState === SELLER_STATE_CODE) ? currentItem.gstAmount / 2 : 0;
+      currentItem.cgstAmount = (derivedCustomerState === SELLER_STATE_CODE) ? currentItem.gstAmount / 2 : 0;
+
       setOrderItems(updatedItems);
     } else {
-      const linePreTaxTotal = variantPreTaxSellingPrice * selectedQuantity;
+      const linePreTaxTotal = preTaxSellingPriceForCalc * selectedQuantity;
       const lineGstAmount = linePreTaxTotal * (productGstRate / 100);
-      const lineFinalPrice = inclusiveSellingPrice * selectedQuantity;
+      const lineFinalPrice = variantInclusiveSellingPrice * selectedQuantity;
       const lineDiscountAmountTotal = discountAmountPerUnit * selectedQuantity;
+      const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;
 
       const newItem: OrderItemDisplay = {
         productId: selectedProductForDetails.id,
@@ -458,16 +467,16 @@ export default function CreateOrderPage() {
         variantName: `${selectedVariant.color || ''}${selectedVariant.color && selectedVariant.size ? ' / ' : ''}${selectedVariant.size || ''}`.trim() || 'Default',
         hsnCode: selectedProductForDetails.hsnCode,
         quantity: selectedQuantity,
-        mrp: inclusiveMrp, 
+        mrp: variantInclusiveMrp, 
         discountRate: discountRate,
         discountAmount: lineDiscountAmountTotal,
-        sellingPrice: inclusiveSellingPrice, 
-        unitPrice: variantPreTaxSellingPrice, 
+        sellingPrice: variantInclusiveSellingPrice, 
+        unitPrice: preTaxSellingPriceForCalc, 
         gstTaxRate: productGstRate,
         gstAmount: lineGstAmount,
-        igstAmount: customerStateCode !== SELLER_STATE_CODE ? lineGstAmount : 0,
-        sgstAmount: customerStateCode === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
-        cgstAmount: customerStateCode === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
+        igstAmount: (derivedCustomerState !== SELLER_STATE_CODE) ? lineGstAmount : 0,
+        sgstAmount: (derivedCustomerState === SELLER_STATE_CODE) ? lineGstAmount / 2 : 0,
+        cgstAmount: (derivedCustomerState === SELLER_STATE_CODE) ? lineGstAmount / 2 : 0,
         finalItemPrice: lineFinalPrice,
       };
       setOrderItems(prevItems => [...prevItems, newItem]);
@@ -481,49 +490,49 @@ export default function CreateOrderPage() {
   const handleRemoveOrderItem = (variantIdToRemove: string) => {
     setOrderItems(prevItems => prevItems.filter(item => item.variantId !== variantIdToRemove));
   };
-
-  // This function updates an item in the main `orderItems` state
-  // It expects `updates.sellingPrice` and `updates.mrp` to be GST-INCLUSIVE from the modal
+  
   const updateOrderItemPricing = (
     variantId: string,
     updates: {
       quantity: number;
-      mrp: number; // GST-INCLUSIVE MRP
-      discountRate: number; // Applied on pre-tax MRP
-      sellingPrice: number; // GST-INCLUSIVE Selling Price
+      mrp: number; // GST-INCLUSIVE MRP from modal
+      discountRate: number; 
+      sellingPrice: number; // GST-INCLUSIVE Selling Price from modal
       gstTaxRate: number;
     }
   ) => {
     setOrderItems(prevItems =>
       prevItems.map(item => {
         if (item.variantId === variantId) {
-          const { quantity, mrp: inclusiveMrp, discountRate, sellingPrice: inclusiveSellingPrice, gstTaxRate } = updates;
+          const { quantity, mrp: inclusiveMrpFromModal, discountRate: newDiscountRate, sellingPrice: inclusiveSellingPriceFromModal, gstTaxRate: newGstTaxRate } = updates;
 
-          const preTaxMrp = gstTaxRate > 0 ? inclusiveMrp / (1 + (gstTaxRate / 100)) : inclusiveMrp;
-          const preTaxSellingPrice = gstTaxRate > 0 ? inclusiveSellingPrice / (1 + (gstTaxRate / 100)) : inclusiveSellingPrice;
+          // Ensure pre-tax values are derived correctly for internal calculation and API
+          const preTaxMrp = newGstTaxRate > 0 ? inclusiveMrpFromModal / (1 + (newGstTaxRate / 100)) : inclusiveMrpFromModal;
+          const preTaxSellingPrice = newGstTaxRate > 0 ? inclusiveSellingPriceFromModal / (1 + (newGstTaxRate / 100)) : inclusiveSellingPriceFromModal;
           
           const actualDiscountAmountPerUnit = preTaxMrp - preTaxSellingPrice;
-          const actualDiscountRate = preTaxMrp > 0 ? (actualDiscountAmountPerUnit / preTaxMrp) * 100 : 0;
+          // const actualDiscountRate = preTaxMrp > 0 ? (actualDiscountAmountPerUnit / preTaxMrp) * 100 : 0; // Use newDiscountRate from modal if it drove the change
 
           const lineDiscountAmountTotal = actualDiscountAmountPerUnit * quantity;
           const totalPreTaxValueForLine = preTaxSellingPrice * quantity;
-          const totalGstAmountForLine = totalPreTaxValueForLine * (gstTaxRate / 100);
-          const finalItemPriceForLine = inclusiveSellingPrice * quantity; // Since inclusiveSellingPrice is per unit
+          const totalGstAmountForLine = totalPreTaxValueForLine * (newGstTaxRate / 100);
+          const finalItemPriceForLine = inclusiveSellingPriceFromModal * quantity;
+          const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;
 
           return {
             ...item,
             quantity,
-            mrp: inclusiveMrp,
-            discountRate: actualDiscountRate,
+            mrp: inclusiveMrpFromModal, // Store inclusive MRP
+            discountRate: newDiscountRate, // Store direct discount rate from modal
             discountAmount: lineDiscountAmountTotal,
-            sellingPrice: inclusiveSellingPrice, // Store inclusive selling price
+            sellingPrice: inclusiveSellingPriceFromModal, // Store inclusive selling price per unit
             unitPrice: preTaxSellingPrice, // Store pre-tax selling price (for API)
-            gstTaxRate,
+            gstTaxRate: newGstTaxRate,
             gstAmount: totalGstAmountForLine,
             finalItemPrice: finalItemPriceForLine,
-            igstAmount: customerStateCode !== SELLER_STATE_CODE ? totalGstAmountForLine : 0,
-            sgstAmount: customerStateCode === SELLER_STATE_CODE ? totalGstAmountForLine / 2 : 0,
-            cgstAmount: customerStateCode === SELLER_STATE_CODE ? totalGstAmountForLine / 2 : 0,
+            igstAmount: (derivedCustomerState !== SELLER_STATE_CODE) ? totalGstAmountForLine : 0,
+            sgstAmount: (derivedCustomerState === SELLER_STATE_CODE) ? totalGstAmountForLine / 2 : 0,
+            cgstAmount: (derivedCustomerState === SELLER_STATE_CODE) ? totalGstAmountForLine / 2 : 0,
           };
         }
         return item;
@@ -531,15 +540,14 @@ export default function CreateOrderPage() {
     );
   };
 
-
   const openEditPricingModal = (itemToEdit: OrderItemDisplay) => {
     setEditPricingModal({
       isOpen: true,
       item: itemToEdit,
       tempQuantityString: itemToEdit.quantity.toString(),
-      tempMrpString: itemToEdit.mrp.toFixed(2),
+      tempMrpString: itemToEdit.mrp.toFixed(2), // MRP is inclusive
       tempDiscountRateString: itemToEdit.discountRate.toFixed(2),
-      tempSellingPriceString: itemToEdit.sellingPrice.toFixed(2),
+      tempSellingPriceString: itemToEdit.sellingPrice.toFixed(2), // Selling price is inclusive
       tempGstTaxRate: itemToEdit.gstTaxRate,
       previousGstRateInModal: itemToEdit.gstTaxRate,
     });
@@ -549,57 +557,66 @@ export default function CreateOrderPage() {
     if (!editPricingModal.item) return;
 
     const quantity = parseInt(editPricingModal.tempQuantityString) || 1;
-    const mrp = parseFloat(editPricingModal.tempMrpString) || 0; // GST-inclusive
-    // Discount rate from modal state is fine
-    const sellingPrice = parseFloat(editPricingModal.tempSellingPriceString) || 0; // GST-inclusive
+    const inclusiveMrp = parseFloat(editPricingModal.tempMrpString) || 0;
+    const discountRate = parseFloat(editPricingModal.tempDiscountRateString) || 0;
+    const inclusiveSellingPrice = parseFloat(editPricingModal.tempSellingPriceString) || 0;
     const gstTaxRate = editPricingModal.tempGstTaxRate;
 
     updateOrderItemPricing(editPricingModal.item.variantId, {
       quantity,
-      mrp,
-      discountRate: parseFloat(editPricingModal.tempDiscountRateString), // Pass the rate from modal
-      sellingPrice,
+      mrp: inclusiveMrp,
+      discountRate: discountRate,
+      sellingPrice: inclusiveSellingPrice,
       gstTaxRate,
     });
     setEditPricingModal(initialEditPricingModalState);
   };
   
-  // For direct quantity change in Step 2 cart (simplified view)
   const handleOrderItemQuantityChangeStep2 = (variantId: string, newQuantity: number) => {
     setOrderItems(prevItems =>
      prevItems.map(item => {
        if (item.variantId === variantId) {
          const qty = Math.max(1, newQuantity);
-         const lineFinalPrice = item.sellingPrice * qty; // item.sellingPrice is inclusive
+         // Recalculate based on new quantity, ensuring all derived fields are updated
+         const preTaxSellingPrice = item.unitPrice;
+         const preTaxMrp = item.mrp / (1 + item.gstTaxRate/100); // approx, better to use item.unitPrice directly
+         const discountAmountPerUnit = preTaxMrp - preTaxSellingPrice;
 
-         // Note: For simplicity in Step 2, we're only updating final price.
-         // Detailed discount/GST recalculations are deferred to Step 3 editing.
+         const lineDiscountAmountTotal = discountAmountPerUnit * qty;
+         const totalPreTaxValueForLine = preTaxSellingPrice * qty;
+         const totalGstAmountForLine = totalPreTaxValueForLine * (item.gstTaxRate / 100);
+         const finalItemPriceForLine = item.sellingPrice * qty; // item.sellingPrice is inclusive
+         const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;
+
+
          return {
            ...item,
            quantity: qty,
-           finalItemPrice: lineFinalPrice,
-           // discountAmount, gstAmount, etc., would ideally be recalculated here too if Step 2 was more detailed
+           discountAmount: lineDiscountAmountTotal,
+           gstAmount: totalGstAmountForLine,
+           finalItemPrice: finalItemPriceForLine,
+           igstAmount: (derivedCustomerState !== SELLER_STATE_CODE) ? totalGstAmountForLine : 0,
+           sgstAmount: (derivedCustomerState === SELLER_STATE_CODE) ? totalGstAmountForLine / 2 : 0,
+           cgstAmount: (derivedCustomerState === SELLER_STATE_CODE) ? totalGstAmountForLine / 2 : 0,
          };
        }
        return item;
      })
    );
- }
+  };
 
-
-  const calculateOrderSubtotalPreTax = (): number => { // Sum of (pre-tax unitPrice * quantity)
+  const calculateOrderSubtotalPreTax = (): number => {
     return orderItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
   };
-  const calculateTotalLineDiscountPreTax = (): number => { // Sum of item.discountAmount (which is total pre-tax discount for the line)
+  const calculateTotalLineDiscountPreTax = (): number => {
     return orderItems.reduce((sum, item) => sum + item.discountAmount, 0);
   }
   const calculateTotalOrderGst = (): number => {
     return orderItems.reduce((sum, item) => sum + item.gstAmount, 0);
   };
-  const calculateGrandTotal = (): number => { // Sum of (inclusive finalItemPrice)
+  const calculateGrandTotal = (): number => {
     return orderItems.reduce((sum, item) => sum + item.finalItemPrice, 0);
   };
-
 
   const nextStep = () => setCurrentStep(prev => prev + 1);
   const prevStep = () => setCurrentStep(prev => prev - 1);
@@ -610,8 +627,12 @@ export default function CreateOrderPage() {
 
 
   const handleSubmitOrder = async () => {
-    if (!selectedUserId || orderItems.length === 0) {
-      toast({ title: "Error", description: "Customer and order items are required.", variant: "destructive" });
+    if (!selectedUserId) { // Check if a customer is selected
+      toast({ title: "Error", description: "Customer selection is required to place an order.", variant: "destructive" });
+      return;
+    }
+    if (orderItems.length === 0) {
+      toast({ title: "Error", description: "Order items are required.", variant: "destructive" });
       return;
     }
 
@@ -634,7 +655,7 @@ export default function CreateOrderPage() {
     const getAddressCreateDto = (addr?: ApiAddressDto | null): AddressCreateDto | null => {
         if (!addr) return null;
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { id, ...rest } = addr; // Destructure to remove 'id'
+        const { id, ...rest } = addr; 
         return rest;
     };
 
@@ -642,16 +663,15 @@ export default function CreateOrderPage() {
     finalShippingAddress = getAddressCreateDto(defaultShipping || anyShipping || firstAddress || finalBillingAddress);
 
     if (!finalBillingAddress) {
-        toast({ title: "Error", description: "Billing address is required to proceed. Please add/select an address for the customer/business.", variant: "destructive", duration: 7000 });
+        toast({ title: "Error", description: "Billing address is required. Please add/select an address for the customer/business.", variant: "destructive", duration: 7000 });
         return;
     }
     if (!finalShippingAddress) {
         finalShippingAddress = finalBillingAddress;
     }
 
-
     const customerDetailsPayload: CustomerDetailsDto = {
-      userId: selectedUserId,
+      userId: selectedUserId, // End customer ID
       name: selectedUserDisplay?.name || undefined,
       phone: selectedUserDisplay?.phone || undefined,
       email: selectedUserDisplay?.email || undefined,
@@ -667,7 +687,7 @@ export default function CreateOrderPage() {
     }
 
     const orderPayload: CreateOrderRequest = {
-      placedByUserId: "6633d6b770c4d02019c0220b", // TODO: Replace with actual logged-in staff ID (String)
+      placedByUserId: selectedUserId!, // End customer's ID for whom the order is created
       businessProfileId: customerType === 'B2B' && selectedBusinessProfileId ? selectedBusinessProfileId : undefined,
       customerDetails: customerDetailsPayload,
       items: orderItems.map(item => {
@@ -675,23 +695,26 @@ export default function CreateOrderPage() {
         const color = variantParts[0]?.trim() || undefined;
         const size = variantParts[1]?.trim() || undefined;
         
+        const preTaxMrpForApi = item.gstTaxRate > 0 ? item.mrp / (1 + item.gstTaxRate/100) : item.mrp;
+        const preTaxSellingPriceForApi = item.unitPrice; // item.unitPrice is already pre-tax
+        const perUnitPreTaxDiscount = preTaxMrpForApi - preTaxSellingPriceForApi;
+
         return {
             productId: item.productId,
             variantId: item.variantId,
             size: size,
             color: color,
             quantity: item.quantity,
-            unitPrice: item.unitPrice, // This is PRE-TAX unit selling price
+            unitPrice: preTaxSellingPriceForApi, 
             discountRate: parseFloat(item.discountRate.toFixed(2)),
-            // API expects per-unit pre-tax discount amount
-            discountAmount: parseFloat((item.mrp / (1 + item.gstTaxRate/100) - item.unitPrice).toFixed(2)), 
+            discountAmount: parseFloat(perUnitPreTaxDiscount.toFixed(2)), 
             hsnCode: item.hsnCode,
             gstTaxRate: item.gstTaxRate,
         };
       }),
-      paymentMethod: paymentMethod,
+      paymentMethod: paymentMethod || "PENDING",
       status: "PENDING", 
-      notes: orderNotes,
+      notes: orderNotes || undefined,
     };
 
     try {
@@ -728,7 +751,7 @@ export default function CreateOrderPage() {
               setSelectedUserDisplay(null); setSelectedUserId(null);
               setFoundBusinessProfile(null); setSelectedBusinessProfileId(null);
               setPhoneSearch(""); setGstinSearch(""); setSearchedUsers([]);
-              setCustomerStateCode(SELLER_STATE_CODE); // Reset to default
+              setCustomerStateCode(SELLER_STATE_CODE); 
             }} className="flex gap-4">
               <div className="flex items-center space-x-2"><RadioGroupItem value="B2C" id="r_b2c" /><Label htmlFor="r_b2c">Retail Customer (B2C)</Label></div>
               <div className="flex items-center space-x-2"><RadioGroupItem value="B2B" id="r_b2b" /><Label htmlFor="r_b2b">Business Customer (B2B)</Label></div>
@@ -881,8 +904,7 @@ export default function CreateOrderPage() {
                             <p className="font-medium">{product.name}</p>
                             <p className="text-xs text-muted-foreground">
                                 {product.brand && `${product.brand} | `}
-                                {product.category && `${product.category} | `}
-                                {product.sku && `SKU: ${product.sku}`}
+                                {product.category && `${product.category}`}
                             </p>
                         </div>
                       </Button>
@@ -949,7 +971,7 @@ export default function CreateOrderPage() {
                                                     {(!variant.color && !variant.size) && <span className="text-xs text-muted-foreground italic">Default</span>}
                                                 </p>
                                             </div>
-                                            <p className="mt-1">Price: ₹{( (variant.sellingPrice ?? variant.price ?? 0) * (1 + ( (selectedProductForDetails.gstTaxRate ?? 0) /100))).toFixed(2)}</p>
+                                            <p className="mt-1">Price: ₹{(variant.sellingPrice ?? variant.price ?? 0).toFixed(2)}</p>
                                             <p className="text-xs text-muted-foreground">Stock: {variant.quantity ?? 'N/A'}</p>
                                         </div>
                                     </Label>
@@ -994,7 +1016,7 @@ export default function CreateOrderPage() {
                         <TableRow>
                           <TableHead className="p-2">Item</TableHead>
                           <TableHead className="w-16 p-2 text-center">Qty</TableHead>
-                          <TableHead className="w-20 p-2 text-right">Price (incl. Tax)</TableHead>
+                          <TableHead className="w-20 p-2 text-right">Price</TableHead>
                           <TableHead className="w-10 p-2"></TableHead>
                         </TableRow>
                       </TableHeader>
@@ -1010,7 +1032,7 @@ export default function CreateOrderPage() {
                                      onChange={(e) => handleOrderItemQuantityChangeStep2(item.variantId, parseInt(e.target.value))}
                                      className="h-8 w-14 text-xs p-1 text-center" min="1"/>
                             </TableCell>
-                            <TableCell className="py-1 px-2 text-right font-medium">₹{(item.sellingPrice * item.quantity).toFixed(2)}</TableCell>
+                            <TableCell className="py-1 px-2 text-right font-medium">₹{item.finalItemPrice.toFixed(2)}</TableCell>
                             <TableCell className="py-1 px-1">
                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRemoveOrderItem(item.variantId)}>
                                     <X className="h-3.5 w-3.5 text-destructive"/>
@@ -1025,7 +1047,7 @@ export default function CreateOrderPage() {
                 {orderItems.length > 0 && (
                     <div className="mt-4 pt-4 border-t px-6">
                         <div className="flex justify-between font-semibold text-base">
-                            <span>Subtotal (Incl. Tax):</span>
+                            <span>Subtotal:</span>
                             <span>₹{orderItems.reduce((sum, item) => sum + item.finalItemPrice, 0).toFixed(2)}</span>
                         </div>
                          <p className="text-xs text-muted-foreground text-right">Further adjustments in next step.</p>
@@ -1047,68 +1069,67 @@ export default function CreateOrderPage() {
 
       {/* Step 3: Review & Adjust Item Pricing */}
       {currentStep === 3 && (
-        <Card className="shadow-md">
-          <CardHeader><CardTitle>Step 3: Review & Adjust Item Pricing</CardTitle></CardHeader>
-          <CardContent>
-            {orderItems.length === 0 ? (
-              <p className="text-muted-foreground text-center py-6">No items in order to adjust pricing for.</p>
-            ) : (
-              <div className="space-y-3">
-                {orderItems.map(item => (
-                 <Card key={item.variantId} className="p-3 shadow-sm">
-                    <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
-                        <div className="flex-grow space-y-0.5">
-                             <div className="flex justify-between items-baseline">
-                                <p className="font-semibold text-base">{item.productName}</p>
-                                <p className="text-sm sm:hidden">Qty: {item.quantity}</p> {/* Show Qty here for mobile */}
+         <Card className="shadow-md">
+            <CardHeader><CardTitle>Step 3: Review & Adjust Item Pricing</CardTitle></CardHeader>
+            <CardContent>
+                {orderItems.length === 0 ? (
+                <p className="text-muted-foreground text-center py-6">No items in order to adjust pricing for.</p>
+                ) : (
+                <div className="space-y-3">
+                    {orderItems.map(item => (
+                    <Card key={item.variantId} className="p-3 shadow-sm">
+                        <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
+                            {/* Left Side: Product Info & Pricing Details */}
+                            <div className="flex-grow space-y-0.5">
+                                <div className="flex justify-between items-baseline">
+                                    <p className="font-semibold text-base">{item.productName}</p>
+                                    <p className="text-sm">Qty: {item.quantity}</p>
+                                </div>
+                                <p className="text-xs text-muted-foreground -mt-1">({item.variantName})</p>
+                                
+                                <div className="grid grid-cols-2 gap-x-4 text-xs mt-1.5">
+                                    <p>MRP: <span className="font-medium">₹{item.mrp.toFixed(2)}</span></p>
+                                    <p>Unit S.Price (Incl. GST): <span className="font-medium">₹{item.sellingPrice.toFixed(2)}</span></p>
+                                    <p>GST Rate: <span className="font-medium">{item.gstTaxRate.toFixed(0)}%</span></p>
+                                    <p>GST Amt: <span className="font-medium">₹{item.gstAmount.toFixed(2)}</span>
+                                    <span className="text-muted-foreground text-[10px] ml-1">
+                                        ({customerStateCode !== SELLER_STATE_CODE ? `IGST: ₹${item.igstAmount.toFixed(2)}` : `SGST: ₹${item.sgstAmount.toFixed(2)}, CGST: ₹${item.cgstAmount.toFixed(2)}`})
+                                    </span>
+                                    </p>
+                                </div>
                             </div>
-                            <p className="text-xs text-muted-foreground -mt-1">({item.variantName})</p>
-                            
-                            <div className="grid grid-cols-2 gap-x-4 text-xs mt-1.5">
-                                <p>MRP: <span className="font-medium">₹{item.mrp.toFixed(2)}</span></p>
-                                <p>Unit S.Price (Incl. GST): <span className="font-medium">₹{item.sellingPrice.toFixed(2)}</span></p>
-                                <p>GST Rate: <span className="font-medium">{item.gstTaxRate.toFixed(0)}%</span></p>
-                                <p>GST Amt: <span className="font-medium">₹{item.gstAmount.toFixed(2)}</span>
-                                   <span className="text-muted-foreground text-[10px] ml-1">
-                                     ({customerStateCode === SELLER_STATE_CODE ? `SGST: ₹${item.sgstAmount.toFixed(2)}, CGST: ₹${item.cgstAmount.toFixed(2)}` : `IGST: ₹${item.igstAmount.toFixed(2)}`})
-                                   </span>
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex flex-col items-end justify-between sm:ml-4 shrink-0 space-y-1 sm:space-y-0 mt-2 sm:mt-0 w-full sm:w-auto">
-                            <div className="flex justify-between items-center w-full sm:w-auto">
-                                <p className="text-sm hidden sm:block mr-2">Qty: {item.quantity}</p> {/* Hide Qty here on mobile, show above */}
+                            {/* Right Side: Total Amount & Edit Button */}
+                            <div className="flex flex-col items-end justify-between sm:ml-4 shrink-0 space-y-1 sm:space-y-0 mt-2 sm:mt-0 w-full sm:w-auto">
                                 <p className="font-semibold text-lg text-right">₹{item.finalItemPrice.toFixed(2)}</p>
+                                <Button size="sm" variant="outline" onClick={() => openEditPricingModal(item)} className="mt-1 sm:mt-0 self-end w-full sm:w-auto">
+                                    <Edit className="mr-1.5 h-3 w-3" /> Edit Pricing
+                                </Button>
                             </div>
-                            <Button size="sm" variant="outline" onClick={() => openEditPricingModal(item)} className="mt-1 sm:mt-0 self-end w-full sm:w-auto">
-                                <Edit className="mr-1.5 h-3 w-3" /> Edit Pricing
-                            </Button>
                         </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-             {orderItems.length > 0 && (
+                    </Card>
+                    ))}
+                </div>
+                )}
+                {orderItems.length > 0 && (
                 <div className="mt-6 pt-4 border-t">
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm font-medium">
-                        <p>Subtotal (Excl. Tax):</p><p className="text-right">₹{calculateOrderSubtotalPreTax().toFixed(2)}</p>
-                        <p>Total Discount (on Pre-Tax):</p><p className="text-right text-green-600">- ₹{calculateTotalLineDiscountPreTax().toFixed(2)}</p>
-                        <p>Total GST ({customerStateCode === SELLER_STATE_CODE ? 'SGST+CGST' : 'IGST'}):</p><p className="text-right">₹{calculateTotalOrderGst().toFixed(2)}</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                        <p>Subtotal (Excl. Tax):</p><p className="text-right font-medium">₹{calculateOrderSubtotalPreTax().toFixed(2)}</p>
+                        <p>Total Discount (on Pre-Tax):</p><p className="text-right font-medium text-green-600">- ₹{calculateTotalLineDiscountPreTax().toFixed(2)}</p>
+                        <p>Total GST ({customerStateCode !== SELLER_STATE_CODE ? 'IGST' : 'SGST+CGST'}):</p><p className="text-right font-medium">₹{calculateTotalOrderGst().toFixed(2)}</p>
                         <p className="text-lg font-semibold mt-1">Grand Total (Incl. Tax):</p><p className="text-lg font-semibold text-right mt-1">₹{calculateGrandTotal().toFixed(2)}</p>
                     </div>
                 </div>
-             )}
-          </CardContent>
-          <CardFooter className="flex justify-between mt-6">
-             <Button onClick={prevStep} variant="outline">
+                )}
+            </CardContent>
+            <CardFooter className="flex justify-between mt-6">
+                <Button onClick={prevStep} variant="outline">
                 <ChevronLeft className="h-4 w-4 mr-2" /> Back to Add Items
-             </Button>
-             <Button onClick={nextStep} disabled={!canProceedToStep4Review}>
+                </Button>
+                <Button onClick={nextStep} disabled={!canProceedToStep4Review}>
                 Next: Final Review & Payment <ChevronRight className="h-4 w-4 ml-2" />
-             </Button>
-          </CardFooter>
-        </Card>
+                </Button>
+            </CardFooter>
+         </Card>
       )}
 
       {/* Edit Pricing Modal */}
@@ -1156,7 +1177,7 @@ export default function CreateOrderPage() {
                        onChange={(e) => {
                            const newDiscRateString = e.target.value;
                             if (/^\d*\.?\d{0,2}$/.test(newDiscRateString) || newDiscRateString === "") {
-                               const newDiscountRate = Math.max(0, Math.min(100, parseFloat(newDiscRateString) || 0));
+                               const newDiscountRate = Math.max(0, parseFloat(newDiscRateString) || 0); // Do not clamp to 100, allow >100 if needed for data entry
                                const currentInclusiveMrp = parseFloat(editPricingModal.tempMrpString) || 0;
                                const currentGstRate = editPricingModal.tempGstTaxRate;
 
@@ -1166,7 +1187,7 @@ export default function CreateOrderPage() {
 
                                setEditPricingModal(prev => ({
                                    ...prev,
-                                   tempDiscountRateString: newDiscRateString, // Store the raw string
+                                   tempDiscountRateString: newDiscRateString,
                                    tempSellingPriceString: isNaN(newInclusiveSellingPrice) ? "0.00" : newInclusiveSellingPrice.toFixed(2),
                                }));
                            }
@@ -1183,19 +1204,15 @@ export default function CreateOrderPage() {
                                const currentInclusiveMrp = parseFloat(editPricingModal.tempMrpString) || 0;
                                const currentGstRate = editPricingModal.tempGstTaxRate;
 
-                               const preTaxMrp = currentGstRate > 0 ? currentInclusiveMrp / (1 + (currentGstRate / 100)) : currentInclusiveMrp;
-                               const preTaxSellingPrice = currentGstRate > 0 ? newInclusiveSellingPrice / (1 + (currentGstRate / 100)) : newInclusiveSellingPrice;
-
                                let newDiscountRate = 0;
-                               if (preTaxMrp > 0 && preTaxSellingPrice >=0 && preTaxSellingPrice <= preTaxMrp) {
-                                   const unitDiscount = preTaxMrp - preTaxSellingPrice;
-                                   newDiscountRate = (unitDiscount / preTaxMrp) * 100;
-                               } else if (preTaxSellingPrice > preTaxMrp) {
-                                   newDiscountRate = 0; 
-                               } else if (preTaxSellingPrice < 0) {
-                                   newDiscountRate = 100; // Max discount if selling price is negative (or set to 0)
+                               if (currentInclusiveMrp > 0) {
+                                   const preTaxMrp = currentGstRate > 0 ? currentInclusiveMrp / (1 + (currentGstRate / 100)) : currentInclusiveMrp;
+                                   const preTaxSellingPrice = currentGstRate > 0 ? newInclusiveSellingPrice / (1 + (currentGstRate / 100)) : newInclusiveSellingPrice;
+                                   if (preTaxSellingPrice <= preTaxMrp) { // Ensure discount isn't negative
+                                     const unitDiscount = preTaxMrp - preTaxSellingPrice;
+                                     newDiscountRate = (unitDiscount / preTaxMrp) * 100;
+                                   }
                                }
-
 
                                setEditPricingModal(prev => ({
                                    ...prev,
@@ -1211,21 +1228,23 @@ export default function CreateOrderPage() {
                     value={editPricingModal.tempGstTaxRate.toString()}
                     onValueChange={(value) => {
                         const newGstRate = parseInt(value) || 0;
-                        const previousGstRate = editPricingModal.previousGstRateInModal;
-                        const currentInclusiveSellingPrice = parseFloat(editPricingModal.tempSellingPriceString) || 0;
+                        const previousGstRateInModal = editPricingModal.previousGstRateInModal;
+                        const currentInclusiveSellingPriceString = editPricingModal.tempSellingPriceString;
+                        const currentInclusiveSellingPrice = parseFloat(currentInclusiveSellingPriceString) || 0;
                         
                         let preTaxEquivalent = currentInclusiveSellingPrice;
-                        if (previousGstRate > 0) {
-                            preTaxEquivalent = currentInclusiveSellingPrice / (1 + (previousGstRate / 100));
+                        if (previousGstRateInModal > 0) { // Back-calculate pre-tax value based on OLD GST rate
+                            preTaxEquivalent = currentInclusiveSellingPrice / (1 + (previousGstRateInModal / 100));
                         }
                         
+                        // Calculate new inclusive selling price using the NEW GST rate, keeping pre-tax value constant
                         const newCalculatedInclusiveSellingPrice = preTaxEquivalent * (1 + (newGstRate / 100));
 
                         setEditPricingModal(prev => ({
                             ...prev,
                             tempGstTaxRate: newGstRate,
-                            tempSellingPriceString: newCalculatedInclusiveSellingPrice.toFixed(2),
-                            previousGstRateInModal: newGstRate,
+                            tempSellingPriceString: newCalculatedInclusiveSellingPrice.toFixed(2), // Update inclusive selling price
+                            previousGstRateInModal: newGstRate, // Store new rate as previous for next change
                         }));
                     }}
                 >
@@ -1267,7 +1286,7 @@ export default function CreateOrderPage() {
                             {selectedUserDisplay && <p><span className="font-medium">Contact:</span> {selectedUserDisplay.name} ({selectedUserDisplay.phone})</p>}
                         </>
                     )}
-                    <p className="text-sm mt-1"><span className="font-medium">State for GST:</span> {customerStateCode} ({customerStateCode === SELLER_STATE_CODE ? "Intra-State" : "Inter-State"})</p>
+                    <p className="text-sm mt-1"><span className="font-medium">State for GST:</span> {customerStateCode} ({customerStateCode !== SELLER_STATE_CODE ? "Inter-State" : "Intra-State"})</p>
                 </Card>
 
                 <div>
@@ -1289,7 +1308,7 @@ export default function CreateOrderPage() {
                                         <p>GST Rate: <span className="font-medium">{item.gstTaxRate.toFixed(0)}%</span></p>
                                         <p>GST Amt: <span className="font-medium">₹{item.gstAmount.toFixed(2)}</span>
                                         <span className="text-muted-foreground text-[10px] ml-1">
-                                            ({customerStateCode === SELLER_STATE_CODE ? `SGST: ₹${item.sgstAmount.toFixed(2)}, CGST: ₹${item.cgstAmount.toFixed(2)}` : `IGST: ₹${item.igstAmount.toFixed(2)}`})
+                                            ({customerStateCode !== SELLER_STATE_CODE ? `IGST: ₹${item.igstAmount.toFixed(2)}` : `SGST: ₹${item.sgstAmount.toFixed(2)}, CGST: ₹${item.cgstAmount.toFixed(2)}`})
                                         </span>
                                         </p>
                                     </div>
@@ -1303,10 +1322,10 @@ export default function CreateOrderPage() {
                     </div>
                 </div>
                   <div className="mt-4 pt-4 border-t">
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm font-medium">
-                        <p>Subtotal (Excl. Tax):</p><p className="text-right">₹{calculateOrderSubtotalPreTax().toFixed(2)}</p>
-                        <p>Total Discount (on Pre-Tax):</p><p className="text-right text-green-600">- ₹{calculateTotalLineDiscountPreTax().toFixed(2)}</p>
-                        <p>Total GST ({customerStateCode === SELLER_STATE_CODE ? 'SGST+CGST' : 'IGST'}):</p><p className="text-right">₹{calculateTotalOrderGst().toFixed(2)}</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                        <p>Subtotal (Excl. Tax):</p><p className="text-right font-medium">₹{calculateOrderSubtotalPreTax().toFixed(2)}</p>
+                        <p>Total Discount (on Pre-Tax):</p><p className="text-right font-medium text-green-600">- ₹{calculateTotalLineDiscountPreTax().toFixed(2)}</p>
+                        <p>Total GST ({customerStateCode !== SELLER_STATE_CODE ? 'IGST' : 'SGST+CGST'}):</p><p className="text-right font-medium">₹{calculateTotalOrderGst().toFixed(2)}</p>
                         <p className="text-xl font-bold mt-1">Grand Total (Incl. Tax):</p><p className="text-xl font-bold text-right mt-1">₹{calculateGrandTotal().toFixed(2)}</p>
                     </div>
                   </div>
@@ -1338,3 +1357,4 @@ export default function CreateOrderPage() {
 }
     
 
+    
