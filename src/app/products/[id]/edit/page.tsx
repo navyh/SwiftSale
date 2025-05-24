@@ -4,7 +4,7 @@
 import * as React from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -20,36 +20,33 @@ import {
   fetchProductById,
   updateProduct,
   type UpdateProductRequest,
-  type ProductDto, // Changed from Product to ProductDto
+  type ProductDto,
   type ProductVariantDto
 } from "@/lib/apiClient";
-import { ChevronLeft, Save, PlusCircle, Loader2, Trash2 } from "lucide-react";
+import { ChevronLeft, Save, PlusCircle, Loader2, Trash2, X as XIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 // Hardcoded product statuses as meta API for product statuses is not available
 const hardcodedProductStatuses = ["ACTIVE", "DRAFT", "ARCHIVED", "OUT_OF_STOCK"];
 
-
 const productFormSchema = z.object({
   name: z.string().min(1, "Product name is required"),
-  brand: z.string().min(1, "Brand name is required"), 
+  brand: z.string().min(1, "Brand name is required"),
   hsnCode: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   gstTaxRate: z.coerce.number({invalid_type_error: "GST Tax Rate must be a number"}).min(0).optional().nullable(),
-  category: z.string().min(1, "Category name is required"), 
+  category: z.string().min(1, "Category name is required"),
   subCategory: z.string().optional().nullable(),
-  
-  status: z.string().optional().nullable(),
   
   newColorValues: z.string().optional().nullable().describe("Comma-separated new color names for variant generation"),
   newSizeValues: z.string().optional().nullable().describe("Comma-separated new size names for variant generation"),
   
   tagsInput: z.string().optional().nullable(),
 
-  sku: z.string().optional().nullable(), 
-  barcode: z.string().optional().nullable(), 
-  // quantity: z.coerce.number({invalid_type_error: "Quantity must be a number"}).int().min(0).optional().nullable(), // Product level quantity often comes from variants
-  // unitPrice: z.coerce.number({invalid_type_error: "Unit price must be a number"}).min(0).optional().nullable(), // Product level price often comes from variants
+  sku: z.string().optional().nullable(),
+  barcode: z.string().optional().nullable(),
   costPrice: z.coerce.number({invalid_type_error: "Cost price must be a number"}).min(0).optional().nullable(),
   imageUrlsInput: z.string().optional().nullable(),
   weight: z.coerce.number({invalid_type_error: "Weight must be a number"}).min(0).optional().nullable(),
@@ -57,16 +54,136 @@ const productFormSchema = z.object({
   isFeatured: z.boolean().default(false).optional(),
   metaTitle: z.string().max(70).optional().nullable(),
   metaDescription: z.string().max(160).optional().nullable(),
+  status: z.string().optional().nullable(),
 });
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
+
+// Helper function for color bullet preview
+const shouldShowColorBullet = (colorString?: string | null): boolean => {
+  if (!colorString || typeof colorString !== 'string') return false;
+  const lowerColor = colorString.trim().toLowerCase();
+  if (!lowerColor) return false;
+  // Avoid common non-color descriptive terms or overly long strings
+  if (['n/a', 'default', 'various', 'assorted', 'transparent', 'none', 'na', 'mixed'].includes(lowerColor) || lowerColor.length > 25) {
+    return false;
+  }
+  // Avoid if it has too many spaces (likely a description not a color), unless it's an rgb/hsl string
+  if (lowerColor.includes(' ') && lowerColor.split(' ').length > 3 && !['rgb', 'hsl'].some(prefix => lowerColor.startsWith(prefix))) {
+      return false;
+  }
+  // Basic check for common invalid characters in simple color names (though CSS is more permissive)
+  if (/[^a-z0-9#()-\s,.]/i.test(lowerColor) && !lowerColor.startsWith('rgb') && !lowerColor.startsWith('hsl')) {
+    //  return false; // This might be too restrictive for some valid CSS color names or hex
+  }
+  return true;
+};
+
+interface TagsInputWithPreviewProps {
+  value: string; // Comma-separated string
+  onChange: (value: string) => void; // Callback with new comma-separated string
+  placeholder?: string;
+  isColorInput?: boolean;
+  id?: string;
+}
+
+const TagsInputWithPreview: React.FC<TagsInputWithPreviewProps> = ({
+  value,
+  onChange,
+  placeholder,
+  isColorInput = false,
+  id
+}) => {
+  const [inputValue, setInputValue] = React.useState('');
+  const [tags, setTags] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    setTags(value ? value.split(',').map(tag => tag.trim()).filter(tag => tag) : []);
+  }, [value]);
+
+  const updateFormValue = (newTags: string[]) => {
+    onChange(newTags.join(','));
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e.target.value);
+  };
+
+  const addTag = (tagToAdd: string) => {
+    const trimmedTag = tagToAdd.trim();
+    if (trimmedTag && !tags.includes(trimmedTag)) {
+      const newTags = [...tags, trimmedTag];
+      setTags(newTags);
+      updateFormValue(newTags);
+    }
+    setInputValue('');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (['Enter', ',', 'Tab'].includes(e.key)) {
+      e.preventDefault();
+      addTag(inputValue);
+    } else if (e.key === 'Backspace' && inputValue === '' && tags.length > 0) {
+      e.preventDefault();
+      const newTags = tags.slice(0, -1);
+      setTags(newTags);
+      updateFormValue(newTags);
+    }
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    const newTags = tags.filter(tag => tag !== tagToRemove);
+    setTags(newTags);
+    updateFormValue(newTags);
+  };
+  
+  const handleInputBlur = () => {
+    addTag(inputValue);
+  };
+
+  return (
+    <div id={id}>
+      <div className="flex flex-wrap gap-2 mb-2">
+        {tags.map((tag, index) => (
+          <Badge key={index} variant="secondary" className="py-1 px-2 text-sm flex items-center gap-1.5">
+            {isColorInput && shouldShowColorBullet(tag) && (
+              <span
+                className="inline-block h-3 w-3 rounded-full border border-gray-400 shrink-0"
+                style={{ backgroundColor: tag }}
+                title={tag}
+              />
+            )}
+            <span>{tag}</span>
+            <button
+              type="button"
+              onClick={() => handleRemoveTag(tag)}
+              className="ml-1 text-muted-foreground hover:text-foreground"
+              aria-label={`Remove ${tag}`}
+            >
+              <XIcon className="h-3 w-3" />
+            </button>
+          </Badge>
+        ))}
+      </div>
+      <Input
+        type="text"
+        value={inputValue}
+        onChange={handleInputChange}
+        onKeyDown={handleKeyDown}
+        onBlur={handleInputBlur}
+        placeholder={placeholder}
+        className="w-full"
+      />
+    </div>
+  );
+};
 
 
 export default function EditProductPage() {
   const router = useRouter();
   const params = useParams();
   const { toast } = useToast();
-  const productId = params.id as string; // ID is a string
+  const productId = params.id as string; 
 
   const [product, setProduct] = React.useState<ProductDto | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -79,19 +196,17 @@ export default function EditProductPage() {
     defaultValues: {
       name: "",
       brand: "", 
+      category: "", 
+      subCategory: "",
       hsnCode: "",
       description: "",
       gstTaxRate: undefined,
-      category: "", 
-      subCategory: "",
       status: "DRAFT",
       newColorValues: "",
       newSizeValues: "",
       tagsInput: "",
       sku: "",
       barcode: "",
-      // quantity: 0,
-      // unitPrice: 0,
       costPrice: undefined,
       imageUrlsInput: "",
       weight: undefined,
@@ -120,22 +235,19 @@ export default function EditProductPage() {
         
         form.reset({
           name: fetchedProduct.name || "",
-          brand: fetchedProduct.brand || "", // API returns brand name as string
-          category: fetchedProduct.category || "", // API returns category name as string
+          brand: fetchedProduct.brand || "", 
+          category: fetchedProduct.category || "", 
           subCategory: fetchedProduct.subCategory ?? "",
           hsnCode: fetchedProduct.hsnCode ?? "",
           description: fetchedProduct.description ?? "",
-          gstTaxRate: fetchedProduct.gstTaxRate ?? undefined,
+          gstTaxRate: fetchedProduct.gstTaxRate === null ? undefined : fetchedProduct.gstTaxRate, // handle null from API
           status: validStatus,
-          
           tagsInput: fetchedProduct.tags?.join(", ") ?? "",
-          sku: fetchedProduct.sku ?? "", // Base product SKU
-          barcode: fetchedProduct.barcode ?? "", // Base product barcode
-          // quantity: fetchedProduct.quantity ?? 0, // Usually variant-level
-          // unitPrice: fetchedProduct.unitPrice ?? 0, // Usually variant-level
-          costPrice: fetchedProduct.costPrice ?? undefined,
+          sku: fetchedProduct.sku ?? "", 
+          barcode: fetchedProduct.barcode ?? "", 
+          costPrice: fetchedProduct.costPrice === null ? undefined : fetchedProduct.costPrice,
           imageUrlsInput: fetchedProduct.imageUrls?.join(", ") ?? "",
-          weight: fetchedProduct.weight ?? undefined,
+          weight: fetchedProduct.weight === null ? undefined : fetchedProduct.weight,
           dimensions: fetchedProduct.dimensions ?? "",
           isFeatured: fetchedProduct.isFeatured ?? false,
           metaTitle: fetchedProduct.metaTitle ?? "",
@@ -170,20 +282,19 @@ export default function EditProductPage() {
       const payload: UpdateProductRequest = {
         name: data.name,
         brand: data.brand, 
+        category: data.category, 
+        subCategory: data.subCategory || undefined,
         hsnCode: data.hsnCode || undefined,
         description: data.description || undefined,
         gstTaxRate: data.gstTaxRate === undefined || data.gstTaxRate === null ? undefined : Number(data.gstTaxRate),
-        category: data.category, 
-        subCategory: data.subCategory || undefined,
+        status: data.status as UpdateProductRequest['status'] || undefined,
+        
         colorVariant: (colorVariant && colorVariant.length > 0) ? colorVariant : undefined, 
         sizeVariant: (sizeVariant && sizeVariant.length > 0) ? sizeVariant : undefined,   
         tags: tags,
-        status: data.status as UpdateProductRequest['status'] || undefined,
         
         sku: data.sku || undefined,
         barcode: data.barcode || undefined,
-        // quantity: data.quantity === undefined || data.quantity === null ? undefined : Number(data.quantity),
-        // unitPrice: data.unitPrice === undefined || data.unitPrice === null ? undefined : Number(data.unitPrice),
         costPrice: data.costPrice === undefined || data.costPrice === null ? undefined : Number(data.costPrice),
         imageUrls: imageUrls,
         weight: data.weight === undefined || data.weight === null ? undefined : Number(data.weight),
@@ -278,7 +389,7 @@ export default function EditProductPage() {
               <FormField control={form.control} name="brand" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Brand Name *</FormLabel>
-                    <FormControl><Input placeholder="e.g., Nike (Type brand name)" {...field} /></FormControl>
+                    <FormControl><Input placeholder="e.g., Nike" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -286,7 +397,7 @@ export default function EditProductPage() {
               <FormField control={form.control} name="category" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Category Name *</FormLabel>
-                    <FormControl><Input placeholder="e.g., Apparel (Type category name)" {...field} /></FormControl>
+                    <FormControl><Input placeholder="e.g., Apparel" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -356,7 +467,6 @@ export default function EditProductPage() {
                   </FormItem>
                 )}
               />
-              {/* Base Quantity and Unit Price removed as they are variant-specific */}
               <FormField control={form.control} name="costPrice" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Base Cost Price</FormLabel>
@@ -371,27 +481,44 @@ export default function EditProductPage() {
           <Card className="shadow-md">
             <CardHeader>
                 <CardTitle>Generate New Variants</CardTitle>
-                <CardDescription>Enter comma-separated color and size names to generate new variant combinations upon saving. Backend will create these.</CardDescription>
+                <CardDescription>Enter color and size names to generate new variant combinations upon saving. Backend will create these.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
-                <FormField control={form.control} name="newColorValues" render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>New Color Names</FormLabel>
-                            <FormControl><Input {...field} placeholder="e.g., Red, Blue, Green" value={field.value ?? ""} /></FormControl>
-                            <FormDescription>Comma-separated. Variants will be generated for each color combined with each size.</FormDescription>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-                <FormField control={form.control} name="newSizeValues" render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>New Size Names</FormLabel>
-                            <FormControl><Input {...field} placeholder="e.g., S, M, L" value={field.value ?? ""}/></FormControl>
-                            <FormDescription>Comma-separated.</FormDescription>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
+                <FormItem>
+                    <FormLabel htmlFor="newColorValuesInput">New Color Names</FormLabel>
+                    <Controller
+                        control={form.control}
+                        name="newColorValues"
+                        render={({ field }) => (
+                            <TagsInputWithPreview
+                                id="newColorValuesInput"
+                                value={field.value ?? ""}
+                                onChange={field.onChange}
+                                placeholder="Type color and press Enter/Comma"
+                                isColorInput
+                            />
+                        )}
+                    />
+                    <FormDescription className="mt-1">Variants will be generated for each color combined with each size.</FormDescription>
+                    <FormMessage>{form.formState.errors.newColorValues?.message}</FormMessage>
+                </FormItem>
+                <FormItem>
+                    <FormLabel htmlFor="newSizeValuesInput">New Size Names</FormLabel>
+                     <Controller
+                        control={form.control}
+                        name="newSizeValues"
+                        render={({ field }) => (
+                            <TagsInputWithPreview
+                                id="newSizeValuesInput"
+                                value={field.value ?? ""}
+                                onChange={field.onChange}
+                                placeholder="Type size and press Enter/Comma"
+                            />
+                        )}
+                    />
+                    <FormDescription className="mt-1">Comma-separated.</FormDescription>
+                    <FormMessage>{form.formState.errors.newSizeValues?.message}</FormMessage>
+                </FormItem>
             </CardContent>
           </Card>
 
@@ -538,6 +665,3 @@ export default function EditProductPage() {
     </div>
   );
 }
-
-
-    
