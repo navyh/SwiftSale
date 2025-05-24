@@ -3,7 +3,7 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form"; // Added Controller
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -18,8 +18,10 @@ import {
   createProduct,
   type CreateProductRequest,
 } from "@/lib/apiClient";
-import { PackagePlus, ChevronLeft } from "lucide-react";
+import { PackagePlus, ChevronLeft, X as XIcon } from "lucide-react"; // Added XIcon
 import Link from "next/link";
+import { Badge } from "@/components/ui/badge"; // Added Badge
+import { cn } from "@/lib/utils"; // Added cn
 
 // Hardcoded product statuses as meta API for product statuses is not available
 const hardcodedProductStatuses = ["ACTIVE", "DRAFT", "ARCHIVED", "OUT_OF_STOCK"];
@@ -27,11 +29,11 @@ const hardcodedProductStatuses = ["ACTIVE", "DRAFT", "ARCHIVED", "OUT_OF_STOCK"]
 
 const productFormSchema = z.object({
   name: z.string().min(1, "Product name is required"),
-  brand: z.string().min(1, "Brand name is required"), // Expects string name
+  brand: z.string().min(1, "Brand name is required"), 
   hsnCode: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   gstTaxRate: z.coerce.number({invalid_type_error: "GST Tax Rate must be a number"}).min(0).optional().nullable(),
-  category: z.string().min(1, "Category name is required"), // Expects string name
+  category: z.string().min(1, "Category name is required"), 
   subCategory: z.string().optional().nullable(),
   colorVariantInput: z.string().optional().nullable().describe("Comma-separated color names"),
   sizeVariantInput: z.string().optional().nullable().describe("Comma-separated size names"),
@@ -53,6 +55,121 @@ const productFormSchema = z.object({
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
 
+// Helper function for color bullet preview
+const shouldShowColorBullet = (colorString?: string | null): boolean => {
+  if (!colorString || typeof colorString !== 'string') return false;
+  const lowerColor = colorString.trim().toLowerCase();
+  if (!lowerColor) return false;
+  // Avoid common non-color descriptive terms or overly long strings
+  if (['n/a', 'default', 'various', 'assorted', 'transparent', 'none', 'na', 'mixed'].includes(lowerColor) || lowerColor.length > 25) {
+    return false;
+  }
+  // Avoid if it has too many spaces (likely a description not a color), unless it's an rgb/hsl string
+  if (lowerColor.includes(' ') && lowerColor.split(' ').length > 3 && !['rgb', 'hsl'].some(prefix => lowerColor.startsWith(prefix))) {
+      return false;
+  }
+  return true;
+};
+
+interface TagsInputWithPreviewProps {
+  value: string; // Comma-separated string
+  onChange: (value: string) => void; // Callback with new comma-separated string
+  placeholder?: string;
+  isColorInput?: boolean;
+  id?: string;
+}
+
+const TagsInputWithPreview: React.FC<TagsInputWithPreviewProps> = ({
+  value,
+  onChange,
+  placeholder,
+  isColorInput = false,
+  id
+}) => {
+  const [inputValue, setInputValue] = React.useState('');
+  const [tags, setTags] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    setTags(value ? value.split(',').map(tag => tag.trim()).filter(tag => tag) : []);
+  }, [value]);
+
+  const updateFormValue = (newTags: string[]) => {
+    onChange(newTags.join(','));
+  };
+
+  const addTag = (tagToAdd: string) => {
+    const trimmedTag = tagToAdd.trim();
+    if (trimmedTag && !tags.includes(trimmedTag)) {
+      const newTags = [...tags, trimmedTag];
+      setTags(newTags);
+      updateFormValue(newTags);
+    }
+    setInputValue('');
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e.target.value);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (['Enter', ',', 'Tab'].includes(e.key)) {
+      e.preventDefault();
+      addTag(inputValue);
+    } else if (e.key === 'Backspace' && inputValue === '' && tags.length > 0) {
+      e.preventDefault();
+      const newTags = tags.slice(0, -1);
+      setTags(newTags);
+      updateFormValue(newTags);
+    }
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    const newTags = tags.filter(tag => tag !== tagToRemove);
+    setTags(newTags);
+    updateFormValue(newTags);
+  };
+  
+  const handleInputBlur = () => {
+    addTag(inputValue);
+  };
+
+  return (
+    <div id={id}>
+      <div className="flex flex-wrap gap-2 mb-2 min-h-[2.25rem] items-center"> {/* Added min-h for consistent height */}
+        {tags.map((tag, index) => (
+          <Badge key={index} variant="secondary" className="py-1 px-2 text-sm flex items-center gap-1.5">
+            {isColorInput && shouldShowColorBullet(tag) && (
+              <span
+                className="inline-block h-3 w-3 rounded-full border border-gray-400 shrink-0"
+                style={{ backgroundColor: tag }}
+                title={tag}
+              />
+            )}
+            <span>{tag}</span>
+            <button
+              type="button"
+              onClick={() => handleRemoveTag(tag)}
+              className="ml-1 text-muted-foreground hover:text-foreground"
+              aria-label={`Remove ${tag}`}
+            >
+              <XIcon className="h-3 w-3" />
+            </button>
+          </Badge>
+        ))}
+      </div>
+      <Input
+        type="text"
+        value={inputValue}
+        onChange={handleInputChange}
+        onKeyDown={handleKeyDown}
+        onBlur={handleInputBlur}
+        placeholder={tags.length === 0 ? placeholder : "Add more..."} // Dynamic placeholder
+        className="w-full"
+      />
+    </div>
+  );
+};
+
 
 export default function CreateProductPage() {
   const router = useRouter();
@@ -66,11 +183,11 @@ export default function CreateProductPage() {
     resolver: zodResolver(productFormSchema),
     defaultValues: {
       name: "",
-      brand: "", // Text input for brand name
+      brand: "", 
       hsnCode: "",
       description: "",
       gstTaxRate: undefined,
-      category: "", // Text input for category name
+      category: "", 
       subCategory: "",
       colorVariantInput: "",
       sizeVariantInput: "",
@@ -111,11 +228,11 @@ export default function CreateProductPage() {
 
       const productPayload: CreateProductRequest = {
         name: data.name,
-        brand: data.brand, // Send brand name as string
+        brand: data.brand, 
         hsnCode: data.hsnCode || undefined,
         description: data.description || undefined,
         gstTaxRate: data.gstTaxRate === undefined || data.gstTaxRate === null ? undefined : Number(data.gstTaxRate),
-        category: data.category, // Send category name as string
+        category: data.category, 
         subCategory: data.subCategory || undefined,
         colorVariant: colorVariants,
         sizeVariant: sizeVariants,
@@ -141,6 +258,7 @@ export default function CreateProductPage() {
         description: "Product created successfully.",
       });
       router.push("/products");
+      router.refresh(); // Added router.refresh()
     } catch (error: any) {
       console.error("Failed to create product", error);
       toast({
@@ -246,24 +364,41 @@ export default function CreateProductPage() {
                 <CardDescription>Enter comma-separated color and size names. The backend will generate variants for each combination.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
-                <FormField control={form.control} name="colorVariantInput" render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>Color Names</FormLabel>
-                            <FormControl><Input {...field} placeholder="e.g., Red, Blue, Green" value={field.value ?? ""} /></FormControl>
-                            <FormDescription>Comma-separated, e.g., Red, Blue</FormDescription>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-                <FormField control={form.control} name="sizeVariantInput" render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>Size Names</FormLabel>
-                            <FormControl><Input {...field} placeholder="e.g., S, M, L" value={field.value ?? ""} /></FormControl>
-                             <FormDescription>Comma-separated, e.g., S, M, L</FormDescription>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
+                <FormItem>
+                    <FormLabel htmlFor="colorVariantInput">Color Names</FormLabel>
+                    <Controller
+                        control={form.control}
+                        name="colorVariantInput"
+                        render={({ field }) => (
+                            <TagsInputWithPreview
+                                id="colorVariantInput"
+                                value={field.value ?? ""}
+                                onChange={field.onChange}
+                                placeholder="Type color and press Enter/Comma"
+                                isColorInput
+                            />
+                        )}
+                    />
+                    <FormDescription className="mt-1">Comma-separated, e.g., Red, Blue</FormDescription>
+                    <FormMessage>{form.formState.errors.colorVariantInput?.message}</FormMessage>
+                </FormItem>
+                <FormItem>
+                    <FormLabel htmlFor="sizeVariantInput">Size Names</FormLabel>
+                     <Controller
+                        control={form.control}
+                        name="sizeVariantInput"
+                        render={({ field }) => (
+                            <TagsInputWithPreview
+                                id="sizeVariantInput"
+                                value={field.value ?? ""}
+                                onChange={field.onChange}
+                                placeholder="Type size and press Enter/Comma"
+                            />
+                        )}
+                    />
+                     <FormDescription className="mt-1">Comma-separated, e.g., S, M, L</FormDescription>
+                    <FormMessage>{form.formState.errors.sizeVariantInput?.message}</FormMessage>
+                </FormItem>
             </CardContent>
           </Card>
 
@@ -422,6 +557,5 @@ export default function CreateProductPage() {
     </div>
   );
 }
-
 
     
