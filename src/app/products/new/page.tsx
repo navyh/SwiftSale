@@ -3,7 +3,7 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useForm, Controller } from "react-hook-form"; // Added Controller
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -11,21 +11,19 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { 
   createProduct,
   type CreateProductRequest,
 } from "@/lib/apiClient";
-import { PackagePlus, ChevronLeft, X as XIcon } from "lucide-react"; // Added XIcon
+import { PackagePlus, ChevronLeft, X as XIcon } from "lucide-react";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge"; // Added Badge
-import { cn } from "@/lib/utils"; // Added cn
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 // Hardcoded product statuses as meta API for product statuses is not available
 const hardcodedProductStatuses = ["ACTIVE", "DRAFT", "ARCHIVED", "OUT_OF_STOCK"];
-
 
 const productFormSchema = z.object({
   name: z.string().min(1, "Product name is required"),
@@ -39,18 +37,18 @@ const productFormSchema = z.object({
   sizeVariantInput: z.string().optional().nullable().describe("Comma-separated size names"),
   tagsInput: z.string().optional().nullable().describe("Comma-separated tags"),
   status: z.string().optional().nullable(),
-
-  sku: z.string().optional().nullable(),
-  barcode: z.string().optional().nullable(),
-  quantity: z.coerce.number({invalid_type_error: "Quantity must be a number"}).int().min(0, "Quantity must be non-negative").optional().nullable(),
-  unitPrice: z.coerce.number({invalid_type_error: "Unit price must be a number"}).min(0, "Unit price must be non-negative").optional().nullable(),
-  costPrice: z.coerce.number({invalid_type_error: "Cost price must be a number"}).min(0).optional().nullable(),
-  imageUrlsInput: z.string().optional().nullable(), 
-  weight: z.coerce.number({invalid_type_error: "Weight must be a number"}).min(0).optional().nullable(),
-  dimensions: z.string().optional().nullable(),
-  isFeatured: z.boolean().default(false).optional(),
-  metaTitle: z.string().max(70, "Meta title should be 70 characters or less").optional().nullable(),
-  metaDescription: z.string().max(160, "Meta description should be 160 characters or less").optional().nullable(),
+  // Fields for removed sections are commented out or deleted below
+  // sku: z.string().optional().nullable(),
+  // barcode: z.string().optional().nullable(),
+  // quantity: z.coerce.number({invalid_type_error: "Quantity must be a number"}).int().min(0, "Quantity must be non-negative").optional().nullable(),
+  // unitPrice: z.coerce.number({invalid_type_error: "Unit price must be a number"}).min(0, "Unit price must be non-negative").optional().nullable(),
+  // costPrice: z.coerce.number({invalid_type_error: "Cost price must be a number"}).min(0).optional().nullable(),
+  // imageUrlsInput: z.string().optional().nullable(), 
+  // weight: z.coerce.number({invalid_type_error: "Weight must be a number"}).min(0).optional().nullable(),
+  // dimensions: z.string().optional().nullable(),
+  // isFeatured: z.boolean().default(false).optional(),
+  // metaTitle: z.string().max(70, "Meta title should be 70 characters or less").optional().nullable(),
+  // metaDescription: z.string().max(160, "Meta description should be 160 characters or less").optional().nullable(),
 });
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
@@ -60,11 +58,9 @@ const shouldShowColorBullet = (colorString?: string | null): boolean => {
   if (!colorString || typeof colorString !== 'string') return false;
   const lowerColor = colorString.trim().toLowerCase();
   if (!lowerColor) return false;
-  // Avoid common non-color descriptive terms or overly long strings
   if (['n/a', 'default', 'various', 'assorted', 'transparent', 'none', 'na', 'mixed'].includes(lowerColor) || lowerColor.length > 25) {
     return false;
   }
-  // Avoid if it has too many spaces (likely a description not a color), unless it's an rgb/hsl string
   if (lowerColor.includes(' ') && lowerColor.split(' ').length > 3 && !['rgb', 'hsl'].some(prefix => lowerColor.startsWith(prefix))) {
       return false;
   }
@@ -72,8 +68,8 @@ const shouldShowColorBullet = (colorString?: string | null): boolean => {
 };
 
 interface TagsInputWithPreviewProps {
-  value: string; // Comma-separated string
-  onChange: (value: string) => void; // Callback with new comma-separated string
+  value: string;
+  onChange: (value: string) => void;
   placeholder?: string;
   isColorInput?: boolean;
   id?: string;
@@ -135,7 +131,7 @@ const TagsInputWithPreview: React.FC<TagsInputWithPreviewProps> = ({
 
   return (
     <div id={id}>
-      <div className="flex flex-wrap gap-2 mb-2 min-h-[2.25rem] items-center"> {/* Added min-h for consistent height */}
+      <div className="flex flex-wrap gap-2 mb-2 min-h-[2.25rem] items-center">
         {tags.map((tag, index) => (
           <Badge key={index} variant="secondary" className="py-1 px-2 text-sm flex items-center gap-1.5">
             {isColorInput && shouldShowColorBullet(tag) && (
@@ -163,7 +159,7 @@ const TagsInputWithPreview: React.FC<TagsInputWithPreviewProps> = ({
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}
         onBlur={handleInputBlur}
-        placeholder={tags.length === 0 ? placeholder : "Add more..."} // Dynamic placeholder
+        placeholder={tags.length === 0 ? placeholder : "Add more..."}
         className="w-full"
       />
     </div>
@@ -195,17 +191,7 @@ export default function CreateProductPage() {
       status: initialStatusQueryParam && productStatuses.includes(initialStatusQueryParam.toUpperCase()) 
               ? initialStatusQueryParam.toUpperCase() 
               : (productStatuses.includes('DRAFT') ? 'DRAFT' : productStatuses[0]),
-      sku: "",
-      barcode: "",
-      quantity: 0, 
-      unitPrice: 0, 
-      costPrice: undefined,
-      imageUrlsInput: "",
-      weight: undefined,
-      dimensions: "",
-      isFeatured: false,
-      metaTitle: "",
-      metaDescription: "",
+      // Default values for removed fields are deleted
     },
   });
 
@@ -224,7 +210,7 @@ export default function CreateProductPage() {
       const colorVariants = data.colorVariantInput?.split(',').map(c => c.trim()).filter(Boolean) || undefined;
       const sizeVariants = data.sizeVariantInput?.split(',').map(s => s.trim()).filter(Boolean) || undefined;
       const tags = data.tagsInput?.split(',').map(t => t.trim()).filter(Boolean) || undefined;
-      const imageUrls = data.imageUrlsInput?.split(',').map(url => url.trim()).filter(Boolean) || undefined;
+      // imageUrls removed from payload
 
       const productPayload: CreateProductRequest = {
         name: data.name,
@@ -239,17 +225,18 @@ export default function CreateProductPage() {
         tags: tags,
         status: data.status as CreateProductRequest['status'] || 'DRAFT',
         
-        sku: data.sku || undefined,
-        barcode: data.barcode || undefined,
-        quantity: data.quantity === undefined || data.quantity === null ? undefined : Number(data.quantity), 
-        unitPrice: data.unitPrice === undefined || data.unitPrice === null ? undefined : Number(data.unitPrice), 
-        costPrice: data.costPrice === undefined || data.costPrice === null ? undefined : Number(data.costPrice),
-        imageUrls: imageUrls,
-        weight: data.weight === undefined || data.weight === null ? undefined : Number(data.weight),
-        dimensions: data.dimensions || undefined,
-        isFeatured: data.isFeatured,
-        metaTitle: data.metaTitle || undefined,
-        metaDescription: data.metaDescription || undefined,
+        // Fields for removed sections are removed from payload
+        // sku: data.sku || undefined,
+        // barcode: data.barcode || undefined,
+        // quantity: data.quantity === undefined || data.quantity === null ? undefined : Number(data.quantity), 
+        // unitPrice: data.unitPrice === undefined || data.unitPrice === null ? undefined : Number(data.unitPrice), 
+        // costPrice: data.costPrice === undefined || data.costPrice === null ? undefined : Number(data.costPrice),
+        // imageUrls: imageUrls,
+        // weight: data.weight === undefined || data.weight === null ? undefined : Number(data.weight),
+        // dimensions: data.dimensions || undefined,
+        // isFeatured: data.isFeatured,
+        // metaTitle: data.metaTitle || undefined,
+        // metaDescription: data.metaDescription || undefined,
       };
       
       await createProduct(productPayload);
@@ -258,7 +245,7 @@ export default function CreateProductPage() {
         description: "Product created successfully.",
       });
       router.push("/products");
-      router.refresh(); // Added router.refresh()
+      router.refresh();
     } catch (error: any) {
       console.error("Failed to create product", error);
       toast({
@@ -336,7 +323,7 @@ export default function CreateProductPage() {
 
           <Card className="shadow-md">
             <CardHeader>
-              <CardTitle>Codes & Taxes</CardTitle>
+              <CardTitle>Codes &amp; Taxes</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
               <FormField control={form.control} name="hsnCode" render={({ field }) => (
@@ -402,90 +389,30 @@ export default function CreateProductPage() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-md">
-            <CardHeader>
-              <CardTitle>Optional Base Product Details</CardTitle>
-              <CardDescription>These might be used if the product has no variants or as base values. API may override with variant data.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 md:gap-6">
-              <FormField control={form.control} name="sku" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Base SKU</FormLabel>
-                    <FormControl><Input placeholder="e.g., BASE-TSHIRT" {...field} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField control={form.control} name="barcode" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Base Barcode</FormLabel>
-                    <FormControl><Input placeholder="e.g., 123456789012" {...field} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField control={form.control} name="quantity" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Base Quantity</FormLabel>
-                    <FormControl><Input type="number" placeholder="0" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? 0} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField control={form.control} name="unitPrice" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Base Unit Price</FormLabel>
-                    <FormControl><Input type="number" step="0.01" placeholder="0.00" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? 0.00} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField control={form.control} name="costPrice" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Base Cost Price</FormLabel>
-                    <FormControl><Input type="number" step="0.01" placeholder="0.00" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </CardContent>
-          </Card>
+          {/* Removed "Optional Base Product Details" Card */}
           
           <Card className="shadow-md">
             <CardHeader>
-              <CardTitle>Media & Details</CardTitle>
+              <CardTitle>Tags &amp; Status</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
               <FormField control={form.control} name="tagsInput" render={({ field }) => (
                   <FormItem className="md:col-span-2">
                     <FormLabel>Tags</FormLabel>
-                    <FormControl><Input placeholder="e.g., Cotton, Round Neck, Summer" {...field} value={field.value ?? ""}/></FormControl>
+                    {/* <FormControl><Input placeholder="e.g., Cotton, Round Neck, Summer" {...field} value={field.value ?? ""}/></FormControl> */}
+                    <Controller
+                        control={form.control}
+                        name="tagsInput"
+                        render={({ field: f }) => (
+                            <TagsInputWithPreview
+                                id="tagsInput"
+                                value={f.value ?? ""}
+                                onChange={f.onChange}
+                                placeholder="Type tag and press Enter/Comma"
+                            />
+                        )}
+                    />
                     <FormDescription>Comma-separated tags.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField control={form.control} name="imageUrlsInput" render={({ field }) => (
-                  <FormItem className="md:col-span-2">
-                    <FormLabel>Image URLs</FormLabel>
-                    <FormControl><Textarea rows={3} placeholder="e.g., https://example.com/image1.jpg, https://example.com/image2.png" {...field} value={field.value ?? ""} /></FormControl>
-                    <FormDescription>Comma-separated URLs for product images.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-               <FormField control={form.control} name="weight" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Weight (kg)</FormLabel>
-                    <FormControl><Input type="number" step="0.01" placeholder="0.00" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField control={form.control} name="dimensions" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Dimensions (e.g., LxWxH cm)</FormLabel>
-                    <FormControl><Input placeholder="e.g., 10x5x2" {...field} value={field.value ?? ""} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -509,40 +436,11 @@ export default function CreateProductPage() {
                   </FormItem>
                 )}
               />
-              <FormField control={form.control} name="isFeatured" render={({ field }) => (
-                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2">
-                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                    <div className="space-y-1 leading-none">
-                      <FormLabel>Featured Product</FormLabel>
-                      <FormDescription>Mark this product as featured.</FormDescription>
-                    </div>
-                  </FormItem>
-                )}
-              />
+              {/* isFeatured Checkbox removed */}
             </CardContent>
           </Card>
           
-          <Card className="shadow-md">
-             <CardHeader><CardTitle>SEO Information (Optional)</CardTitle></CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
-                 <FormField control={form.control} name="metaTitle" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Meta Title</FormLabel>
-                    <FormControl><Input placeholder="SEO friendly title (max 70 chars)" {...field} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField control={form.control} name="metaDescription" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Meta Description</FormLabel>
-                    <FormControl><Textarea rows={3} placeholder="Concise SEO description (max 160 chars)" {...field} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </CardContent>
-          </Card>
+          {/* Removed "SEO Information" Card */}
 
           <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 pt-6">
             <Button type="button" variant="outline" onClick={() => router.back()} className="w-full sm:w-auto">
@@ -557,5 +455,6 @@ export default function CreateProductPage() {
     </div>
   );
 }
+    
 
     
