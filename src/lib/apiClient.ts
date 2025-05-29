@@ -143,7 +143,7 @@ export async function createUser(userData: CreateUserRequest): Promise<UserDto> 
 
 export async function updateUser(userId: string, userData: UpdateUserRequest): Promise<UserDto> {
   return fetchAPI<UserDto>(`/users/${userId}`, {
-    method: 'PATCH', // Corrected to PATCH
+    method: 'PATCH', 
     body: JSON.stringify(userData),
   });
 }
@@ -156,6 +156,8 @@ export async function deleteUser(userId: string): Promise<void> {
 
 export async function searchUserByPhone(phone: string): Promise<UserDto[]> {
   try {
+    // API might return single user if exact match, or multiple, or 404
+    // For simplicity, let's assume if it's not an array, it's a single object or null/error
     const result = await fetchAPI<UserDto[] | UserDto | null>(`/users/by-phone?phone=${encodeURIComponent(phone)}`);
     if (Array.isArray(result)) {
       return result;
@@ -259,7 +261,7 @@ export async function createBusinessProfile(profileData: CreateBusinessProfileRe
 
 export async function updateBusinessProfile(profileId: string, profileData: UpdateBusinessProfileRequest): Promise<BusinessProfileDto> {
   return fetchAPI<BusinessProfileDto>(`/business-profiles/${profileId}`, {
-    method: 'PATCH', // Corrected to PATCH
+    method: 'PATCH', 
     body: JSON.stringify(profileData),
   });
 }
@@ -403,21 +405,21 @@ export interface ProductVariantDto {
   id: string;
   productId?: string | null;
   sku?: string | null;
-  price?: number | null; 
-  compareAtPrice?: number | null; 
-  costPrice?: number | null;
+  // price?: number | null; // This represented inclusive price from variant, use sellingPrice
+  // compareAtPrice?: number | null; // This represented inclusive MRP from variant, use mrp
+  costPrice?: number | null; // This is typically pre-tax
   quantity?: number; 
   barcode?: string | null;
-  color?: string | null; // Was colorValue
-  size?: string | null;  // Was sizeValue
+  color?: string | null;
+  size?: string | null;
   title?: string | null;
   images?: string[] | null;
   capacity?: string | null;
   dimension?: { length?: number; width?: number; height?: number; unit?: string } | null;
   weight?: number | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
-  mrp?: number | null; 
-  sellingPrice?: number | null; 
+  mrp?: number | null; // Assuming this is GST-inclusive MRP from variant details
+  sellingPrice?: number | null; // Assuming this is GST-inclusive Selling Price from variant details
   purchaseCost?: {
     mrp?: number;
     consumerDiscountRate?: number;
@@ -445,17 +447,8 @@ export interface ProductDto {
   description?: string | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
   sku?: string | null; 
-  barcode?: string | null; 
-  costPrice?: number | null; 
-  unitId?: string | null;
-  unit?: ProductUnit | null;
   imageUrls?: string[] | null; // Product-level images
   tags?: string[] | null;
-  weight?: number | null; 
-  dimensions?: string | null; 
-  isFeatured?: boolean | null;
-  metaTitle?: string | null;
-  metaDescription?: string | null;
   variants?: ProductVariantDto[] | null;
   createdAt?: string;
   updatedAt?: string;
@@ -472,13 +465,12 @@ export interface CreateProductRequest {
   gstTaxRate?: number | null;
   category: string; 
   subCategory?: string | null;
-  colorVariant?: string[] | null; // Changed from colorVariantInput
-  sizeVariant?: string[] | null;  // Changed from sizeVariantInput
-  tags?: string[] | null;         // Changed from tagsInput
+  colorVariant?: string[] | null; 
+  sizeVariant?: string[] | null;  
+  tags?: string[] | null;      
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
   title?: string | null;
   manufacturedBy?: string | null;
-  // Removed fields not in API spec for create: sku, barcode, unitPrice, costPrice, imageUrls, weight, dimensions, isFeatured, metaTitle, metaDescription
 }
 
 
@@ -490,12 +482,13 @@ export interface UpdateProductRequest {
   hsnCode?: string | null;
   description?: string | null;
   gstTaxRate?: number | null;
-  tags?: string[] | null; // Changed from tagsInput
+  tags?: string[] | null; 
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
   title?: string | null;
   manufacturedBy?: string | null;
-  sku?: string | null; // Base SKU, if editable at product level
+  sku?: string | null; 
 }
+
 
 export interface AddProductVariantsRequest {
   color: string[];
@@ -503,20 +496,19 @@ export interface AddProductVariantsRequest {
 }
 
 export interface UpdateVariantRequest {
-  // id is path param for PATCH /products/{productId}/variants/{variantId}
-  sku?: string;
   title?: string;
   color?: string;
   size?: string;
+  sku?: string;
+  barcode?: string | null;
   capacity?: string | null;
   dimension?: { length?: number; width?: number; height?: number; unit?: string } | null;
   weight?: number | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string;
-  mrp?: number;
-  sellingPrice?: number; 
-  // purchaseCost is usually not updated directly by user
-  // images?: string[]; // If variant images are updatable
-  allowCriticalFieldUpdates?: boolean; // Default to false
+  mrp?: number; // GST-inclusive MRP
+  sellingPrice?: number; // GST-inclusive Selling Price
+  imageUrls?: string[] | null;
+  allowCriticalFieldUpdates?: boolean;
 }
 
 
@@ -543,7 +535,7 @@ export async function createProduct(productData: CreateProductRequest): Promise<
 
 export async function updateProduct(id: string, productData: UpdateProductRequest): Promise<ProductDto> {
   return fetchAPI<ProductDto>(`/products/${id}`, {
-    method: 'PATCH', // Typically PATCH for updates
+    method: 'PATCH', 
     body: JSON.stringify(productData),
   });
 }
@@ -581,27 +573,26 @@ export interface ProductSearchRequest {
   size?: number;
   sort?: string;
 }
-export interface ProductSearchResultDto { // This is essentially a subset of ProductDto based on typical search results
+export interface ProductSearchResultDto {
     id: string;
     name: string;
     brand?: string | null; 
     category?: string | null;
-    sku?: string | null; // Base product SKU
+    sku?: string | null; 
     title?: string | null; 
-    description?: string | null; 
-    variants?: ProductVariantDto[]; // Search might return key variants or enough info to select
-    // Other fields like gstTaxRate, status could be here too if API provides them
+    description?: string | null;
+    // variants are not typically in search result DTO to keep it light, fetch by ID if needed
 }
 
 export interface QuickCreateProductRequest {
     name: string;
     brandName: string; 
     categoryName: string;
-    colorVariants: string[]; // API expects 'colorVariant', 'sizeVariant' in createProduct, not quick create
+    colorVariants: string[];
     sizeVariants: string[];  
     unitPrice: number; // This should be pre-GST price
 }
-export interface QuickCreateProductResponse extends ProductDto {} // Assuming quick create returns a full ProductDto
+export interface QuickCreateProductResponse extends ProductDto {} 
 
 
 export interface OrderItemRequest {
@@ -691,7 +682,7 @@ export async function searchProductsFuzzy(
   sort: string = 'name,asc' 
 ): Promise<Page<ProductSearchResultDto>> {
   const queryParams = new URLSearchParams();
-  queryParams.append('keyword', keyword); // Changed from 'query' to 'keyword'
+  queryParams.append('keyword', keyword);
   queryParams.append('page', page.toString());
   queryParams.append('size', size.toString());
   queryParams.append('sort', sort);
@@ -699,11 +690,9 @@ export async function searchProductsFuzzy(
   const queryString = queryParams.toString();
   const data = await fetchAPI<Page<ProductSearchResultDto> | undefined>(`/products/search?${queryString}`);
   
-  // Ensure we always return an array for content, even if API response is unexpected
   if (data && Array.isArray(data.content)) {
     return data;
   }
-  // Return a default empty page structure if data or data.content is not as expected
   return { content: [], totalPages: 0, totalElements: 0, size: size, number: page, first: true, last: true, empty: true };
 }
 
@@ -788,7 +777,7 @@ export async function fetchProductCategoriesFlat(): Promise<Category[]> {
 export interface CreateCategoryRequest {
   name: string;
   description?: string | null;
-  parentId?: string | null; // Changed to string to match ID type
+  parentId?: string | null; 
 }
 export async function createProductCategory(data: CreateCategoryRequest): Promise<Category> {
   return fetchAPI<Category>('/meta/product/categories', { method: 'POST', body: JSON.stringify(data) });
@@ -864,5 +853,3 @@ export async function updateCurrentUser(data: UpdateUserRequest): Promise<Curren
     body: JSON.stringify(data),
   });
 }
-
-    
