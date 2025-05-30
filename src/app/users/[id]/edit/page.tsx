@@ -17,17 +17,17 @@ import { ChevronLeft, Save, Trash2, PlusCircle, UserCog, Loader2 } from "lucide-
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StateCombobox } from "@/components/ui/state-combobox";
-import { USER_ROLES_OPTIONS } from "@/lib/constants"; // Assuming roles are in constants
+import { USER_ROLES_OPTIONS, indianStates } from "@/lib/constants";
 
 const addressSchema = z.object({
   id: z.string().optional().nullable(),
-  line1: z.string().min(1, "Address line 1 is required"),
+  line1: z.string().optional().nullable().or(z.literal("")), // Made optional
   line2: z.string().optional().nullable().or(z.literal("")),
   city: z.string().min(1, "City is required"),
   state: z.string().min(1, "State is required"),
-  stateCode: z.string().min(1, "State code is required"),
-  country: z.string().min(1, "Country is required"),
-  postalCode: z.string().min(1, "Postal code is required"),
+  stateCode: z.string().min(1, "State code is required"), // Automatically derived from state
+  country: z.string().optional().nullable().or(z.literal("")), // Made optional
+  postalCode: z.string().optional().nullable().or(z.literal("")), // Made optional
   type: z.enum(["SHIPPING", "BILLING"]).optional().nullable(),
   isDefault: z.boolean().optional().default(false),
 });
@@ -35,7 +35,7 @@ const addressSchema = z.object({
 const userFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email address").optional().nullable().or(z.literal("")),
-  role: z.string().min(1, "Role is required."), // Added role
+  role: z.string().min(1, "Role is required."),
   status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
   addresses: z.array(addressSchema).min(1, "At least one address is required."),
 });
@@ -86,11 +86,13 @@ export default function EditUserPage() {
 
         const currentStatus = fetchedUser.status?.toUpperCase();
         const validStatus = USER_STATUSES.includes(currentStatus as any) ? currentStatus as "ACTIVE" | "INACTIVE" : "ACTIVE";
+        const validRole = USER_ROLES_OPTIONS.includes(fetchedUser.role as any) ? fetchedUser.role : (USER_ROLES_OPTIONS.length > 0 ? USER_ROLES_OPTIONS[0] : "");
+
 
         form.reset({
           name: fetchedUser.name ?? "",
           email: fetchedUser.email ?? "",
-          role: fetchedUser.role ?? "",
+          role: validRole ?? "",
           status: validStatus,
           addresses: fetchedUser.addresses?.map(addr => ({
             id: addr.id,
@@ -103,7 +105,7 @@ export default function EditUserPage() {
             postalCode: addr.postalCode ?? "",
             type: addr.type as ("SHIPPING" | "BILLING" | undefined) ?? undefined,
             isDefault: addr.isDefault ?? false,
-          })) ?? [{ // Ensure at least one address if API returns none
+          })) ?? [{ 
             id: undefined, line1: "", line2: "", city: "", state: "", stateCode: "", country: "India",
             postalCode: "", type: "BILLING", isDefault: true,
           }],
@@ -135,14 +137,15 @@ export default function EditUserPage() {
           const { id, ...rest } = addr;
           const apiAddr: AddressCreateDto | ApiAddressDto = {
             ...rest,
-            line1: rest.line1,
+            line1: rest.line1 || undefined,
             city: rest.city,
             state: rest.state,
             stateCode: rest.stateCode,
-            country: rest.country,
-            postalCode: rest.postalCode,
+            country: rest.country || undefined,
+            postalCode: rest.postalCode || undefined,
             line2: rest.line2 || undefined,
             type: rest.type || undefined,
+            isDefault: rest.isDefault,
           };
           if (id) {
             (apiAddr as ApiAddressDto).id = id;
@@ -292,7 +295,7 @@ export default function EditUserPage() {
                   <input type="hidden" {...form.register(`addresses.${index}.id`)} />
                   <div className="grid gap-4 md:grid-cols-2">
                     <FormField control={form.control} name={`addresses.${index}.line1`} render={({ field: f }) => (
-                      <FormItem><FormLabel>Line 1 *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Line 1</FormLabel><FormControl><Input {...f} value={f.value ?? ""} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name={`addresses.${index}.line2`} render={({ field: f }) => (
                       <FormItem><FormLabel>Line 2</FormLabel><FormControl><Input {...f} value={f.value ?? ""} /></FormControl><FormMessage /></FormItem>
@@ -310,25 +313,27 @@ export default function EditUserPage() {
                             value={stateField.value}
                             onValueChange={(newState) => {
                               form.setValue(`addresses.${index}.state`, newState || "");
+                              const selectedStateObj = indianStates.find(s => s.name === newState);
+                              form.setValue(`addresses.${index}.stateCode`, selectedStateObj?.code || "");
                             }}
                             onStateCodeChange={(newStateCode) => {
-                              form.setValue(`addresses.${index}.stateCode`, newStateCode || "");
+                               // This callback can be used if StateCombobox itself directly provided the code
                             }}
                           />
                           <FormMessage>{form.formState.errors.addresses?.[index]?.state?.message}</FormMessage>
                            <FormField control={form.control} name={`addresses.${index}.stateCode`} render={({ field: f }) => (
                               <FormItem className="sr-only">
-                                <FormLabel>State Code</FormLabel><FormControl><Input {...f} readOnly /></FormControl><FormMessage />
+                                <FormLabel>State Code *</FormLabel><FormControl><Input {...f} readOnly /></FormControl><FormMessage />
                               </FormItem>
                           )}/>
                         </FormItem>
                       )}
                     />
                     <FormField control={form.control} name={`addresses.${index}.country`} render={({ field: f }) => (
-                      <FormItem><FormLabel>Country *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Country</FormLabel><FormControl><Input {...f} value={f.value ?? ""} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name={`addresses.${index}.postalCode`} render={({ field: f }) => (
-                      <FormItem><FormLabel>Postal Code *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Postal Code</FormLabel><FormControl><Input {...f} value={f.value ?? ""} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name={`addresses.${index}.type`} render={({ field: f }) => (
                       <FormItem>
@@ -396,3 +401,5 @@ export default function EditUserPage() {
   );
 }
       
+
+    

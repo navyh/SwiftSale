@@ -16,16 +16,16 @@ import { createUser, type CreateUserRequest } from "@/lib/apiClient";
 import { ChevronLeft, PlusCircle, Save, Trash2, UserPlus, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { StateCombobox } from "@/components/ui/state-combobox";
-import { USER_ROLES_OPTIONS } from "@/lib/constants"; // Assuming roles are in constants
+import { USER_ROLES_OPTIONS, indianStates } from "@/lib/constants";
 
 const addressSchema = z.object({
-  line1: z.string().min(1, "Address line 1 is required"),
+  line1: z.string().optional().nullable().or(z.literal("")), // Made optional
   line2: z.string().optional().nullable().or(z.literal("")),
   city: z.string().min(1, "City is required"),
   state: z.string().min(1, "State is required"),
-  stateCode: z.string().min(1, "State code is required"),
-  country: z.string().min(1, "Country is required"),
-  postalCode: z.string().min(1, "Postal code is required"),
+  stateCode: z.string().min(1, "State code is required"), // Automatically derived from state
+  country: z.string().optional().nullable().or(z.literal("")), // Made optional
+  postalCode: z.string().optional().nullable().or(z.literal("")), // Made optional
   type: z.enum(["SHIPPING", "BILLING"]).optional().nullable(),
   isDefault: z.boolean().optional().default(false),
 });
@@ -34,7 +34,7 @@ const userFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
   phone: z.string().min(1, "Phone number is required").regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format, e.g., +1234567890"),
   email: z.string().email("Invalid email address").optional().nullable().or(z.literal("")),
-  role: z.string().min(1, "Role is required."), // Added role
+  role: z.string().min(1, "Role is required."),
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
   addresses: z.array(addressSchema).min(1, "At least one address is required."),
 });
@@ -55,11 +55,11 @@ export default function CreateUserPage() {
       name: "",
       phone: "",
       email: "",
-      role: "", // Default role
+      role: USER_ROLES_OPTIONS.length > 0 ? USER_ROLES_OPTIONS[0] : "", // Default to first role or empty
       status: "ACTIVE",
-      addresses: [ // Start with one empty address
+      addresses: [
         {
-          line1: "", line2: "", city: "", state: "", stateCode: "", country: "India", // Default country
+          line1: "", line2: "", city: "", state: "", stateCode: "", country: "India",
           postalCode: "", type: "BILLING", isDefault: true,
         },
       ],
@@ -72,7 +72,6 @@ export default function CreateUserPage() {
   });
 
   React.useEffect(() => {
-    // Ensure at least one address is present if fields array becomes empty
     if (addressFields.length === 0) {
       appendAddress({
         line1: "", line2: "", city: "", state: "", stateCode: "", country: "India",
@@ -92,12 +91,12 @@ export default function CreateUserPage() {
         status: data.status,
         addresses: data.addresses.map(addr => ({
           ...addr,
-          line1: addr.line1, // Ensure required fields are passed
+          line1: addr.line1 || undefined,
           city: addr.city,
           state: addr.state,
           stateCode: addr.stateCode,
-          country: addr.country,
-          postalCode: addr.postalCode,
+          country: addr.country || undefined,
+          postalCode: addr.postalCode || undefined,
           line2: addr.line2 || undefined,
           type: addr.type || undefined,
           isDefault: addr.isDefault,
@@ -201,7 +200,7 @@ export default function CreateUserPage() {
                 <Card key={field.id} className="p-4 space-y-3 bg-secondary/50">
                   <div className="flex justify-between items-center">
                     <h4 className="font-medium">Address {index + 1}</h4>
-                    {addressFields.length > 1 && ( // Only show remove if more than 1 address
+                    {addressFields.length > 1 && (
                       <Button type="button" variant="ghost" size="icon" onClick={() => removeAddress(index)} className="text-destructive hover:text-destructive/80">
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -209,7 +208,7 @@ export default function CreateUserPage() {
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <FormField control={form.control} name={`addresses.${index}.line1`} render={({ field: f }) => (
-                      <FormItem><FormLabel>Line 1 *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Line 1</FormLabel><FormControl><Input {...f} value={f.value ?? ""} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name={`addresses.${index}.line2`} render={({ field: f }) => (
                       <FormItem><FormLabel>Line 2</FormLabel><FormControl><Input {...f} value={f.value ?? ""} /></FormControl><FormMessage /></FormItem>
@@ -228,25 +227,28 @@ export default function CreateUserPage() {
                             value={stateField.value}
                             onValueChange={(newState) => {
                               form.setValue(`addresses.${index}.state`, newState || "");
+                              const selectedStateObj = indianStates.find(s => s.name === newState);
+                              form.setValue(`addresses.${index}.stateCode`, selectedStateObj?.code || "");
                             }}
                             onStateCodeChange={(newStateCode) => {
-                              form.setValue(`addresses.${index}.stateCode`, newStateCode || "");
+                               // This callback can be used if StateCombobox itself directly provided the code
+                               // For now, stateCode is set based on name change.
                             }}
                           />
                           <FormMessage>{form.formState.errors.addresses?.[index]?.state?.message}</FormMessage>
                            <FormField control={form.control} name={`addresses.${index}.stateCode`} render={({ field: f }) => (
-                              <FormItem className="sr-only"> {/* Hidden, populated by StateCombobox */}
-                                <FormLabel>State Code</FormLabel><FormControl><Input {...f} readOnly /></FormControl><FormMessage />
+                              <FormItem className="sr-only">
+                                <FormLabel>State Code *</FormLabel><FormControl><Input {...f} readOnly /></FormControl><FormMessage />
                               </FormItem>
                           )}/>
                         </FormItem>
                       )}
                     />
                     <FormField control={form.control} name={`addresses.${index}.country`} render={({ field: f }) => (
-                      <FormItem><FormLabel>Country *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Country</FormLabel><FormControl><Input {...f} value={f.value ?? ""} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name={`addresses.${index}.postalCode`} render={({ field: f }) => (
-                      <FormItem><FormLabel>Postal Code *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Postal Code</FormLabel><FormControl><Input {...f} value={f.value ?? ""} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name={`addresses.${index}.type`} render={({ field: f }) => (
                       <FormItem>
@@ -314,3 +316,5 @@ export default function CreateUserPage() {
   );
 }
       
+
+    
