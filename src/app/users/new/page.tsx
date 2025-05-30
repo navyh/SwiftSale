@@ -16,16 +16,16 @@ import { createUser, type CreateUserRequest } from "@/lib/apiClient";
 import { ChevronLeft, PlusCircle, Save, Trash2, UserPlus, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { StateCombobox } from "@/components/ui/state-combobox";
-import { USER_ROLES_OPTIONS, indianStates } from "@/lib/constants";
+import { USER_ROLE_SELECT_OPTIONS, CUSTOMER_ROLE_VALUE, indianStates } from "@/lib/constants";
 
 const addressSchema = z.object({
-  line1: z.string().optional().nullable().or(z.literal("")), // Made optional
+  line1: z.string().optional().nullable().or(z.literal("")), 
   line2: z.string().optional().nullable().or(z.literal("")),
   city: z.string().min(1, "City is required"),
   state: z.string().min(1, "State is required"),
-  stateCode: z.string().min(1, "State code is required"), // Automatically derived from state
-  country: z.string().optional().nullable().or(z.literal("")), // Made optional
-  postalCode: z.string().optional().nullable().or(z.literal("")), // Made optional
+  stateCode: z.string().min(1, "State code is required"), 
+  country: z.string().optional().nullable().or(z.literal("")), 
+  postalCode: z.string().optional().nullable().or(z.literal("")), 
   type: z.enum(["SHIPPING", "BILLING"]).optional().nullable(),
   isDefault: z.boolean().optional().default(false),
 });
@@ -34,7 +34,7 @@ const userFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
   phone: z.string().min(1, "Phone number is required").regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format, e.g., +1234567890"),
   email: z.string().email("Invalid email address").optional().nullable().or(z.literal("")),
-  role: z.string().min(1, "Role is required."),
+  role: z.string().min(1, "Role selection is required."), // Will use CUSTOMER_ROLE_VALUE for customer
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
   addresses: z.array(addressSchema).min(1, "At least one address is required."),
 });
@@ -55,7 +55,7 @@ export default function CreateUserPage() {
       name: "",
       phone: "",
       email: "",
-      role: USER_ROLES_OPTIONS.length > 0 ? USER_ROLES_OPTIONS[0] : "", // Default to first role or empty
+      role: CUSTOMER_ROLE_VALUE, // Default to Customer
       status: "ACTIVE",
       addresses: [
         {
@@ -87,7 +87,7 @@ export default function CreateUserPage() {
         name: data.name,
         phone: data.phone,
         email: data.email || undefined,
-        role: data.role,
+        role: data.role === CUSTOMER_ROLE_VALUE ? undefined : data.role, // Map Customer to undefined/null for API
         status: data.status,
         addresses: data.addresses.map(addr => ({
           ...addr,
@@ -169,7 +169,7 @@ export default function CreateUserPage() {
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger></FormControl>
                     <SelectContent>
-                      {USER_ROLES_OPTIONS.map(role => <SelectItem key={role} value={role}>{role.replace(/_/g, " ")}</SelectItem>)}
+                      {USER_ROLE_SELECT_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -232,7 +232,6 @@ export default function CreateUserPage() {
                             }}
                             onStateCodeChange={(newStateCode) => {
                                // This callback can be used if StateCombobox itself directly provided the code
-                               // For now, stateCode is set based on name change.
                             }}
                           />
                           <FormMessage>{form.formState.errors.addresses?.[index]?.state?.message}</FormMessage>

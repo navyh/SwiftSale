@@ -103,5 +103,14 @@ export const indianStates: IndianState[] = [
 // These are internal system roles for staff/users with specific platform access
 export const USER_ROLES_OPTIONS = ["ADMIN", "MANAGER", "POS_USER", "SALES_PERSON"] as const;
 
-// Placeholder for mapping "Customer" in UI to a null/undefined role for API
-export const CUSTOMER_ROLE_VALUE = "CUSTOMER_NO_ROLE";
+// Value used in forms to represent a customer (no specific internal role)
+export const CUSTOMER_ROLE_VALUE = "CUSTOMER_NO_ROLE"; // A non-empty string for form value
+
+export const USER_ROLE_SELECT_OPTIONS = [
+  { value: CUSTOMER_ROLE_VALUE, label: "Customer" },
+  ...USER_ROLES_OPTIONS.map(role => ({ 
+    value: role, 
+    label: role.replace(/_/g, " ").charAt(0).toUpperCase() + role.replace(/_/g, " ").slice(1).toLowerCase() 
+  }))
+];
+

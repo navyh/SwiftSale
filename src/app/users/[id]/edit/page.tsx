@@ -17,17 +17,17 @@ import { ChevronLeft, Save, Trash2, PlusCircle, UserCog, Loader2 } from "lucide-
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StateCombobox } from "@/components/ui/state-combobox";
-import { USER_ROLES_OPTIONS, indianStates } from "@/lib/constants";
+import { USER_ROLE_SELECT_OPTIONS, CUSTOMER_ROLE_VALUE, indianStates } from "@/lib/constants";
 
 const addressSchema = z.object({
   id: z.string().optional().nullable(),
-  line1: z.string().optional().nullable().or(z.literal("")), // Made optional
+  line1: z.string().optional().nullable().or(z.literal("")), 
   line2: z.string().optional().nullable().or(z.literal("")),
   city: z.string().min(1, "City is required"),
   state: z.string().min(1, "State is required"),
-  stateCode: z.string().min(1, "State code is required"), // Automatically derived from state
-  country: z.string().optional().nullable().or(z.literal("")), // Made optional
-  postalCode: z.string().optional().nullable().or(z.literal("")), // Made optional
+  stateCode: z.string().min(1, "State code is required"), 
+  country: z.string().optional().nullable().or(z.literal("")), 
+  postalCode: z.string().optional().nullable().or(z.literal("")), 
   type: z.enum(["SHIPPING", "BILLING"]).optional().nullable(),
   isDefault: z.boolean().optional().default(false),
 });
@@ -35,7 +35,7 @@ const addressSchema = z.object({
 const userFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email address").optional().nullable().or(z.literal("")),
-  role: z.string().min(1, "Role is required."),
+  role: z.string().min(1, "Role selection is required."), // Will use CUSTOMER_ROLE_VALUE for customer
   status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
   addresses: z.array(addressSchema).min(1, "At least one address is required."),
 });
@@ -60,7 +60,7 @@ export default function EditUserPage() {
     defaultValues: {
       name: "",
       email: "",
-      role: "",
+      role: CUSTOMER_ROLE_VALUE,
       status: "ACTIVE",
       addresses: [],
     },
@@ -86,13 +86,17 @@ export default function EditUserPage() {
 
         const currentStatus = fetchedUser.status?.toUpperCase();
         const validStatus = USER_STATUSES.includes(currentStatus as any) ? currentStatus as "ACTIVE" | "INACTIVE" : "ACTIVE";
-        const validRole = USER_ROLES_OPTIONS.includes(fetchedUser.role as any) ? fetchedUser.role : (USER_ROLES_OPTIONS.length > 0 ? USER_ROLES_OPTIONS[0] : "");
+        
+        let formRoleValue = CUSTOMER_ROLE_VALUE;
+        if (fetchedUser.role && USER_ROLE_SELECT_OPTIONS.find(opt => opt.value === fetchedUser.role)) {
+            formRoleValue = fetchedUser.role;
+        }
 
 
         form.reset({
           name: fetchedUser.name ?? "",
           email: fetchedUser.email ?? "",
-          role: validRole ?? "",
+          role: formRoleValue,
           status: validStatus,
           addresses: fetchedUser.addresses?.map(addr => ({
             id: addr.id,
@@ -131,7 +135,7 @@ export default function EditUserPage() {
       const payload: UpdateUserRequest = {
         name: data.name,
         email: data.email || undefined,
-        role: data.role,
+        role: data.role === CUSTOMER_ROLE_VALUE ? undefined : data.role, // Map Customer to undefined/null for API
         status: data.status,
         addresses: data.addresses.map(addr => {
           const { id, ...rest } = addr;
@@ -255,7 +259,7 @@ export default function EditUserPage() {
                   <Select onValueChange={field.onChange} value={field.value ?? ""}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger></FormControl>
                     <SelectContent>
-                      {USER_ROLES_OPTIONS.map(role => <SelectItem key={role} value={role}>{role.replace(/_/g, " ")}</SelectItem>)}
+                      {USER_ROLE_SELECT_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <FormMessage />
