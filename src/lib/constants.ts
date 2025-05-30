@@ -60,15 +60,15 @@ export interface IndianState {
 export const indianStates: IndianState[] = [
   { name: "ANDAMAN AND NICOBAR ISLANDS", code: "35", type: "UT" },
   { name: "ANDHRA PRADESH", code: "37", type: "STATE" },
-  { name: "ANDHRA PRADESH (BEFORE DIVISION)", code: "28", type: "STATE" }, // Old code, might be needed for historical data
+  { name: "ANDHRA PRADESH (BEFORE DIVISION)", code: "28", type: "STATE" }, 
   { name: "ARUNACHAL PRADESH", code: "12", type: "STATE" },
   { name: "ASSAM", code: "18", type: "STATE" },
   { name: "BIHAR", code: "10", type: "STATE" },
   { name: "CHANDIGARH", code: "04", type: "UT" },
   { name: "CHHATTISGARH", code: "22", type: "STATE" },
-  { name: "DADRA AND NAGAR HAVELI", code: "26", type: "UT" }, // Merged with Daman and Diu
+  { name: "DADRA AND NAGAR HAVELI", code: "26", type: "UT" }, 
   { name: "DADRA AND NAGAR HAVELI AND DAMAN AND DIU", code: "26", type: "UT" },
-  { name: "DAMAN AND DIU", code: "25", type: "UT" }, // Merged
+  { name: "DAMAN AND DIU", code: "25", type: "UT" }, 
   { name: "DELHI", code: "07", type: "UT" },
   { name: "GOA", code: "30", type: "STATE" },
   { name: "GUJARAT", code: "24", type: "STATE" },
@@ -87,7 +87,7 @@ export const indianStates: IndianState[] = [
   { name: "MIZORAM", code: "15", type: "STATE" },
   { name: "NAGALAND", code: "13", type: "STATE" },
   { name: "ODISHA", code: "21", type: "STATE" },
-  { name: "OTHER TERRITORY", code: "97", type: "UT" }, // For other territories not listed
+  { name: "OTHER TERRITORY", code: "97", type: "UT" }, 
   { name: "PUDUCHERRY", code: "34", type: "UT" },
   { name: "PUNJAB", code: "03", type: "STATE" },
   { name: "RAJASTHAN", code: "08", type: "STATE" },
@@ -100,7 +100,8 @@ export const indianStates: IndianState[] = [
   { name: "WEST BENGAL", code: "19", type: "STATE" }
 ];
 
+// These are internal system roles for staff/users with specific platform access
 export const USER_ROLES_OPTIONS = ["ADMIN", "MANAGER", "POS_USER", "SALES_PERSON"] as const;
 
-
-    
+// Placeholder for mapping "Customer" in UI to a null/undefined role for API
+export const CUSTOMER_ROLE_VALUE = "CUSTOMER_NO_ROLE";

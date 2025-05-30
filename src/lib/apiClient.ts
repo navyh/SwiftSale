@@ -54,13 +54,13 @@ export interface Page<T> {
 
 export interface AddressDto {
   id: string;
-  line1?: string | null; // Made optional to align with typical address forms; API might require it
+  line1?: string | null;
   line2?: string | null;
   city: string;
   state: string;
-  stateCode: string; // Added
-  country: string;
-  postalCode?: string | null; // Made optional
+  stateCode: string;
+  country?: string | null;
+  postalCode?: string | null;
   type?: 'SHIPPING' | 'BILLING' | string | null;
   isDefault: boolean;
   contactName?: string | null;
@@ -69,13 +69,13 @@ export interface AddressDto {
 }
 
 export interface AddressCreateDto {
-  line1?: string | null; // Made optional to align with typical address forms; API might require it
+  line1?: string | null;
   line2?: string | null;
   city: string;
   state: string;
-  stateCode: string; // Added
-  country: string;
-  postalCode?: string | null; // Made optional
+  stateCode: string;
+  country?: string | null;
+  postalCode?: string | null;
   type?: 'SHIPPING' | 'BILLING' | string | null;
   isDefault?: boolean | null;
   contactName?: string | null;
@@ -84,14 +84,21 @@ export interface AddressCreateDto {
 }
 
 // === USER MANAGEMENT ===
+export interface BusinessMembershipDto {
+  businessProfileId: string;
+  role: string;
+  companyName: string;
+}
+
 export interface UserDto {
   id: string;
   name?: string | null;
   phone?: string | null;
   email?: string | null;
   addresses?: AddressDto[] | null;
-  role?: string | null; // Added
+  role?: string | null;
   status?: 'ACTIVE' | 'INACTIVE' | string | null;
+  businessMemberships?: BusinessMembershipDto[] | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }
@@ -100,17 +107,17 @@ export interface CreateUserRequest {
   name: string;
   phone: string;
   email?: string | null;
-  role?: string; // Added
+  role?: string | null;
   status?: 'ACTIVE' | 'INACTIVE';
-  addresses: AddressCreateDto[]; // Now mandatory
+  addresses: AddressCreateDto[];
 }
 
 export interface UpdateUserRequest {
   name?: string;
   email?: string | null;
-  role?: string; // Added
+  role?: string | null;
   status?: 'ACTIVE' | 'INACTIVE';
-  addresses?: (AddressCreateDto | AddressDto)[]; // Now mandatory for update if API requires full list
+  addresses?: (AddressCreateDto | AddressDto)[];
 }
 
 
@@ -436,7 +443,14 @@ export interface ProductDto {
   description?: string | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
   sku?: string | null;
+  barcode?: string | null; // Added for base product
+  costPrice?: number | null; // Added for base product
   imageUrls?: string[] | null;
+  weight?: number | null; // Added for base product
+  dimensions?: string | null; // Added for base product
+  isFeatured?: boolean | null; // Added for base product
+  metaTitle?: string | null; // Added for base product
+  metaDescription?: string | null; // Added for base product
   tags?: string[] | null;
   variants?: ProductVariantDto[] | null;
   createdAt?: string;
@@ -476,6 +490,16 @@ export interface UpdateProductRequest {
   title?: string | null;
   manufacturedBy?: string | null;
   sku?: string | null;
+  barcode?: string | null; // Added
+  costPrice?: number | null; // Added
+  imageUrls?: string[] | null; // Added
+  weight?: number | null; // Added
+  dimensions?: string | null; // Added
+  isFeatured?: boolean | null; // Added
+  metaTitle?: string | null; // Added
+  metaDescription?: string | null; // Added
+  colorVariant?: string[] | null; // For generating new variants
+  sizeVariant?: string[] | null; // For generating new variants
 }
 
 export interface AddProductVariantsRequest {
@@ -614,7 +638,7 @@ export interface CustomerDetailsDto {
 }
 
 export interface CreateOrderRequest {
-    placedByUserId: string; // ID of the end customer
+    placedByUserId: string;
     businessProfileId?: string | null;
     customerDetails?: CustomerDetailsDto | null;
     items: OrderItemRequest[];
@@ -769,7 +793,7 @@ export async function fetchProductCategoriesFlat(): Promise<Category[]> {
 export interface CreateCategoryRequest {
   name: string;
   description?: string | null;
-  parentId?: string | null;
+  parentId?: string | null; // Changed from number to string to match ID types
 }
 export async function createProductCategory(data: CreateCategoryRequest): Promise<Category> {
   return fetchAPI<Category>('/meta/product/categories', { method: 'POST', body: JSON.stringify(data) });
@@ -845,5 +869,3 @@ export async function updateCurrentUser(data: UpdateUserRequest): Promise<Curren
     body: JSON.stringify(data),
   });
 }
-
-    
