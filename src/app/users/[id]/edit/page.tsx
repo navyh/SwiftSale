@@ -16,14 +16,16 @@ import { fetchUserById, updateUser, type UpdateUserRequest, type UserDto, type A
 import { ChevronLeft, Save, Trash2, PlusCircle, UserCog, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StateCombobox } from "@/components/ui/state-combobox";
+import { USER_ROLES_OPTIONS } from "@/lib/constants"; // Assuming roles are in constants
 
-// Form-specific Address schema, ID is optional for new addresses
 const addressSchema = z.object({
-  id: z.string().optional().nullable(), // ID is string and optional
+  id: z.string().optional().nullable(),
   line1: z.string().min(1, "Address line 1 is required"),
   line2: z.string().optional().nullable().or(z.literal("")),
   city: z.string().min(1, "City is required"),
   state: z.string().min(1, "State is required"),
+  stateCode: z.string().min(1, "State code is required"),
   country: z.string().min(1, "Country is required"),
   postalCode: z.string().min(1, "Postal code is required"),
   type: z.enum(["SHIPPING", "BILLING"]).optional().nullable(),
@@ -32,9 +34,10 @@ const addressSchema = z.object({
 
 const userFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email address").optional().nullable().or(z.literal("")), 
+  email: z.string().email("Invalid email address").optional().nullable().or(z.literal("")),
+  role: z.string().min(1, "Role is required."), // Added role
   status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
-  addresses: z.array(addressSchema).optional(),
+  addresses: z.array(addressSchema).min(1, "At least one address is required."),
 });
 
 type UserFormValues = z.infer<typeof userFormSchema>;
@@ -45,7 +48,7 @@ const ADDRESS_TYPES = ["SHIPPING", "BILLING"] as const;
 export default function EditUserPage() {
   const router = useRouter();
   const params = useParams();
-  const userId = params.id as string; 
+  const userId = params.id as string;
   const { toast } = useToast();
 
   const [user, setUser] = React.useState<UserDto | null>(null);
@@ -57,6 +60,7 @@ export default function EditUserPage() {
     defaultValues: {
       name: "",
       email: "",
+      role: "",
       status: "ACTIVE",
       addresses: [],
     },
@@ -68,7 +72,7 @@ export default function EditUserPage() {
   });
 
   React.useEffect(() => {
-    if (!userId) { 
+    if (!userId) {
       toast({ title: "Error", description: "Invalid user ID.", variant: "destructive" });
       router.push("/users");
       return;
@@ -79,20 +83,30 @@ export default function EditUserPage() {
       try {
         const fetchedUser = await fetchUserById(userId);
         setUser(fetchedUser);
-        
+
         const currentStatus = fetchedUser.status?.toUpperCase();
         const validStatus = USER_STATUSES.includes(currentStatus as any) ? currentStatus as "ACTIVE" | "INACTIVE" : "ACTIVE";
 
         form.reset({
-          name: fetchedUser.name,
+          name: fetchedUser.name ?? "",
           email: fetchedUser.email ?? "",
+          role: fetchedUser.role ?? "",
           status: validStatus,
-          addresses: fetchedUser.addresses?.map(addr => ({ 
-            ...addr, 
-            id: addr.id, // Ensure id is passed as string from API
-            type: addr.type as ("SHIPPING" | "BILLING" | undefined) ?? undefined,
+          addresses: fetchedUser.addresses?.map(addr => ({
+            id: addr.id,
+            line1: addr.line1 ?? "",
             line2: addr.line2 ?? "",
-          })) ?? [],
+            city: addr.city ?? "",
+            state: addr.state ?? "",
+            stateCode: addr.stateCode ?? "",
+            country: addr.country ?? "India",
+            postalCode: addr.postalCode ?? "",
+            type: addr.type as ("SHIPPING" | "BILLING" | undefined) ?? undefined,
+            isDefault: addr.isDefault ?? false,
+          })) ?? [{ // Ensure at least one address if API returns none
+            id: undefined, line1: "", line2: "", city: "", state: "", stateCode: "", country: "India",
+            postalCode: "", type: "BILLING", isDefault: true,
+          }],
         });
       } catch (error: any) {
         console.error("Error fetching user for edit:", error);
@@ -114,22 +128,29 @@ export default function EditUserPage() {
     try {
       const payload: UpdateUserRequest = {
         name: data.name,
-        email: data.email || undefined, 
+        email: data.email || undefined,
+        role: data.role,
         status: data.status,
-        addresses: data.addresses?.map(addr => {
-          const { id, ...rest } = addr; 
+        addresses: data.addresses.map(addr => {
+          const { id, ...rest } = addr;
           const apiAddr: AddressCreateDto | ApiAddressDto = {
             ...rest,
+            line1: rest.line1,
+            city: rest.city,
+            state: rest.state,
+            stateCode: rest.stateCode,
+            country: rest.country,
+            postalCode: rest.postalCode,
             line2: rest.line2 || undefined,
             type: rest.type || undefined,
           };
-          if (id) { // If ID exists, it's an existing address (ApiAddressDto)
+          if (id) {
             (apiAddr as ApiAddressDto).id = id;
           }
-          return apiAddr;     
-        }) || [],
+          return apiAddr;
+        }),
       };
-      
+
       await updateUser(userId, payload);
       toast({
         title: "Success",
@@ -164,6 +185,7 @@ export default function EditUserPage() {
           <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
             <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
           </CardContent>
         </Card>
         <Card className="shadow-md">
@@ -188,7 +210,7 @@ export default function EditUserPage() {
     <div className="space-y-6 pb-8">
       <div className="flex items-center gap-2 md:gap-4">
         <Button variant="outline" size="icon" asChild aria-label="Back to Users">
-            <Link href="/users"><ChevronLeft className="h-4 w-4" /></Link>
+          <Link href="/users"><ChevronLeft className="h-4 w-4" /></Link>
         </Button>
         <div>
           <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight flex items-center">
@@ -203,7 +225,7 @@ export default function EditUserPage() {
           <Card className="shadow-md">
             <CardHeader>
               <CardTitle>User Information</CardTitle>
-              <CardDescription>Phone number is typically not editable here for security reasons.</CardDescription>
+              <CardDescription>Phone number is read-only.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
               <FormField control={form.control} name="name" render={({ field }) => (
@@ -212,10 +234,10 @@ export default function EditUserPage() {
                   <FormControl><Input placeholder="e.g., John Doe" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
-              )}/>
+              )} />
               <FormItem>
-                  <FormLabel>Phone Number (Read-only)</FormLabel>
-                  <FormControl><Input value={user.phone} readOnly disabled /></FormControl>
+                <FormLabel>Phone Number (Read-only)</FormLabel>
+                <FormControl><Input value={user.phone ?? ""} readOnly disabled /></FormControl>
               </FormItem>
               <FormField control={form.control} name="email" render={({ field }) => (
                 <FormItem>
@@ -223,7 +245,19 @@ export default function EditUserPage() {
                   <FormControl><Input type="email" placeholder="e.g., john.doe@example.com" {...field} value={field.value ?? ""} /></FormControl>
                   <FormMessage />
                 </FormItem>
-              )}/>
+              )} />
+              <FormField control={form.control} name="role" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Role *</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {USER_ROLES_OPTIONS.map(role => <SelectItem key={role} value={role}>{role.replace(/_/g, " ")}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <FormField control={form.control} name="status" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Status</FormLabel>
@@ -235,96 +269,116 @@ export default function EditUserPage() {
                   </Select>
                   <FormMessage />
                 </FormItem>
-              )}/>
+              )} />
             </CardContent>
           </Card>
 
           <Card className="shadow-md">
             <CardHeader>
-              <CardTitle>Addresses</CardTitle>
-              <CardDescription>Manage user addresses. Add, edit, or remove addresses.</CardDescription>
+              <CardTitle>Addresses *</CardTitle>
+              <CardDescription>At least one address is required.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {addressFields.map((formField, index) => ( // Renamed field to formField to avoid conflict
-                <Card key={formField.id} className="p-4 space-y-3 bg-secondary/50"> {/* Use formField.id for React key */}
+              {addressFields.map((formField, index) => (
+                <Card key={formField.id} className="p-4 space-y-3 bg-secondary/50">
                   <div className="flex justify-between items-center">
-                     <h4 className="font-medium">Address {index + 1} {form.watch(`addresses.${index}.id`) ? `(ID: ${form.watch(`addresses.${index}.id`)})` : "(New)"}</h4>
-                    <Button type="button" variant="ghost" size="icon" onClick={() => removeAddress(index)} className="text-destructive hover:text-destructive/80">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <h4 className="font-medium">Address {index + 1} {form.watch(`addresses.${index}.id`) ? `(ID: ${form.watch(`addresses.${index}.id`)?.substring(0,6)}...)` : "(New)"}</h4>
+                     {addressFields.length > 1 && (
+                        <Button type="button" variant="ghost" size="icon" onClick={() => removeAddress(index)} className="text-destructive hover:text-destructive/80">
+                        <Trash2 className="h-4 w-4" />
+                        </Button>
+                     )}
                   </div>
+                  <input type="hidden" {...form.register(`addresses.${index}.id`)} />
                   <div className="grid gap-4 md:grid-cols-2">
-                    {/* Actual address ID from API is form.watch(`addresses.${index}.id`) */}
-                    {/* field.id is from useFieldArray for React keys, do not send to API */}
-                    <input type="hidden" {...form.register(`addresses.${index}.id`)} /> 
-                    
                     <FormField control={form.control} name={`addresses.${index}.line1`} render={({ field: f }) => (
-                        <FormItem><FormLabel>Line 1 *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
-                    )}/>
+                      <FormItem><FormLabel>Line 1 *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
+                    )} />
                     <FormField control={form.control} name={`addresses.${index}.line2`} render={({ field: f }) => (
-                        <FormItem><FormLabel>Line 2</FormLabel><FormControl><Input {...f} value={f.value ?? ""} /></FormControl><FormMessage /></FormItem>
-                    )}/>
+                      <FormItem><FormLabel>Line 2</FormLabel><FormControl><Input {...f} value={f.value ?? ""} /></FormControl><FormMessage /></FormItem>
+                    )} />
                     <FormField control={form.control} name={`addresses.${index}.city`} render={({ field: f }) => (
-                        <FormItem><FormLabel>City *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
-                    )}/>
-                    <FormField control={form.control} name={`addresses.${index}.state`} render={({ field: f }) => (
-                        <FormItem><FormLabel>State *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
-                    )}/>
-                    <FormField control={form.control} name={`addresses.${index}.country`} render={({ field: f }) => (
-                        <FormItem><FormLabel>Country *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
-                    )}/>
-                    <FormField control={form.control} name={`addresses.${index}.postalCode`} render={({ field: f }) => (
-                        <FormItem><FormLabel>Postal Code *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
-                    )}/>
-                     <FormField control={form.control} name={`addresses.${index}.type`} render={({ field: f }) => (
+                      <FormItem><FormLabel>City *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <Controller
+                      control={form.control}
+                      name={`addresses.${index}.state`}
+                      render={({ field: stateField }) => (
                         <FormItem>
-                            <FormLabel>Address Type</FormLabel>
-                            <Select onValueChange={f.onChange} value={f.value ?? ""}>
-                                <FormControl><SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger></FormControl>
-                                <SelectContent>
-                                    {ADDRESS_TYPES.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                            <FormMessage />
+                          <FormLabel>State *</FormLabel>
+                          <StateCombobox
+                            value={stateField.value}
+                            onValueChange={(newState) => {
+                              form.setValue(`addresses.${index}.state`, newState || "");
+                            }}
+                            onStateCodeChange={(newStateCode) => {
+                              form.setValue(`addresses.${index}.stateCode`, newStateCode || "");
+                            }}
+                          />
+                          <FormMessage>{form.formState.errors.addresses?.[index]?.state?.message}</FormMessage>
+                           <FormField control={form.control} name={`addresses.${index}.stateCode`} render={({ field: f }) => (
+                              <FormItem className="sr-only">
+                                <FormLabel>State Code</FormLabel><FormControl><Input {...f} readOnly /></FormControl><FormMessage />
+                              </FormItem>
+                          )}/>
                         </FormItem>
-                    )}/>
-                     <Controller
-                        control={form.control}
-                        name={`addresses.${index}.isDefault`}
-                        render={({ field: f }) => (
+                      )}
+                    />
+                    <FormField control={form.control} name={`addresses.${index}.country`} render={({ field: f }) => (
+                      <FormItem><FormLabel>Country *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={form.control} name={`addresses.${index}.postalCode`} render={({ field: f }) => (
+                      <FormItem><FormLabel>Postal Code *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={form.control} name={`addresses.${index}.type`} render={({ field: f }) => (
+                      <FormItem>
+                        <FormLabel>Address Type</FormLabel>
+                        <Select onValueChange={f.onChange} value={f.value ?? ""}>
+                          <FormControl><SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger></FormControl>
+                          <SelectContent>
+                            {ADDRESS_TYPES.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <Controller
+                      control={form.control}
+                      name={`addresses.${index}.isDefault`}
+                      render={({ field: f }) => (
                         <FormItem className="flex flex-row items-end space-x-3 space-y-0 pb-2">
-                            <FormControl>
-                                <Button 
-                                    type="button"
-                                    variant={f.value ? "default" : "outline"}
-                                    onClick={() => {
-                                      if (!f.value) { // If setting this one to default
-                                        form.getValues("addresses")?.forEach((_, addrIdx) => {
-                                          if (index !== addrIdx) { // Unset others
-                                            form.setValue(`addresses.${addrIdx}.isDefault`, false);
-                                          }
-                                        });
-                                      }
-                                      // For radio-like behavior (only one default):
-                                      // If you want to ensure only one default, and clicking a default one makes it non-default
-                                      // then you might not need the above loop, just toggle.
-                                      // But typically, setting one default unsets others.
-                                      form.setValue(`addresses.${index}.isDefault`, !f.value);
-                                    }}
-                                    className="w-full"
-                                >
-                                    {f.value ? "Default Address" : "Set as Default"}
-                                </Button>
-                            </FormControl>
+                          <FormControl>
+                            <Button
+                              type="button"
+                              variant={f.value ? "default" : "outline"}
+                              onClick={() => {
+                                if (!f.value) {
+                                  form.getValues("addresses")?.forEach((_, addrIdx) => {
+                                    if (index !== addrIdx) {
+                                      form.setValue(`addresses.${addrIdx}.isDefault`, false);
+                                    }
+                                  });
+                                }
+                                f.onChange(!f.value);
+                              }}
+                              className="w-full"
+                            >
+                              {f.value ? "Default Address" : "Set as Default"}
+                            </Button>
+                          </FormControl>
                         </FormItem>
-                        )}
+                      )}
                     />
                   </div>
                 </Card>
               ))}
-              <Button type="button" variant="outline" onClick={() => appendAddress({ line1: '', city: '', state: '', country: '', postalCode: '', isDefault: addressFields.length === 0, type: 'SHIPPING' })}>
+              <Button type="button" variant="outline" onClick={() => appendAddress({
+                id: undefined, line1: "", line2: "", city: "", state: "", stateCode: "", country: "India",
+                postalCode: "", type: "SHIPPING", isDefault: addressFields.length === 0
+              })}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Add New Address
               </Button>
+              <FormMessage>{form.formState.errors.addresses?.message || form.formState.errors.addresses?.root?.message}</FormMessage>
             </CardContent>
           </Card>
 
@@ -341,3 +395,4 @@ export default function EditUserPage() {
     </div>
   );
 }
+      
