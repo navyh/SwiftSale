@@ -16,12 +16,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   fetchProductById,
   updateProduct,
+  addMultipleVariants, // Added for new variant creation
   type UpdateProductRequest,
   type ProductDto,
-  type ProductVariantDto
+  type ProductVariantDto,
+  type AddProductVariantsRequest
 } from "@/lib/apiClient";
 import { ChevronLeft, Save, PlusCircle, Loader2, Trash2, X as XIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -39,12 +43,7 @@ const productFormSchema = z.object({
   gstTaxRate: z.coerce.number({invalid_type_error: "GST Tax Rate must be a number"}).min(0).optional().nullable(),
   category: z.string().min(1, "Category name is required"),
   subCategory: z.string().optional().nullable(),
-  
-  newColorValues: z.string().optional().nullable().describe("Comma-separated new color names for variant generation"),
-  newSizeValues: z.string().optional().nullable().describe("Comma-separated new size names for variant generation"),
-  
   tagsInput: z.string().optional().nullable(),
-
   sku: z.string().optional().nullable(),
   barcode: z.string().optional().nullable(),
   costPrice: z.coerce.number({invalid_type_error: "Cost price must be a number"}).min(0).optional().nullable(),
@@ -59,6 +58,16 @@ const productFormSchema = z.object({
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
 
+const addVariantsFormSchema = z.object({
+  colors: z.string().optional(),
+  sizes: z.string().optional(),
+}).refine(data => data.colors || data.sizes, {
+  message: "At least one color or size must be provided.",
+  path: ["colors"], // Or path: ["sizes"] or a general path
+});
+type AddVariantsFormValues = z.infer<typeof addVariantsFormSchema>;
+
+
 // Helper function for color bullet preview
 const shouldShowColorBullet = (colorString?: string | null): boolean => {
   if (!colorString || typeof colorString !== 'string') return false;
@@ -72,16 +81,12 @@ const shouldShowColorBullet = (colorString?: string | null): boolean => {
   if (lowerColor.includes(' ') && lowerColor.split(' ').length > 3 && !['rgb', 'hsl'].some(prefix => lowerColor.startsWith(prefix))) {
       return false;
   }
-  // Basic check for common invalid characters in simple color names (though CSS is more permissive)
-  if (/[^a-z0-9#()-\s,.]/i.test(lowerColor) && !lowerColor.startsWith('rgb') && !lowerColor.startsWith('hsl')) {
-    //  return false; // This might be too restrictive for some valid CSS color names or hex
-  }
   return true;
 };
 
 interface TagsInputWithPreviewProps {
-  value: string; // Comma-separated string
-  onChange: (value: string) => void; // Callback with new comma-separated string
+  value: string; 
+  onChange: (value: string) => void; 
   placeholder?: string;
   isColorInput?: boolean;
   id?: string;
@@ -105,10 +110,6 @@ const TagsInputWithPreview: React.FC<TagsInputWithPreviewProps> = ({
     onChange(newTags.join(','));
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInputValue(e.target.value);
-  };
-
   const addTag = (tagToAdd: string) => {
     const trimmedTag = tagToAdd.trim();
     if (trimmedTag && !tags.includes(trimmedTag)) {
@@ -117,6 +118,10 @@ const TagsInputWithPreview: React.FC<TagsInputWithPreviewProps> = ({
       updateFormValue(newTags);
     }
     setInputValue('');
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e.target.value);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -188,34 +193,59 @@ export default function EditProductPage() {
   const [product, setProduct] = React.useState<ProductDto | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [showAddVariantsModal, setShowAddVariantsModal] = React.useState(false);
+  const [isAddingVariants, setIsAddingVariants] = React.useState(false);
 
   const productStatuses = hardcodedProductStatuses;
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
-      name: "",
-      brand: "", 
-      category: "", 
-      subCategory: "",
-      hsnCode: "",
-      description: "",
-      gstTaxRate: undefined,
-      status: "DRAFT",
-      newColorValues: "",
-      newSizeValues: "",
-      tagsInput: "",
-      sku: "",
-      barcode: "",
-      costPrice: undefined,
-      imageUrlsInput: "",
-      weight: undefined,
-      dimensions: "",
-      isFeatured: false,
-      metaTitle: "",
-      metaDescription: "",
+      name: "", brand: "", category: "", subCategory: "", hsnCode: "", description: "",
+      gstTaxRate: undefined, status: "DRAFT", tagsInput: "", sku: "", barcode: "",
+      costPrice: undefined, imageUrlsInput: "", weight: undefined, dimensions: "",
+      isFeatured: false, metaTitle: "", metaDescription: "",
     },
   });
+
+  const addVariantsForm = useForm<AddVariantsFormValues>({
+    resolver: zodResolver(addVariantsFormSchema),
+    defaultValues: { colors: "", sizes: "" },
+  });
+
+  const fetchProductData = React.useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const fetchedProduct = await fetchProductById(productId);
+      setProduct(fetchedProduct);
+
+      const currentStatus = fetchedProduct.status?.toUpperCase();
+      const validStatus = productStatuses.includes(currentStatus as any) ? currentStatus : "DRAFT";
+      
+      form.reset({
+        name: fetchedProduct.name || "", brand: fetchedProduct.brand || "", 
+        category: fetchedProduct.category || "", subCategory: fetchedProduct.subCategory ?? "",
+        hsnCode: fetchedProduct.hsnCode ?? "", description: fetchedProduct.description ?? "",
+        gstTaxRate: fetchedProduct.gstTaxRate === null ? undefined : fetchedProduct.gstTaxRate,
+        status: validStatus, tagsInput: fetchedProduct.tags?.join(", ") ?? "",
+        sku: fetchedProduct.sku ?? "", barcode: fetchedProduct.barcode ?? "", 
+        costPrice: fetchedProduct.costPrice === null ? undefined : fetchedProduct.costPrice,
+        imageUrlsInput: fetchedProduct.imageUrls?.join(", ") ?? "",
+        weight: fetchedProduct.weight === null ? undefined : fetchedProduct.weight,
+        dimensions: fetchedProduct.dimensions ?? "", isFeatured: fetchedProduct.isFeatured ?? false,
+        metaTitle: fetchedProduct.metaTitle ?? "", metaDescription: fetchedProduct.metaDescription ?? "",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error fetching product",
+        description: error.message || "Could not load product data.",
+        variant: "destructive",
+      });
+      router.push("/products");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [productId, router, toast, form]); // Added form to dependencies
 
   React.useEffect(() => {
     if (!productId) {
@@ -223,92 +253,33 @@ export default function EditProductPage() {
       router.push("/products");
       return;
     }
-
-    const fetchProductData = async () => {
-      setIsLoading(true);
-      try {
-        const fetchedProduct = await fetchProductById(productId);
-        setProduct(fetchedProduct);
-
-        const currentStatus = fetchedProduct.status?.toUpperCase();
-        const validStatus = productStatuses.includes(currentStatus as any) ? currentStatus : "DRAFT";
-        
-        form.reset({
-          name: fetchedProduct.name || "",
-          brand: fetchedProduct.brand || "", 
-          category: fetchedProduct.category || "", 
-          subCategory: fetchedProduct.subCategory ?? "",
-          hsnCode: fetchedProduct.hsnCode ?? "",
-          description: fetchedProduct.description ?? "",
-          gstTaxRate: fetchedProduct.gstTaxRate === null ? undefined : fetchedProduct.gstTaxRate, // handle null from API
-          status: validStatus,
-          tagsInput: fetchedProduct.tags?.join(", ") ?? "",
-          sku: fetchedProduct.sku ?? "", 
-          barcode: fetchedProduct.barcode ?? "", 
-          costPrice: fetchedProduct.costPrice === null ? undefined : fetchedProduct.costPrice,
-          imageUrlsInput: fetchedProduct.imageUrls?.join(", ") ?? "",
-          weight: fetchedProduct.weight === null ? undefined : fetchedProduct.weight,
-          dimensions: fetchedProduct.dimensions ?? "",
-          isFeatured: fetchedProduct.isFeatured ?? false,
-          metaTitle: fetchedProduct.metaTitle ?? "",
-          metaDescription: fetchedProduct.metaDescription ?? "",
-          newColorValues: "", 
-          newSizeValues: "", 
-        });
-      } catch (error: any) {
-        toast({
-          title: "Error fetching product",
-          description: error.message || "Could not load product data.",
-          variant: "destructive",
-        });
-        router.push("/products");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     fetchProductData();
-  }, [productId, router, toast, form]);
+  }, [productId, router, toast, fetchProductData]);
+
 
   async function onSubmit(data: ProductFormValues) {
     if (!productId) return;
     setIsSubmitting(true);
     try {
-      const colorVariant = data.newColorValues?.split(',').map(c => c.trim()).filter(Boolean) || undefined;
-      const sizeVariant = data.newSizeValues?.split(',').map(s => s.trim()).filter(Boolean) || undefined;
       const tags = data.tagsInput?.split(',').map(t => t.trim()).filter(Boolean) || undefined;
       const imageUrls = data.imageUrlsInput?.split(',').map(url => url.trim()).filter(Boolean) || undefined;
 
       const payload: UpdateProductRequest = {
-        name: data.name,
-        brand: data.brand, 
-        category: data.category, 
-        subCategory: data.subCategory || undefined,
-        hsnCode: data.hsnCode || undefined,
+        name: data.name, brand: data.brand, category: data.category, 
+        subCategory: data.subCategory || undefined, hsnCode: data.hsnCode || undefined,
         description: data.description || undefined,
         gstTaxRate: data.gstTaxRate === undefined || data.gstTaxRate === null ? undefined : Number(data.gstTaxRate),
         status: data.status as UpdateProductRequest['status'] || undefined,
-        
-        colorVariant: (colorVariant && colorVariant.length > 0) ? colorVariant : undefined, 
-        sizeVariant: (sizeVariant && sizeVariant.length > 0) ? sizeVariant : undefined,   
-        tags: tags,
-        
-        sku: data.sku || undefined,
-        barcode: data.barcode || undefined,
+        tags: tags, sku: data.sku || undefined, barcode: data.barcode || undefined,
         costPrice: data.costPrice === undefined || data.costPrice === null ? undefined : Number(data.costPrice),
         imageUrls: imageUrls,
         weight: data.weight === undefined || data.weight === null ? undefined : Number(data.weight),
-        dimensions: data.dimensions || undefined,
-        isFeatured: data.isFeatured,
-        metaTitle: data.metaTitle || undefined,
-        metaDescription: data.metaDescription || undefined,
+        dimensions: data.dimensions || undefined, isFeatured: data.isFeatured,
+        metaTitle: data.metaTitle || undefined, metaDescription: data.metaDescription || undefined,
       };
 
       await updateProduct(productId, payload);
-      toast({
-        title: "Success",
-        description: "Product updated successfully.",
-      });
+      toast({ title: "Success", description: "Product updated successfully." });
       router.push("/products"); 
       router.refresh();
     } catch (error: any) {
@@ -321,6 +292,40 @@ export default function EditProductPage() {
       setIsSubmitting(false);
     }
   }
+
+  async function onAddVariantsSubmit(data: AddVariantsFormValues) {
+    if (!productId) return;
+    setIsAddingVariants(true);
+    try {
+      const colorsArray = data.colors?.split(',').map(c => c.trim()).filter(Boolean);
+      const sizesArray = data.sizes?.split(',').map(s => s.trim()).filter(Boolean);
+
+      const payload: AddProductVariantsRequest = {};
+      if (colorsArray && colorsArray.length > 0) payload.color = colorsArray;
+      if (sizesArray && sizesArray.length > 0) payload.size = sizesArray;
+      
+      if (!payload.color && !payload.size) {
+        addVariantsForm.setError("colors", { type: "manual", message: "Please provide at least one color or size." });
+        setIsAddingVariants(false);
+        return;
+      }
+
+      await addMultipleVariants(productId, payload);
+      toast({ title: "Success", description: "New variants added successfully." });
+      setShowAddVariantsModal(false);
+      addVariantsForm.reset({ colors: "", sizes: "" });
+      fetchProductData(); // Refresh product data to show new variants
+    } catch (error: any) {
+      toast({
+        title: "Error Adding Variants",
+        description: error.message || "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAddingVariants(false);
+    }
+  }
+
 
   if (isLoading) {
     return (
@@ -381,168 +386,46 @@ export default function EditProductPage() {
               <FormField control={form.control} name="name" render={({ field }) => (
                   <FormItem className="md:col-span-2">
                     <FormLabel>Product Name *</FormLabel>
-                    <FormControl><Input {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                    <FormControl><Input {...field} /></FormControl><FormMessage />
+                  </FormItem> )} />
               <FormField control={form.control} name="brand" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Brand Name *</FormLabel>
-                    <FormControl><Input placeholder="e.g., Nike" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormItem><FormLabel>Brand Name *</FormLabel><FormControl><Input placeholder="e.g., Nike" {...field} /></FormControl><FormMessage /></FormItem> )} />
               <FormField control={form.control} name="category" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Category Name *</FormLabel>
-                    <FormControl><Input placeholder="e.g., Apparel" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormItem><FormLabel>Category Name *</FormLabel><FormControl><Input placeholder="e.g., Apparel" {...field} /></FormControl><FormMessage /></FormItem> )} />
               <FormField control={form.control} name="subCategory" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Sub-Category Name</FormLabel>
-                    <FormControl><Input placeholder="e.g., T-Shirts" {...field} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormItem><FormLabel>Sub-Category Name</FormLabel><FormControl><Input placeholder="e.g., T-Shirts" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
               <FormField control={form.control} name="description" render={({ field }) => (
-                  <FormItem className="md:col-span-2">
-                    <FormLabel>Description</FormLabel>
-                    <FormControl><Textarea rows={3} {...field} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormItem className="md:col-span-2"><FormLabel>Description</FormLabel><FormControl><Textarea rows={3} {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
             </CardContent>
           </Card>
 
           <Card className="shadow-md">
-            <CardHeader>
-              <CardTitle>Codes & Taxes</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>Codes & Taxes</CardTitle></CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
               <FormField control={form.control} name="hsnCode" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>HSN Code</FormLabel>
-                    <FormControl><Input placeholder="e.g., 61091000" {...field} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormItem><FormLabel>HSN Code</FormLabel><FormControl><Input placeholder="e.g., 61091000" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
               <FormField control={form.control} name="gstTaxRate" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>GST Tax Rate (%)</FormLabel>
-                    <FormControl><Input type="number" step="0.01" placeholder="e.g., 18" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormItem><FormLabel>GST Tax Rate (%)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 18" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
             </CardContent>
           </Card>
 
           <Card className="shadow-md">
-            <CardHeader>
-              <CardTitle>Optional Base Product Details</CardTitle>
-              <CardDescription>Base values if product has no variants or as default. API may use variant-specific data.</CardDescription>
-            </CardHeader>
+            <CardHeader><CardTitle>Optional Base Product Details</CardTitle><CardDescription>Base values if product has no variants or as default. API may use variant-specific data.</CardDescription></CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 md:gap-6">
-                <FormField control={form.control} name="sku" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Base SKU</FormLabel>
-                    <FormControl><Input {...field} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField control={form.control} name="barcode" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Base Barcode</FormLabel>
-                    <FormControl><Input {...field} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField control={form.control} name="costPrice" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Base Cost Price</FormLabel>
-                    <FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <FormField control={form.control} name="sku" render={({ field }) => (<FormItem><FormLabel>Base SKU</FormLabel><FormControl><Input {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
+                <FormField control={form.control} name="barcode" render={({ field }) => ( <FormItem><FormLabel>Base Barcode</FormLabel><FormControl><Input {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
+                <FormField control={form.control} name="costPrice" render={({ field }) => ( <FormItem><FormLabel>Base Cost Price</FormLabel><FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
             </CardContent>
           </Card>
           
           <Card className="shadow-md">
-            <CardHeader>
-                <CardTitle>Generate New Variants</CardTitle>
-                <CardDescription>Enter color and size names to generate new variant combinations upon saving. Backend will create these.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2">
-                <FormItem>
-                    <FormLabel htmlFor="newColorValuesInput">New Color Names</FormLabel>
-                    <Controller
-                        control={form.control}
-                        name="newColorValues"
-                        render={({ field }) => (
-                            <TagsInputWithPreview
-                                id="newColorValuesInput"
-                                value={field.value ?? ""}
-                                onChange={field.onChange}
-                                placeholder="Type color and press Enter/Comma"
-                                isColorInput
-                            />
-                        )}
-                    />
-                    <FormDescription className="mt-1">Variants will be generated for each color combined with each size.</FormDescription>
-                    <FormMessage>{form.formState.errors.newColorValues?.message}</FormMessage>
-                </FormItem>
-                <FormItem>
-                    <FormLabel htmlFor="newSizeValuesInput">New Size Names</FormLabel>
-                     <Controller
-                        control={form.control}
-                        name="newSizeValues"
-                        render={({ field }) => (
-                            <TagsInputWithPreview
-                                id="newSizeValuesInput"
-                                value={field.value ?? ""}
-                                onChange={field.onChange}
-                                placeholder="Type size and press Enter/Comma"
-                            />
-                        )}
-                    />
-                    <FormDescription className="mt-1">Comma-separated.</FormDescription>
-                    <FormMessage>{form.formState.errors.newSizeValues?.message}</FormMessage>
-                </FormItem>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-md">
-            <CardHeader>
-              <CardTitle>Existing Variants</CardTitle>
-              <CardDescription>Manage existing product variants. Price and stock updates here will use specific variant update APIs.</CardDescription>
-            </CardHeader>
+            <CardHeader><CardTitle>Existing Variants</CardTitle><CardDescription>Manage existing product variants. Price and stock updates here will use specific variant update APIs.</CardDescription></CardHeader>
             <CardContent>
               {(!product.variants || product.variants.length === 0) ? (
-                <p className="text-muted-foreground">No variants found for this product. You can generate them above or add specific ones below.</p>
+                <p className="text-muted-foreground">No variants found for this product.</p>
               ) : (
                 <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>SKU</TableHead>
-                      <TableHead>Color</TableHead>
-                      <TableHead>Size</TableHead>
-                      <TableHead>Selling Price</TableHead>
-                      <TableHead>MRP</TableHead>
-                      <TableHead>Stock</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
+                  <TableHeader><TableRow><TableHead>SKU</TableHead><TableHead>Color</TableHead><TableHead>Size</TableHead><TableHead>Selling Price</TableHead><TableHead>MRP</TableHead><TableHead>Stock</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {product.variants.map(variant => (
                       <TableRow key={variant.id}>
@@ -554,7 +437,7 @@ export default function EditProductPage() {
                         <TableCell>{variant.quantity}</TableCell>
                         <TableCell className="text-right">
                           <Button type="button" variant="outline" size="sm" onClick={() => alert(`Edit variant ${variant.id} - TBD: Implement variant edit modal/form using updateProductVariant API.`)}>Edit</Button>
-                           <Button type="button" variant="destructive" size="sm" className="ml-2" onClick={() => alert(`Delete variant ${variant.id} - TBD: Implement deleteProductVariant API call.`)}>Delete</Button>
+                          <Button type="button" variant="destructive" size="sm" className="ml-2" onClick={() => alert(`Delete variant ${variant.id} - TBD: Implement deleteProductVariant API call.`)}>Delete</Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -562,100 +445,75 @@ export default function EditProductPage() {
                 </Table>
               )}
               <div className="mt-4">
-                <Button type="button" variant="outline" onClick={() => alert("Add specific variant - TBD: Implement form and addProductVariant API call.")}>
-                  <PlusCircle className="mr-2 h-4 w-4" /> Add Specific Variant
-                </Button>
+                 <Dialog open={showAddVariantsModal} onOpenChange={setShowAddVariantsModal}>
+                    <DialogTrigger asChild>
+                        <Button type="button" variant="outline">
+                            <PlusCircle className="mr-2 h-4 w-4" /> Add New Variants (Combinations)
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader><DialogTitle>Add New Variant Combinations</DialogTitle></DialogHeader>
+                        <Form {...addVariantsForm}>
+                            <form onSubmit={addVariantsForm.handleSubmit(onAddVariantsSubmit)} className="space-y-4">
+                                <FormField control={addVariantsForm.control} name="colors" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Color Names (Optional)</FormLabel>
+                                        <FormControl><Textarea placeholder="e.g., Red, Green, Blue" {...field} /></FormControl>
+                                        <FormDescription>Comma-separated color names. Leave blank if not applicable.</FormDescription>
+                                        <FormMessage />
+                                    </FormItem>
+                                )} />
+                                <FormField control={addVariantsForm.control} name="sizes" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Size Names (Optional)</FormLabel>
+                                        <FormControl><Textarea placeholder="e.g., S, M, L, XL" {...field} /></FormControl>
+                                        <FormDescription>Comma-separated size names. Leave blank if not applicable.</FormDescription>
+                                        <FormMessage />
+                                    </FormItem>
+                                )} />
+                                {addVariantsForm.formState.errors.colors && <p className="text-sm font-medium text-destructive">{addVariantsForm.formState.errors.colors.message}</p>}
+                                <DialogFooter>
+                                    <DialogClose asChild><Button type="button" variant="ghost">Cancel</Button></DialogClose>
+                                    <Button type="submit" disabled={isAddingVariants}>
+                                        {isAddingVariants ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Adding...</> : "Add Variants"}
+                                    </Button>
+                                </DialogFooter>
+                            </form>
+                        </Form>
+                    </DialogContent>
+                </Dialog>
               </div>
             </CardContent>
           </Card>
           
           <Card className="shadow-md">
-            <CardHeader>
-              <CardTitle>Media, Status & Other Details</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>Media, Status & Other Details</CardTitle></CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
               <FormField control={form.control} name="tagsInput" render={({ field }) => (
-                  <FormItem className="md:col-span-2">
-                    <FormLabel>Tags</FormLabel>
-                    <FormControl><Input placeholder="e.g., electronics, new, featured" {...field} value={field.value ?? ""}/></FormControl>
-                    <FormDescription>Comma-separated tags.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormItem className="md:col-span-2"><FormLabel>Tags</FormLabel><FormControl><Input placeholder="e.g., electronics, new, featured" {...field} value={field.value ?? ""}/></FormControl><FormDescription>Comma-separated tags.</FormDescription><FormMessage /></FormItem> )} />
               <FormField control={form.control} name="imageUrlsInput" render={({ field }) => (
-                  <FormItem className="md:col-span-2">
-                    <FormLabel>Image URLs</FormLabel>
-                    <FormControl><Textarea rows={3} placeholder="e.g., https://example.com/image1.jpg" {...field} value={field.value ?? ""} /></FormControl>
-                    <FormDescription>Comma-separated product-level image URLs.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormItem className="md:col-span-2"><FormLabel>Image URLs</FormLabel><FormControl><Textarea rows={3} placeholder="e.g., https://example.com/image1.jpg" {...field} value={field.value ?? ""} /></FormControl><FormDescription>Comma-separated product-level image URLs.</FormDescription><FormMessage /></FormItem> )} />
               <FormField control={form.control} name="weight" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Weight (kg)</FormLabel>
-                    <FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormItem><FormLabel>Weight (kg)</FormLabel><FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
               <FormField control={form.control} name="dimensions" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Dimensions (LxWxH cm)</FormLabel>
-                    <FormControl><Input {...field} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormItem><FormLabel>Dimensions (LxWxH cm)</FormLabel><FormControl><Input {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
                <FormField control={form.control} name="status" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Status</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger></FormControl>
-                    <SelectContent>{productStatuses.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>)}
-              />
+                <FormItem><FormLabel>Status</FormLabel><Select onValueChange={field.onChange} value={field.value ?? ""}><FormControl><SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger></FormControl><SelectContent>{productStatuses.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="isFeatured" render={({ field }) => (
-                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2">
-                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                    <div className="space-y-1 leading-none">
-                      <FormLabel>Featured Product</FormLabel>
-                      <FormDescription>Mark this product as featured.</FormDescription>
-                    </div>
-                  </FormItem>
-                )}
-              />
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><div className="space-y-1 leading-none"><FormLabel>Featured Product</FormLabel><FormDescription>Mark this product as featured.</FormDescription></div></FormItem> )} />
             </CardContent>
           </Card>
 
           <Card className="shadow-md">
             <CardHeader><CardTitle>SEO Information</CardTitle></CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
-              <FormField control={form.control} name="metaTitle" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Meta Title</FormLabel>
-                  <FormControl><Input {...field} value={field.value ?? ""} /></FormControl>
-                  <FormMessage />
-                </FormItem>)}
-              />
-              <FormField control={form.control} name="metaDescription" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Meta Description</FormLabel>
-                  <FormControl><Textarea rows={3} {...field} value={field.value ?? ""} /></FormControl>
-                  <FormMessage />
-                </FormItem>)}
-              />
+              <FormField control={form.control} name="metaTitle" render={({ field }) => ( <FormItem><FormLabel>Meta Title</FormLabel><FormControl><Input {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="metaDescription" render={({ field }) => ( <FormItem><FormLabel>Meta Description</FormLabel><FormControl><Textarea rows={3} {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
             </CardContent>
           </Card>
 
-
           <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 pt-6">
-            <Button type="button" variant="outline" onClick={() => router.back()} className="w-full sm:w-auto">
-              Cancel
-            </Button>
+            <Button type="button" variant="outline" onClick={() => router.back()} className="w-full sm:w-auto">Cancel</Button>
             <Button type="submit" disabled={isSubmitting || isLoading} className="w-full sm:w-auto">
               {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</> : <><Save className="mr-2 h-4 w-4" /> Save Changes</>}
             </Button>
@@ -665,3 +523,5 @@ export default function EditProductPage() {
     </div>
   );
 }
+
+    
