@@ -96,7 +96,7 @@ export interface UserDto {
   phone?: string | null;
   email?: string | null;
   addresses?: AddressDto[] | null;
-  role?: string | null;
+  role?: string | null; // This is the user's system-level role, not their role in a BusinessProfile
   status?: 'ACTIVE' | 'INACTIVE' | string | null;
   businessMemberships?: BusinessMembershipDto[] | null;
   createdAt?: string | null;
@@ -200,33 +200,33 @@ export interface BusinessProfileDto {
   isActive: boolean;
   paymentTerms?: string | null;
   addresses?: AddressDto[] | null;
-  userIds?: string[] | null; // Keep for edit scenario if API supports direct linking
+  userIds?: string[] | null;
   createdAt?: string | null;
   updatedAt?: string | null;
-  user?: UserDto; // For CreateBusinessProfileWithUserResponse
+  user?: UserDto;
   panNumber?: string | null;
   creditLimit?: number | null;
   notes?: string | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string | null; // For form mapping if needed, derive from isActive mostly
+  status?: 'ACTIVE' | 'INACTIVE' | string | null;
 }
 
 export interface CreateBusinessProfileRequest {
-  companyName: string; // Updated from 'name'
+  companyName: string;
   gstin: string;
   addresses: AddressCreateDto[];
   paymentTerms?: string | null;
   creditLimit?: number | null;
-  status?: 'ACTIVE' | 'INACTIVE'; // API seems to expect this for creation
+  status?: 'ACTIVE' | 'INACTIVE';
 }
 
 export interface UpdateBusinessProfileRequest {
-  companyName?: string;
+  companyName?: string; // Changed from name
   gstin?: string;
   status?: 'ACTIVE' | 'INACTIVE' | undefined;
   addresses?: (AddressCreateDto | AddressDto)[] | null;
   paymentTerms?: string | null;
   creditLimit?: number | null;
-  userIds?: string[] | null; // For updating linked users directly if API supports
+  // userIds is removed as member management is separate
 }
 
 export interface UserForCreateWithBpDto {
@@ -249,7 +249,7 @@ export interface CreateBusinessProfileWithUserRequest {
   businessProfile: BusinessProfileForCreateWithBpDto;
 }
 export interface CreateBusinessProfileWithUserResponse extends BusinessProfileDto {
-  user?: UserDto; // The newly created user details
+  user?: UserDto;
 }
 
 
@@ -264,7 +264,7 @@ export async function fetchBusinessProfiles(params?: { search?: string; status?:
   const data = await fetchAPI<Page<BusinessProfileDto> | undefined>(`/business-profiles${queryString ? `?${queryString}` : ''}`);
   const contentWithIsActive = data?.content.map(profile => ({
     ...profile,
-    companyName: profile.companyName || (profile as any).name, // Handle if API returns 'name'
+    companyName: profile.companyName || (profile as any).name,
     isActive: profile.isActive !== undefined ? profile.isActive : (profile.status === 'ACTIVE'),
   })) ?? [];
   return data ? { ...data, content: contentWithIsActive } : { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
@@ -282,14 +282,14 @@ export async function fetchBusinessProfileById(profileId: string): Promise<Busin
 export async function createBusinessProfile(profileData: CreateBusinessProfileRequest, creatorUserId: string): Promise<BusinessProfileDto> {
   return fetchAPI<BusinessProfileDto>(`/business-profiles?creatorUserId=${encodeURIComponent(creatorUserId)}`, {
     method: 'POST',
-    body: JSON.stringify({ ...profileData, name: profileData.companyName }), // Send 'name' if API expects it
+    body: JSON.stringify({ ...profileData, name: profileData.companyName }),
   });
 }
 
 export async function updateBusinessProfile(profileId: string, profileData: UpdateBusinessProfileRequest): Promise<BusinessProfileDto> {
   return fetchAPI<BusinessProfileDto>(`/business-profiles/${profileId}`, {
     method: 'PATCH',
-    body: JSON.stringify({ ...profileData, name: profileData.companyName }), // Send 'name' if API expects it
+    body: JSON.stringify({ ...profileData, name: profileData.companyName }),
   });
 }
 
@@ -333,7 +333,7 @@ export async function searchBusinessProfilesByName(name: string, page: number = 
 export async function createBusinessProfileWithUser(data: CreateBusinessProfileWithUserRequest): Promise<CreateBusinessProfileWithUserResponse> {
   const payload = {
     ...data,
-    businessProfile: { ...data.businessProfile, name: data.businessProfile.companyName } // Send 'name' if API expects
+    businessProfile: { ...data.businessProfile, name: data.businessProfile.companyName }
   };
   const response = await fetchAPI<CreateBusinessProfileWithUserResponse>('/business-profiles/with-user', {
     method: 'POST',
@@ -357,10 +357,30 @@ export async function fetchUsersForBusinessProfileByGstin(gstin: string, params?
   return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
 
+export type BusinessProfileMemberRole = "OWNER" | "MANAGER" | "STAFF" | string;
+
+export interface AddBusinessProfileMemberRequest {
+  userId: string;
+  role: BusinessProfileMemberRole;
+}
+
+export async function addBusinessProfileMember(businessId: string, memberData: AddBusinessProfileMemberRequest): Promise<any> {
+  return fetchAPI<any>(`/business-profiles/${businessId}/members`, {
+    method: 'POST',
+    body: JSON.stringify(memberData),
+  });
+}
+
+export async function removeBusinessProfileMember(businessId: string, userId: string): Promise<void> {
+  return fetchAPI<void>(`/business-profiles/${businessId}/members/${userId}`, {
+    method: 'DELETE',
+  }, false);
+}
+
 
 // === STAFF MANAGEMENT ===
 export interface StaffDto {
-  id: string; // Changed from number to string to match typical ID formats
+  id: string;
   userId: string;
   user?: UserDto | null;
   roles: string[];
@@ -370,13 +390,13 @@ export interface StaffDto {
   updatedAt?: string;
 }
 
-export interface CreateStaffRequest { // For POST /users/{userId}/staff
+export interface CreateStaffRequest {
   roles: string[];
   permissions?: string[] | null;
   status?: 'ACTIVE' | 'INACTIVE';
 }
 
-export interface UpdateStaffRequest { // For PUT /staff/{staffId}
+export interface UpdateStaffRequest {
   roles?: string[];
   permissions?: string[] | null;
   status?: 'ACTIVE' | 'INACTIVE';
@@ -395,7 +415,7 @@ export async function fetchStaff(params?: { role?: string; status?: string; page
   return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
 
-export async function fetchStaffById(staffId: string): Promise<StaffDto> { // Changed staffId to string
+export async function fetchStaffById(staffId: string): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/staff/${staffId}`);
 }
 
@@ -406,7 +426,7 @@ export async function createStaffMember(userId: string, staffData: CreateStaffRe
   });
 }
 
-export async function updateStaffMember(staffId: string, staffData: UpdateStaffRequest): Promise<StaffDto> { // Changed staffId to string
+export async function updateStaffMember(staffId: string, staffData: UpdateStaffRequest): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/staff/${staffId}`, {
     method: 'PUT',
     body: JSON.stringify(staffData),
@@ -420,7 +440,7 @@ export async function updateStaffRoles(userId: string, roles: string[]): Promise
   });
 }
 
-export async function deleteStaffMember(staffId: string): Promise<void> { // Changed staffId to string
+export async function deleteStaffMember(staffId: string): Promise<void> {
   return fetchAPI<void>(`/staff/${staffId}`, {
     method: 'DELETE',
   }, false);
@@ -439,12 +459,12 @@ export interface MetaItem {
 export interface Brand extends MetaItem {}
 
 export interface Category extends MetaItem {
-  parentId?: string | null; // Changed to string to match ID type
+  parentId?: string | null;
 }
 export interface ProductCategoryNode extends Category {
   children?: ProductCategoryNode[] | null;
-  displayName?: string; // For UI tree display
-  depth?: number; // For UI tree display
+  displayName?: string;
+  depth?: number;
 }
 
 export interface ProductUnit extends MetaItem {}
@@ -506,21 +526,21 @@ export interface ProductDto {
   variants?: ProductVariantDto[] | null;
   createdAt?: string;
   updatedAt?: string;
-  title?: string | null; // Can be product title if different from name
+  title?: string | null;
   manufacturedBy?: string | null;
 }
 
 
 export interface CreateProductRequest {
   name: string;
-  brand: string; // Changed to string - form will handle getting ID if needed
+  brand: string;
   hsnCode?: string | null;
   description?: string | null;
   gstTaxRate?: number | null;
-  category: string; // Changed to string
+  category: string;
   subCategory?: string | null;
-  colorVariant?: string[] | null; // Names of colors
-  sizeVariant?: string[] | null;  // Names of sizes
+  colorVariant?: string[] | null;
+  sizeVariant?: string[] | null;
   tags?: string[] | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
   title?: string | null;
@@ -530,8 +550,8 @@ export interface CreateProductRequest {
 
 export interface UpdateProductRequest {
   name?: string;
-  brand?: string; // Changed to string
-  category?: string; // Changed to string
+  brand?: string;
+  category?: string;
   subCategory?: string | null;
   hsnCode?: string | null;
   description?: string | null;
@@ -540,7 +560,6 @@ export interface UpdateProductRequest {
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
   title?: string | null;
   manufacturedBy?: string | null;
-  // Fields for updating base product if no variants or as default
   sku?: string | null;
   barcode?: string | null;
   costPrice?: number | null;
@@ -550,17 +569,16 @@ export interface UpdateProductRequest {
   isFeatured?: boolean | null;
   metaTitle?: string | null;
   metaDescription?: string | null;
-  // For generating NEW variants during update
   colorVariant?: string[] | null;
   sizeVariant?: string[] | null;
 }
 
-export interface AddProductVariantsRequest { // For POST /products/{productId}/variants
+export interface AddProductVariantsRequest {
   color: string[];
   size: string[];
 }
 
-export interface UpdateVariantRequest { // For PATCH /products/{productId}/variants/{variantId}
+export interface UpdateVariantRequest {
   title?: string;
   color?: string;
   size?: string;
@@ -573,7 +591,7 @@ export interface UpdateVariantRequest { // For PATCH /products/{productId}/varia
   mrp?: number;
   sellingPrice?: number;
   imageUrls?: string[] | null;
-  allowCriticalFieldUpdates?: boolean; // If backend supports this flag
+  allowCriticalFieldUpdates?: boolean;
 }
 
 
@@ -638,7 +656,7 @@ export interface ProductSearchRequest {
   size?: number;
   sort?: string;
 }
-export interface ProductSearchResultDto { // Matches the product object from /products search
+export interface ProductSearchResultDto {
     id: string;
     name: string;
     brand?: string | null;
@@ -647,8 +665,8 @@ export interface ProductSearchResultDto { // Matches the product object from /pr
     title?: string | null;
     description?: string | null;
     status?: string | null;
-    variants?: ProductVariantDto[] | null; // Assuming search might return variants
-    imageUrls?: string[] | null; // Product level images
+    variants?: ProductVariantDto[] | null;
+    imageUrls?: string[] | null;
     gstTaxRate?: number | null;
     hsnCode?: string | null;
 }
@@ -659,7 +677,7 @@ export interface QuickCreateProductRequest {
     categoryName: string;
     colorVariants: string[];
     sizeVariants: string[];
-    unitPrice: number; // Pre-GST unit price
+    unitPrice: number;
 }
 export interface QuickCreateProductResponse extends ProductDto {}
 
@@ -670,9 +688,9 @@ export interface OrderItemRequest {
     size?: string | null;
     color?: string | null;
     quantity: number;
-    unitPrice: number; // Selling price BEFORE TAX per unit
-    discountRate?: number | null; // Percentage
-    discountAmount?: number | null; // Per unit pre-tax discount amount
+    unitPrice: number;
+    discountRate?: number | null;
+    discountAmount?: number | null;
     hsnCode?: string | null;
     gstTaxRate?: number | null;
 }
@@ -687,7 +705,7 @@ export interface CustomerDetailsDto {
     businessProfileId?: string | null;
     companyName?: string | null;
     gstin?: string | null;
-    stateCode?: string | null; // GST State Code
+    stateCode?: string | null;
 }
 
 export interface CreateOrderRequest {
@@ -740,7 +758,7 @@ export interface InvoiceDto {
     issueDate?: string | null;
     dueDate?: string | null;
     totalAmount?: number | null;
-    pdfUrl?: string | null; // URL to download the PDF
+    pdfUrl?: string | null;
 }
 
 
@@ -810,14 +828,14 @@ export interface NotificationTemplate {
   name: string;
   subject: string;
   body: string;
-  type: string; // e.g., EMAIL, SMS
+  type: string;
   createdAt?: string;
   updatedAt?: string;
 }
 
 export type OrderStatus = string;
 export type PaymentType = string;
-export type UserRoleMeta = string; // As API returns string[]
+export type UserRoleMeta = string;
 
 
 export async function fetchProductBrands(): Promise<Brand[]> {
@@ -922,4 +940,3 @@ export async function updateCurrentUser(data: UpdateUserRequest): Promise<Curren
     body: JSON.stringify(data),
   });
 }
-
