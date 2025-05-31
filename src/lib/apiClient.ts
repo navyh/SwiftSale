@@ -192,30 +192,34 @@ export async function searchUsersByName(name: string, page: number = 0, size: nu
 // === BUSINESS PROFILE MANAGEMENT ===
 export interface BusinessProfileDto {
   id: string;
-  name?: string | null;
+  companyName?: string | null; // Changed from name
   gstin?: string | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string | null;
+  status?: 'ACTIVE' | 'INACTIVE' | string | null; // Kept for compatibility with forms for now
+  isActive: boolean; // Added
   paymentTerms?: string | null;
   addresses?: AddressDto[] | null;
   userIds?: string[] | null;
   createdAt?: string | null;
   updatedAt?: string | null;
-  user?: UserDto;
+  user?: UserDto; // For CreateBusinessProfileWithUserResponse
+  panNumber?: string | null; // Added from sample
+  creditLimit?: number | null; // Added from sample
+  notes?: string | null; // Added from sample
 }
 
 export interface CreateBusinessProfileRequest {
-  name: string;
+  name: string; // API might still expect 'name'
   gstin: string;
   addresses?: AddressCreateDto[] | null;
   paymentTerms?: string | null;
   userIds?: string[] | null;
-  status?: 'ACTIVE' | 'INACTIVE';
+  status?: 'ACTIVE' | 'INACTIVE'; // This will be derived from isActive for display, but forms use this
 }
 
 export interface UpdateBusinessProfileRequest {
-  name?: string;
+  name?: string; // API might still expect 'name'
   gstin?: string;
-  status?: 'ACTIVE' | 'INACTIVE' | undefined;
+  status?: 'ACTIVE' | 'INACTIVE' | undefined; // This will be derived from isActive for display
   addresses?: (AddressCreateDto | AddressDto)[] | null;
   paymentTerms?: string | null;
   userIds?: string[] | null;
@@ -223,7 +227,7 @@ export interface UpdateBusinessProfileRequest {
 
 export interface CreateBusinessProfileWithUserRequest {
   businessProfile: {
-    name: string;
+    name: string; // API might still expect 'name'
     gstin: string;
     paymentTerms?: string | null;
     addresses?: AddressCreateDto[] | null;
@@ -251,11 +255,21 @@ export async function fetchBusinessProfiles(params?: { search?: string; status?:
 
   const queryString = queryParams.toString();
   const data = await fetchAPI<Page<BusinessProfileDto> | undefined>(`/business-profiles${queryString ? `?${queryString}` : ''}`);
-  return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
+  // Ensure isActive is present, default to false if not for safety, though API should provide it.
+  const contentWithIsActive = data?.content.map(profile => ({
+    ...profile,
+    isActive: profile.isActive === undefined ? (profile.status === 'ACTIVE') : profile.isActive,
+  })) ?? [];
+  return data ? { ...data, content: contentWithIsActive } : { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
 
 export async function fetchBusinessProfileById(profileId: string): Promise<BusinessProfileDto> {
-  return fetchAPI<BusinessProfileDto>(`/business-profiles/${profileId}`);
+  const fetchedProfile = await fetchAPI<BusinessProfileDto>(`/business-profiles/${profileId}`);
+  // Ensure isActive is present
+  return {
+    ...fetchedProfile,
+    isActive: fetchedProfile.isActive === undefined ? (fetchedProfile.status === 'ACTIVE') : fetchedProfile.isActive,
+  };
 }
 
 export async function createBusinessProfile(profileData: CreateBusinessProfileRequest): Promise<BusinessProfileDto> {
@@ -280,7 +294,8 @@ export async function deleteBusinessProfile(profileId: string): Promise<void> {
 
 export async function searchBusinessProfileByGstin(gstin: string): Promise<BusinessProfileDto | null> {
    try {
-    return await fetchAPI<BusinessProfileDto>(`/business-profiles/by-gstin?gstin=${encodeURIComponent(gstin)}`);
+    const profile = await fetchAPI<BusinessProfileDto>(`/business-profiles/by-gstin?gstin=${encodeURIComponent(gstin)}`);
+    return profile ? { ...profile, isActive: profile.isActive === undefined ? (profile.status === 'ACTIVE') : profile.isActive } : null;
   } catch (error: any) {
     if (error.message && error.message.toLowerCase().includes("not found")) return null;
     console.warn(`Search BP by GSTIN for "${gstin}" failed:`, error);
@@ -295,15 +310,23 @@ export async function searchBusinessProfilesByName(name: string, page: number = 
   queryParams.append('size', size.toString());
   const queryString = queryParams.toString();
   const data = await fetchAPI<Page<BusinessProfileDto> | undefined>(`/business-profiles/search?${queryString}`);
-  return data ?? { content: [], totalPages: 0, totalElements: 0, size: size, number: page, first: true, last: true, empty: true };
+  const contentWithIsActive = data?.content.map(profile => ({
+    ...profile,
+    isActive: profile.isActive === undefined ? (profile.status === 'ACTIVE') : profile.isActive,
+  })) ?? [];
+  return data ? { ...data, content: contentWithIsActive } : { content: [], totalPages: 0, totalElements: 0, size: size, number: page, first: true, last: true, empty: true };
 }
 
 
 export async function createBusinessProfileWithUser(data: CreateBusinessProfileWithUserRequest): Promise<CreateBusinessProfileWithUserResponse> {
-  return fetchAPI<CreateBusinessProfileWithUserResponse>('/business-profiles/with-user', {
+  const response = await fetchAPI<CreateBusinessProfileWithUserResponse>('/business-profiles/with-user', {
     method: 'POST',
     body: JSON.stringify(data),
   });
+  return {
+    ...response,
+    isActive: response.isActive === undefined ? (response.status === 'ACTIVE') : response.isActive,
+  }
 }
 
 

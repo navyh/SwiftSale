@@ -72,13 +72,14 @@ export default function BusinessProfilesListPage() {
   const [currentPage, setCurrentPage] = React.useState(0);
   const [pageSize, setPageSize] = React.useState(10);
 
-  const loadProfiles = React.useCallback(async (page: number, size: number, search: string, status: string) => {
+  const loadProfiles = React.useCallback(async (page: number, size: number, search: string, statusFilter: string) => {
     setIsLoading(true);
     setError(null);
     try {
+      const apiStatus = statusFilter === ALL_PROFILES_FILTER_VALUE ? undefined : statusFilter;
       const params: { page: number; size: number; search?: string; status?: string } = { page, size };
       if (search) params.search = search;
-      if (status && status !== ALL_PROFILES_FILTER_VALUE) params.status = status; 
+      if (apiStatus) params.status = apiStatus; 
       
       const data = await fetchBusinessProfiles(params);
       setProfilesPage(data);
@@ -220,16 +221,16 @@ export default function BusinessProfilesListPage() {
               ) : profilesPage && profilesPage.content.length > 0 ? (
                 profilesPage.content.map((profile) => (
                   <TableRow key={profile.id}>
-                    <TableCell className="font-medium">{profile.name}</TableCell>
+                    <TableCell className="font-medium">{profile.companyName || "N/A"}</TableCell>
                     <TableCell className="hidden md:table-cell">{profile.gstin}</TableCell>
                     <TableCell className="hidden lg:table-cell">{profile.paymentTerms || "N/A"}</TableCell>
                     <TableCell>{profile.userIds?.length || 0}</TableCell>
                     <TableCell>
                       <Badge 
-                        variant={(profile.status || "").toUpperCase() === "ACTIVE" ? "default" : "outline"}
-                        className={(profile.status || "").toUpperCase() === "ACTIVE" ? "bg-green-500/20 text-green-700 border-green-500/30" : "bg-gray-500/20 text-gray-700 border-gray-500/30"}
+                        variant={profile.isActive ? "default" : "outline"}
+                        className={profile.isActive ? "bg-green-500/20 text-green-700 border-green-500/30" : "bg-gray-500/20 text-gray-700 border-gray-500/30"}
                       >
-                        {profile.status || "N/A"}
+                        {profile.isActive ? "ACTIVE" : "INACTIVE"}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
@@ -253,7 +254,7 @@ export default function BusinessProfilesListPage() {
                           <AlertDialogHeader>
                             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                             <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete the company "{profile.name}".
+                              This action cannot be undone. This will permanently delete the company "{profile.companyName || "this profile"}".
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -309,3 +310,4 @@ export default function BusinessProfilesListPage() {
     </div>
   );
 }
+
