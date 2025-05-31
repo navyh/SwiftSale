@@ -101,6 +101,9 @@ export interface UserDto {
   businessMemberships?: BusinessMembershipDto[] | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  // Extra fields potentially from API samples, not directly in core DTO but useful for context
+  type?: string | null; // Example: B2C, B2B from User list
+  gstin?: string | null; // Example: If user has their own GSTIN
 }
 
 export interface CreateUserRequest {
@@ -133,7 +136,7 @@ export async function fetchUsers(params?: { search?: string; page?: number; size
 }
 
 export async function fetchAllUsers(): Promise<UserDto[]> {
-  const data = await fetchAPI<Page<UserDto> | undefined>(`/users?size=1000`);
+  const data = await fetchAPI<Page<UserDto> | undefined>(`/users?size=1000`); // Fetch a large number for dropdowns
   return data?.content ?? [];
 }
 
@@ -192,57 +195,61 @@ export async function searchUsersByName(name: string, page: number = 0, size: nu
 // === BUSINESS PROFILE MANAGEMENT ===
 export interface BusinessProfileDto {
   id: string;
-  companyName?: string | null; // Changed from name
-  gstin?: string | null;
-  status?: 'ACTIVE' | 'INACTIVE' | string | null; // Kept for compatibility with forms for now
-  isActive: boolean; // Added
+  companyName: string;
+  gstin: string;
+  isActive: boolean;
   paymentTerms?: string | null;
   addresses?: AddressDto[] | null;
-  userIds?: string[] | null;
+  userIds?: string[] | null; // Keep for edit scenario if API supports direct linking
   createdAt?: string | null;
   updatedAt?: string | null;
   user?: UserDto; // For CreateBusinessProfileWithUserResponse
-  panNumber?: string | null; // Added from sample
-  creditLimit?: number | null; // Added from sample
-  notes?: string | null; // Added from sample
+  panNumber?: string | null;
+  creditLimit?: number | null;
+  notes?: string | null;
+  status?: 'ACTIVE' | 'INACTIVE' | string | null; // For form mapping if needed, derive from isActive mostly
 }
 
 export interface CreateBusinessProfileRequest {
-  name: string; // API might still expect 'name'
+  companyName: string; // Updated from 'name'
   gstin: string;
-  addresses?: AddressCreateDto[] | null;
+  addresses: AddressCreateDto[];
   paymentTerms?: string | null;
-  userIds?: string[] | null;
-  status?: 'ACTIVE' | 'INACTIVE'; // This will be derived from isActive for display, but forms use this
+  creditLimit?: number | null;
+  status?: 'ACTIVE' | 'INACTIVE'; // API seems to expect this for creation
 }
 
 export interface UpdateBusinessProfileRequest {
-  name?: string; // API might still expect 'name'
+  companyName?: string;
   gstin?: string;
-  status?: 'ACTIVE' | 'INACTIVE' | undefined; // This will be derived from isActive for display
+  status?: 'ACTIVE' | 'INACTIVE' | undefined;
   addresses?: (AddressCreateDto | AddressDto)[] | null;
   paymentTerms?: string | null;
-  userIds?: string[] | null;
+  creditLimit?: number | null;
+  userIds?: string[] | null; // For updating linked users directly if API supports
 }
 
+export interface UserForCreateWithBpDto {
+  name: string;
+  phone: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  addresses: AddressCreateDto[];
+  email?: string | null;
+}
+export interface BusinessProfileForCreateWithBpDto {
+  companyName: string;
+  gstin: string;
+  addresses: AddressCreateDto[];
+  paymentTerms?: string | null;
+  creditLimit?: number | null;
+  status?: 'ACTIVE' | 'INACTIVE';
+}
 export interface CreateBusinessProfileWithUserRequest {
-  businessProfile: {
-    name: string; // API might still expect 'name'
-    gstin: string;
-    paymentTerms?: string | null;
-    addresses?: AddressCreateDto[] | null;
-    status?: 'ACTIVE' | 'INACTIVE';
-  };
-  user: {
-    name: string;
-    phone: string;
-    email?: string | null;
-    addresses?: AddressCreateDto[] | null;
-    status?: 'ACTIVE' | 'INACTIVE';
-  };
+  user: UserForCreateWithBpDto;
+  businessProfile: BusinessProfileForCreateWithBpDto;
 }
 export interface CreateBusinessProfileWithUserResponse extends BusinessProfileDto {
-  user?: UserDto;
+  user?: UserDto; // The newly created user details
 }
 
 
@@ -255,34 +262,34 @@ export async function fetchBusinessProfiles(params?: { search?: string; status?:
 
   const queryString = queryParams.toString();
   const data = await fetchAPI<Page<BusinessProfileDto> | undefined>(`/business-profiles${queryString ? `?${queryString}` : ''}`);
-  // Ensure isActive is present, default to false if not for safety, though API should provide it.
   const contentWithIsActive = data?.content.map(profile => ({
     ...profile,
-    isActive: profile.isActive === undefined ? (profile.status === 'ACTIVE') : profile.isActive,
+    companyName: profile.companyName || (profile as any).name, // Handle if API returns 'name'
+    isActive: profile.isActive !== undefined ? profile.isActive : (profile.status === 'ACTIVE'),
   })) ?? [];
   return data ? { ...data, content: contentWithIsActive } : { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
 
 export async function fetchBusinessProfileById(profileId: string): Promise<BusinessProfileDto> {
   const fetchedProfile = await fetchAPI<BusinessProfileDto>(`/business-profiles/${profileId}`);
-  // Ensure isActive is present
   return {
     ...fetchedProfile,
-    isActive: fetchedProfile.isActive === undefined ? (fetchedProfile.status === 'ACTIVE') : fetchedProfile.isActive,
+    companyName: fetchedProfile.companyName || (fetchedProfile as any).name,
+    isActive: fetchedProfile.isActive !== undefined ? fetchedProfile.isActive : (fetchedProfile.status === 'ACTIVE'),
   };
 }
 
-export async function createBusinessProfile(profileData: CreateBusinessProfileRequest): Promise<BusinessProfileDto> {
-  return fetchAPI<BusinessProfileDto>('/business-profiles', {
+export async function createBusinessProfile(profileData: CreateBusinessProfileRequest, creatorUserId: string): Promise<BusinessProfileDto> {
+  return fetchAPI<BusinessProfileDto>(`/business-profiles?creatorUserId=${encodeURIComponent(creatorUserId)}`, {
     method: 'POST',
-    body: JSON.stringify(profileData),
+    body: JSON.stringify({ ...profileData, name: profileData.companyName }), // Send 'name' if API expects it
   });
 }
 
 export async function updateBusinessProfile(profileId: string, profileData: UpdateBusinessProfileRequest): Promise<BusinessProfileDto> {
   return fetchAPI<BusinessProfileDto>(`/business-profiles/${profileId}`, {
     method: 'PATCH',
-    body: JSON.stringify(profileData),
+    body: JSON.stringify({ ...profileData, name: profileData.companyName }), // Send 'name' if API expects it
   });
 }
 
@@ -295,7 +302,11 @@ export async function deleteBusinessProfile(profileId: string): Promise<void> {
 export async function searchBusinessProfileByGstin(gstin: string): Promise<BusinessProfileDto | null> {
    try {
     const profile = await fetchAPI<BusinessProfileDto>(`/business-profiles/by-gstin?gstin=${encodeURIComponent(gstin)}`);
-    return profile ? { ...profile, isActive: profile.isActive === undefined ? (profile.status === 'ACTIVE') : profile.isActive } : null;
+    return profile ? {
+         ...profile,
+         companyName: profile.companyName || (profile as any).name,
+         isActive: profile.isActive !== undefined ? profile.isActive : (profile.status === 'ACTIVE')
+        } : null;
   } catch (error: any) {
     if (error.message && error.message.toLowerCase().includes("not found")) return null;
     console.warn(`Search BP by GSTIN for "${gstin}" failed:`, error);
@@ -312,27 +323,44 @@ export async function searchBusinessProfilesByName(name: string, page: number = 
   const data = await fetchAPI<Page<BusinessProfileDto> | undefined>(`/business-profiles/search?${queryString}`);
   const contentWithIsActive = data?.content.map(profile => ({
     ...profile,
-    isActive: profile.isActive === undefined ? (profile.status === 'ACTIVE') : profile.isActive,
+    companyName: profile.companyName || (profile as any).name,
+    isActive: profile.isActive !== undefined ? profile.isActive : (profile.status === 'ACTIVE'),
   })) ?? [];
   return data ? { ...data, content: contentWithIsActive } : { content: [], totalPages: 0, totalElements: 0, size: size, number: page, first: true, last: true, empty: true };
 }
 
 
 export async function createBusinessProfileWithUser(data: CreateBusinessProfileWithUserRequest): Promise<CreateBusinessProfileWithUserResponse> {
+  const payload = {
+    ...data,
+    businessProfile: { ...data.businessProfile, name: data.businessProfile.companyName } // Send 'name' if API expects
+  };
   const response = await fetchAPI<CreateBusinessProfileWithUserResponse>('/business-profiles/with-user', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
   return {
     ...response,
-    isActive: response.isActive === undefined ? (response.status === 'ACTIVE') : response.isActive,
+    companyName: response.companyName || (response as any).name,
+    isActive: response.isActive !== undefined ? response.isActive : (response.status === 'ACTIVE'),
   }
+}
+
+export async function fetchUsersForBusinessProfileByGstin(gstin: string, params?: { page?: number; size?: number }): Promise<Page<UserDto>> {
+  const queryParams = new URLSearchParams();
+  if (params?.page !== undefined) queryParams.append('page', params.page.toString());
+  if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+  const queryString = queryParams.toString();
+
+  const endpoint = `/business-profiles/by-gstin/${encodeURIComponent(gstin)}/users${queryString ? `?${queryString}` : ''}`;
+  const data = await fetchAPI<Page<UserDto> | undefined>(endpoint);
+  return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
 
 
 // === STAFF MANAGEMENT ===
 export interface StaffDto {
-  id: string;
+  id: string; // Changed from number to string to match typical ID formats
   userId: string;
   user?: UserDto | null;
   roles: string[];
@@ -342,13 +370,13 @@ export interface StaffDto {
   updatedAt?: string;
 }
 
-export interface CreateStaffRequest {
+export interface CreateStaffRequest { // For POST /users/{userId}/staff
   roles: string[];
   permissions?: string[] | null;
   status?: 'ACTIVE' | 'INACTIVE';
 }
 
-export interface UpdateStaffRequest {
+export interface UpdateStaffRequest { // For PUT /staff/{staffId}
   roles?: string[];
   permissions?: string[] | null;
   status?: 'ACTIVE' | 'INACTIVE';
@@ -367,7 +395,7 @@ export async function fetchStaff(params?: { role?: string; status?: string; page
   return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
 
-export async function fetchStaffById(staffId: string): Promise<StaffDto> {
+export async function fetchStaffById(staffId: string): Promise<StaffDto> { // Changed staffId to string
   return fetchAPI<StaffDto>(`/staff/${staffId}`);
 }
 
@@ -378,7 +406,7 @@ export async function createStaffMember(userId: string, staffData: CreateStaffRe
   });
 }
 
-export async function updateStaffMember(staffId: string, staffData: UpdateStaffRequest): Promise<StaffDto> {
+export async function updateStaffMember(staffId: string, staffData: UpdateStaffRequest): Promise<StaffDto> { // Changed staffId to string
   return fetchAPI<StaffDto>(`/staff/${staffId}`, {
     method: 'PUT',
     body: JSON.stringify(staffData),
@@ -392,7 +420,7 @@ export async function updateStaffRoles(userId: string, roles: string[]): Promise
   });
 }
 
-export async function deleteStaffMember(staffId: string): Promise<void> {
+export async function deleteStaffMember(staffId: string): Promise<void> { // Changed staffId to string
   return fetchAPI<void>(`/staff/${staffId}`, {
     method: 'DELETE',
   }, false);
@@ -411,12 +439,12 @@ export interface MetaItem {
 export interface Brand extends MetaItem {}
 
 export interface Category extends MetaItem {
-  parentId?: string | null;
+  parentId?: string | null; // Changed to string to match ID type
 }
 export interface ProductCategoryNode extends Category {
   children?: ProductCategoryNode[] | null;
-  displayName?: string;
-  depth?: number;
+  displayName?: string; // For UI tree display
+  depth?: number; // For UI tree display
 }
 
 export interface ProductUnit extends MetaItem {}
@@ -466,33 +494,33 @@ export interface ProductDto {
   description?: string | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
   sku?: string | null;
-  barcode?: string | null; // Added for base product
-  costPrice?: number | null; // Added for base product
+  barcode?: string | null;
+  costPrice?: number | null;
   imageUrls?: string[] | null;
-  weight?: number | null; // Added for base product
-  dimensions?: string | null; // Added for base product
-  isFeatured?: boolean | null; // Added for base product
-  metaTitle?: string | null; // Added for base product
-  metaDescription?: string | null; // Added for base product
+  weight?: number | null;
+  dimensions?: string | null;
+  isFeatured?: boolean | null;
+  metaTitle?: string | null;
+  metaDescription?: string | null;
   tags?: string[] | null;
   variants?: ProductVariantDto[] | null;
   createdAt?: string;
   updatedAt?: string;
-  title?: string | null;
+  title?: string | null; // Can be product title if different from name
   manufacturedBy?: string | null;
 }
 
 
 export interface CreateProductRequest {
   name: string;
-  brand: string;
+  brand: string; // Changed to string - form will handle getting ID if needed
   hsnCode?: string | null;
   description?: string | null;
   gstTaxRate?: number | null;
-  category: string;
+  category: string; // Changed to string
   subCategory?: string | null;
-  colorVariant?: string[] | null;
-  sizeVariant?: string[] | null;
+  colorVariant?: string[] | null; // Names of colors
+  sizeVariant?: string[] | null;  // Names of sizes
   tags?: string[] | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
   title?: string | null;
@@ -502,8 +530,8 @@ export interface CreateProductRequest {
 
 export interface UpdateProductRequest {
   name?: string;
-  brand?: string;
-  category?: string;
+  brand?: string; // Changed to string
+  category?: string; // Changed to string
   subCategory?: string | null;
   hsnCode?: string | null;
   description?: string | null;
@@ -512,25 +540,27 @@ export interface UpdateProductRequest {
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
   title?: string | null;
   manufacturedBy?: string | null;
+  // Fields for updating base product if no variants or as default
   sku?: string | null;
-  barcode?: string | null; // Added
-  costPrice?: number | null; // Added
-  imageUrls?: string[] | null; // Added
-  weight?: number | null; // Added
-  dimensions?: string | null; // Added
-  isFeatured?: boolean | null; // Added
-  metaTitle?: string | null; // Added
-  metaDescription?: string | null; // Added
-  colorVariant?: string[] | null; // For generating new variants
-  sizeVariant?: string[] | null; // For generating new variants
+  barcode?: string | null;
+  costPrice?: number | null;
+  imageUrls?: string[] | null;
+  weight?: number | null;
+  dimensions?: string | null;
+  isFeatured?: boolean | null;
+  metaTitle?: string | null;
+  metaDescription?: string | null;
+  // For generating NEW variants during update
+  colorVariant?: string[] | null;
+  sizeVariant?: string[] | null;
 }
 
-export interface AddProductVariantsRequest {
+export interface AddProductVariantsRequest { // For POST /products/{productId}/variants
   color: string[];
   size: string[];
 }
 
-export interface UpdateVariantRequest {
+export interface UpdateVariantRequest { // For PATCH /products/{productId}/variants/{variantId}
   title?: string;
   color?: string;
   size?: string;
@@ -543,7 +573,7 @@ export interface UpdateVariantRequest {
   mrp?: number;
   sellingPrice?: number;
   imageUrls?: string[] | null;
-  allowCriticalFieldUpdates?: boolean;
+  allowCriticalFieldUpdates?: boolean; // If backend supports this flag
 }
 
 
@@ -816,7 +846,7 @@ export async function fetchProductCategoriesFlat(): Promise<Category[]> {
 export interface CreateCategoryRequest {
   name: string;
   description?: string | null;
-  parentId?: string | null; // Changed from number to string to match ID types
+  parentId?: string | null;
 }
 export async function createProductCategory(data: CreateCategoryRequest): Promise<Category> {
   return fetchAPI<Category>('/meta/product/categories', { method: 'POST', body: JSON.stringify(data) });
@@ -892,3 +922,4 @@ export async function updateCurrentUser(data: UpdateUserRequest): Promise<Curren
     body: JSON.stringify(data),
   });
 }
+
