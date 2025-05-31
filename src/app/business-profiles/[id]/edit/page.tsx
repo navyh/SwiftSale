@@ -28,27 +28,31 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { StateCombobox } from "@/components/ui/state-combobox";
+import { indianStates } from "@/lib/constants";
 
-// Form-specific Address schema, ID is optional
+
 const addressSchema = z.object({
   id: z.string().optional().nullable(), 
-  line1: z.string().min(1, "Address line 1 is required"),
+  line1: z.string().optional().nullable().or(z.literal("")),
   line2: z.string().optional().nullable().or(z.literal("")),
   city: z.string().min(1, "City is required"),
   state: z.string().min(1, "State is required"),
-  country: z.string().min(1, "Country is required"),
-  postalCode: z.string().min(1, "Postal code is required"),
+  stateCode: z.string().min(1, "State code is required"),
+  country: z.string().optional().nullable().or(z.literal("")),
+  postalCode: z.string().optional().nullable().or(z.literal("")),
   type: z.enum(["SHIPPING", "BILLING"]).optional().nullable(),
   isDefault: z.boolean().optional().default(false),
 });
 
 const profileFormSchema = z.object({
-  name: z.string().min(1, "Company name is required"),
+  companyName: z.string().min(1, "Company name is required"),
   gstin: z.string().min(1, "GSTIN is required")
     .regex(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, "Invalid GSTIN format"),
   paymentTerms: z.string().optional().nullable().or(z.literal("")),
+  creditLimit: z.coerce.number({invalid_type_error: "Credit limit must be a number"}).min(0, "Credit limit cannot be negative").optional().nullable(),
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
-  addresses: z.array(addressSchema).optional(),
+  addresses: z.array(addressSchema).min(1, "At least one address is required"),
   userIds: z.array(z.string()).optional(), 
 });
 
@@ -72,9 +76,10 @@ export default function EditBusinessProfilePage() {
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
-      name: "",
+      companyName: "",
       gstin: "",
-      paymentTerms: "",
+      paymentTerms: "NET 30",
+      creditLimit: 30,
       status: "ACTIVE",
       addresses: [],
       userIds: [],
@@ -108,25 +113,37 @@ export default function EditBusinessProfilePage() {
         setProfile(fetchedProfile);
         setAllUsers(fetchedUsers);
 
-        const currentStatus = fetchedProfile.status?.toUpperCase();
-        const validStatus = PROFILE_STATUSES.includes(currentStatus as any) ? currentStatus as "ACTIVE" | "INACTIVE" : "ACTIVE";
-
-        form.reset({
-          name: fetchedProfile.name ?? "",
-          gstin: fetchedProfile.gstin ?? "",
-          paymentTerms: fetchedProfile.paymentTerms ?? "",
-          status: validStatus,
-          addresses: fetchedProfile.addresses?.map(addr => ({ 
+        const validStatus = fetchedProfile.isActive ? "ACTIVE" : "INACTIVE";
+        const formAddresses = fetchedProfile.addresses?.map(addr => ({ 
             id: addr.id, 
             line1: addr.line1 ?? "",
             line2: addr.line2 ?? "",
             city: addr.city ?? "",
             state: addr.state ?? "",
-            country: addr.country ?? "",
+            stateCode: addr.stateCode ?? "",
+            country: addr.country ?? "India",
             postalCode: addr.postalCode ?? "",
             type: addr.type as ("SHIPPING" | "BILLING" | undefined) ?? undefined,
             isDefault: addr.isDefault ?? false,
-          })) ?? [],
+          })) ?? [{ 
+              id: undefined, line1: "", line2: "", city: "", state: "", stateCode: "", country: "India",
+              postalCode: "", type: "BILLING", isDefault: true
+          }];
+          if (formAddresses.length === 0) {
+             formAddresses.push({ 
+                id: undefined, line1: "", line2: "", city: "", state: "", stateCode: "", country: "India",
+                postalCode: "", type: "BILLING", isDefault: true
+            });
+          }
+
+
+        form.reset({
+          companyName: fetchedProfile.companyName ?? "",
+          gstin: fetchedProfile.gstin ?? "",
+          paymentTerms: fetchedProfile.paymentTerms ?? "NET 30",
+          creditLimit: fetchedProfile.creditLimit ?? 30,
+          status: validStatus,
+          addresses: formAddresses,
           userIds: fetchedProfile.userIds?.map(id => String(id)) ?? [], 
         });
       } catch (error: any) {
@@ -148,23 +165,31 @@ export default function EditBusinessProfilePage() {
     setIsSubmitting(true);
     try {
       const payload: UpdateBusinessProfileRequest = {
-        name: data.name,
+        name: data.companyName, // API might still expect 'name', but DTOs should map companyName
         gstin: data.gstin,
         paymentTerms: data.paymentTerms || undefined,
+        creditLimit: data.creditLimit,
         status: data.status,
         addresses: data.addresses?.map(addr => {
           const { id, ...rest } = addr;
           const apiAddr: AddressCreateDto | ApiAddressDto = {
             ...rest,
+            line1: rest.line1 || undefined,
             line2: rest.line2 || undefined,
             type: rest.type || undefined,
+            country: rest.country || undefined,
+            postalCode: rest.postalCode || undefined,
+            city: rest.city,
+            state: rest.state,
+            stateCode: rest.stateCode,
+            isDefault: rest.isDefault,
           };
           if (id) { 
             (apiAddr as ApiAddressDto).id = id;
           }
           return apiAddr;
         }) || [],
-        userIds: data.userIds?.map(id => String(id)) || [], // Ensure userIds are strings if API expects strings
+        userIds: data.userIds?.map(id => String(id)) || [],
       };
       
       await updateBusinessProfile(profileId, payload);
@@ -195,6 +220,7 @@ export default function EditBusinessProfilePage() {
         <Card className="shadow-md">
           <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
+            <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
           </CardContent>
@@ -229,7 +255,7 @@ export default function EditBusinessProfilePage() {
         </Button>
         <div>
           <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight flex items-center">
-            <Building2 className="mr-2 h-6 w-6" />Edit Business Profile: {profile.name}
+            <Building2 className="mr-2 h-6 w-6" />Edit Business Profile: {profile.companyName}
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base">Update profile details and linked users.</p>
         </div>
@@ -240,7 +266,7 @@ export default function EditBusinessProfilePage() {
           <Card className="shadow-md">
             <CardHeader><CardTitle>Profile Information</CardTitle></CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
-              <FormField control={form.control} name="name" render={({ field }) => (
+              <FormField control={form.control} name="companyName" render={({ field }) => (
                 <FormItem className="md:col-span-2"><FormLabel>Company Name *</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
               )}/>
               <FormField control={form.control} name="gstin" render={({ field }) => (
@@ -248,6 +274,9 @@ export default function EditBusinessProfilePage() {
               )}/>
               <FormField control={form.control} name="paymentTerms" render={({ field }) => (
                 <FormItem><FormLabel>Payment Terms</FormLabel><FormControl><Input {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
+              )}/>
+              <FormField control={form.control} name="creditLimit" render={({ field }) => (
+                <FormItem><FormLabel>Credit Limit (Days)</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
               )}/>
               <FormField control={form.control} name="status" render={({ field }) => (
                 <FormItem><FormLabel>Status</FormLabel>
@@ -323,22 +352,47 @@ export default function EditBusinessProfilePage() {
           </Card>
 
           <Card className="shadow-md">
-            <CardHeader><CardTitle>Addresses</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Addresses *</CardTitle><CardDescription>At least one address is required.</CardDescription></CardHeader>
             <CardContent className="space-y-4">
               {addressFields.map((formField, index) => ( 
                 <Card key={formField.id} className="p-4 space-y-3 bg-secondary/50"> 
                   <div className="flex justify-between items-center">
-                    <h4 className="font-medium">Address {index + 1} {form.watch(`addresses.${index}.id`) ? `(ID: ${form.watch(`addresses.${index}.id`)})` : "(New)"}</h4>
-                    <Button type="button" variant="ghost" size="icon" onClick={() => removeAddress(index)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4" /></Button>
+                    <h4 className="font-medium">Address {index + 1} {form.watch(`addresses.${index}.id`) ? `(ID: ${form.watch(`addresses.${index}.id`)?.substring(0,6)}...)` : "(New)"}</h4>
+                    {addressFields.length > 1 && (
+                        <Button type="button" variant="ghost" size="icon" onClick={() => removeAddress(index)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4" /></Button>
+                    )}
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <input type="hidden" {...form.register(`addresses.${index}.id`)} />
-                    <FormField control={form.control} name={`addresses.${index}.line1`} render={({ field: f }) => (<FormItem><FormLabel>Line 1 *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>)}/>
+                    <FormField control={form.control} name={`addresses.${index}.line1`} render={({ field: f }) => (<FormItem><FormLabel>Line 1</FormLabel><FormControl><Input {...f} value={f.value ?? ""} /></FormControl><FormMessage /></FormItem>)}/>
                     <FormField control={form.control} name={`addresses.${index}.line2`} render={({ field: f }) => (<FormItem><FormLabel>Line 2</FormLabel><FormControl><Input {...f} value={f.value ?? ""} /></FormControl><FormMessage /></FormItem>)}/>
                     <FormField control={form.control} name={`addresses.${index}.city`} render={({ field: f }) => (<FormItem><FormLabel>City *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>)}/>
-                    <FormField control={form.control} name={`addresses.${index}.state`} render={({ field: f }) => (<FormItem><FormLabel>State *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>)}/>
-                    <FormField control={form.control} name={`addresses.${index}.country`} render={({ field: f }) => (<FormItem><FormLabel>Country *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>)}/>
-                    <FormField control={form.control} name={`addresses.${index}.postalCode`} render={({ field: f }) => (<FormItem><FormLabel>Postal Code *</FormLabel><FormControl><Input {...f} /></FormControl><FormMessage /></FormItem>)}/>
+                     <Controller
+                      control={form.control}
+                      name={`addresses.${index}.state`}
+                      render={({ field: stateField }) => (
+                        <FormItem>
+                          <FormLabel>State *</FormLabel>
+                          <StateCombobox
+                            value={stateField.value}
+                            onValueChange={(newState) => {
+                              form.setValue(`addresses.${index}.state`, newState || "");
+                              const selectedStateObj = indianStates.find(s => s.name === newState);
+                              form.setValue(`addresses.${index}.stateCode`, selectedStateObj?.code || "");
+                            }}
+                            onStateCodeChange={() => {}}
+                          />
+                          <FormMessage>{form.formState.errors.addresses?.[index]?.state?.message}</FormMessage>
+                           <FormField control={form.control} name={`addresses.${index}.stateCode`} render={({ field: f }) => (
+                              <FormItem className="sr-only">
+                                <FormLabel>State Code *</FormLabel><FormControl><Input {...f} readOnly /></FormControl><FormMessage />
+                              </FormItem>
+                          )}/>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField control={form.control} name={`addresses.${index}.country`} render={({ field: f }) => (<FormItem><FormLabel>Country</FormLabel><FormControl><Input {...f} value={f.value ?? ""} /></FormControl><FormMessage /></FormItem>)}/>
+                    <FormField control={form.control} name={`addresses.${index}.postalCode`} render={({ field: f }) => (<FormItem><FormLabel>Postal Code</FormLabel><FormControl><Input {...f} value={f.value ?? ""} /></FormControl><FormMessage /></FormItem>)}/>
                     <FormField control={form.control} name={`addresses.${index}.type`} render={({ field: f }) => (
                       <FormItem><FormLabel>Address Type</FormLabel>
                         <Select onValueChange={f.onChange} value={f.value ?? ""}>
@@ -365,9 +419,10 @@ export default function EditBusinessProfilePage() {
                   </div>
                 </Card>
               ))}
-              <Button type="button" variant="outline" onClick={() => appendAddress({ id: null, line1: '', city: '', state: '', country: '', postalCode: '', isDefault: addressFields.length === 0, type: 'SHIPPING' })}>
+              <Button type="button" variant="outline" onClick={() => appendAddress({ id: null, line1: '', city: '', state: '', stateCode: '', country: 'India', postalCode: '', isDefault: addressFields.length === 0, type: 'SHIPPING' })}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Add Address
               </Button>
+              <FormMessage>{form.formState.errors.addresses?.message || form.formState.errors.addresses?.root?.message}</FormMessage>
             </CardContent>
           </Card>
 
@@ -383,3 +438,4 @@ export default function EditBusinessProfilePage() {
   );
 }
 
+    

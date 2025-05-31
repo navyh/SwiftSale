@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { fetchBusinessProfileById, deleteBusinessProfile, fetchUserById, type BusinessProfileDto, type AddressDto, type UserDto } from "@/lib/apiClient";
-import { ChevronLeft, Edit, Trash2, Building2, MapPin, Users, CalendarDays, AlertCircle, Loader2 } from "lucide-react";
+import { ChevronLeft, Edit, Trash2, Building2, MapPin, Users, CalendarDays, AlertCircle, Loader2, FileText, BadgeDollarSign } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -42,17 +42,17 @@ function AddressCard({ address, isDefault }: { address: AddressDto; isDefault: b
     <Card className="bg-secondary/30 p-4">
       <CardHeader className="p-0 pb-2">
         <CardTitle className="text-base flex justify-between items-center">
-          Address {address.id} {address.type ? `(${address.type})` : ''}
+          Address {address.id ? address.id.substring(0,6) + "..." : "N/A"} {address.type ? `(${address.type})` : ''}
           {isDefault && <Badge variant="default">Default</Badge>}
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
-        <p><span className="font-medium">Line 1:</span> {address.line1}</p>
+        <p><span className="font-medium">Line 1:</span> {address.line1 || "N/A"}</p>
         {address.line2 && <p><span className="font-medium">Line 2:</span> {address.line2}</p>}
         <p><span className="font-medium">City:</span> {address.city}</p>
-        <p><span className="font-medium">State:</span> {address.state}</p>
-        <p><span className="font-medium">Postal:</span> {address.postalCode}</p>
-        <p><span className="font-medium">Country:</span> {address.country}</p>
+        <p><span className="font-medium">State:</span> {address.state} ({address.stateCode})</p>
+        <p><span className="font-medium">Postal:</span> {address.postalCode || "N/A"}</p>
+        <p><span className="font-medium">Country:</span> {address.country || "N/A"}</p>
       </CardContent>
     </Card>
   );
@@ -184,7 +184,7 @@ export default function BusinessProfileDetailPage() {
     return <p className="text-center text-muted-foreground py-10">Business profile not found.</p>;
   }
 
-  const profileStatus = profile.status ? (profile.status).toUpperCase() : "N/A";
+  const profileStatusDisplay = profile.isActive ? "ACTIVE" : "INACTIVE";
 
   return (
     <div className="space-y-6 pb-8">
@@ -195,7 +195,7 @@ export default function BusinessProfileDetailPage() {
           </Button>
           <div>
             <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight flex items-center">
-              <Building2 className="mr-2 h-6 w-6 sm:h-7 sm:w-7" /> Profile: {profile.name}
+              <Building2 className="mr-2 h-6 w-6 sm:h-7 sm:w-7" /> Profile: {profile.companyName}
             </h1>
             <p className="text-muted-foreground text-sm sm:text-base">Viewing details for business profile ID: {profile.id}</p>
           </div>
@@ -214,7 +214,7 @@ export default function BusinessProfileDetailPage() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete the business profile "{profile.name}".
+                  This action cannot be undone. This will permanently delete the business profile "{profile.companyName}".
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -231,18 +231,21 @@ export default function BusinessProfileDetailPage() {
       <Card className="shadow-md">
         <CardHeader><CardTitle className="text-lg">Company Information</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <DetailItem label="Company Name" value={profile.name} />
-          <DetailItem label="GSTIN" value={profile.gstin} />
-          <DetailItem label="Payment Terms" value={profile.paymentTerms} />
+          <DetailItem label="Company Name" value={profile.companyName} icon={Building2}/>
+          <DetailItem label="GSTIN" value={profile.gstin} icon={FileText} />
+          <DetailItem label="Payment Terms" value={profile.paymentTerms} icon={CalendarDays}/>
+          <DetailItem label="Credit Limit (Days)" value={profile.creditLimit} icon={BadgeDollarSign}/>
           <div className="flex items-start space-x-2">
               <div>
                   <p className="text-sm text-muted-foreground">Status</p>
-                  <Badge variant={profileStatus === "ACTIVE" ? "default" : "outline"}
-                         className={profileStatus === "ACTIVE" ? "bg-green-500/20 text-green-700 border-green-500/30" : "bg-gray-500/20 text-gray-700 border-gray-500/30"}>
-                      {profileStatus}
+                  <Badge variant={profile.isActive ? "default" : "outline"}
+                         className={profile.isActive ? "bg-green-500/20 text-green-700 border-green-500/30" : "bg-gray-500/20 text-gray-700 border-gray-500/30"}>
+                      {profileStatusDisplay}
                   </Badge>
               </div>
             </div>
+            <DetailItem label="PAN Number" value={profile.panNumber} icon={FileText} className="md:col-span-2 lg:col-span-1" />
+             {profile.notes && <DetailItem label="Notes" value={profile.notes} icon={FileText} className="md:col-span-2 lg:col-span-3" />}
         </CardContent>
       </Card>
 
@@ -284,3 +287,5 @@ export default function BusinessProfileDetailPage() {
     </div>
   );
 }
+
+    
