@@ -39,9 +39,9 @@ const addressSchema = z.object({
   city: z.string().min(1, "City is required"),
   state: z.string().min(1, "State is required"),
   stateCode: z.string().min(1, "State code is required"),
-  country: z.string().optional().nullable().or(z.literal("")),
+  country: z.string().optional().nullable().or(z.literal("")).default("India"),
   postalCode: z.string().optional().nullable().or(z.literal("")),
-  type: z.enum(["SHIPPING", "BILLING"]).optional().nullable(),
+  type: z.enum(["SHIPPING", "BILLING"]).optional().nullable().default("BILLING"),
   isDefault: z.boolean().optional().default(false),
 });
 
@@ -111,10 +111,11 @@ export default function EditBusinessProfilePage() {
         ]);
         
         setProfile(fetchedProfile);
-        setAllUsers(fetchedUsers);
+        setAllUsers(fetchedUsers.filter(u => u.role === null || u.role === undefined)); // Filter for customers
 
         const validStatus = fetchedProfile.isActive ? "ACTIVE" : "INACTIVE";
-        const formAddresses = fetchedProfile.addresses?.map(addr => ({ 
+        
+        let formAddresses = fetchedProfile.addresses?.map(addr => ({ 
             id: addr.id, 
             line1: addr.line1 ?? "",
             line2: addr.line2 ?? "",
@@ -123,12 +124,10 @@ export default function EditBusinessProfilePage() {
             stateCode: addr.stateCode ?? "",
             country: addr.country ?? "India",
             postalCode: addr.postalCode ?? "",
-            type: addr.type as ("SHIPPING" | "BILLING" | undefined) ?? undefined,
+            type: addr.type as ("SHIPPING" | "BILLING" | undefined) ?? "BILLING",
             isDefault: addr.isDefault ?? false,
-          })) ?? [{ 
-              id: undefined, line1: "", line2: "", city: "", state: "", stateCode: "", country: "India",
-              postalCode: "", type: "BILLING", isDefault: true
-          }];
+          })) ?? [];
+
           if (formAddresses.length === 0) {
              formAddresses.push({ 
                 id: undefined, line1: "", line2: "", city: "", state: "", stateCode: "", country: "India",
@@ -165,7 +164,7 @@ export default function EditBusinessProfilePage() {
     setIsSubmitting(true);
     try {
       const payload: UpdateBusinessProfileRequest = {
-        name: data.companyName, // API might still expect 'name', but DTOs should map companyName
+        name: data.companyName, 
         gstin: data.gstin,
         paymentTerms: data.paymentTerms || undefined,
         creditLimit: data.creditLimit,
@@ -290,7 +289,7 @@ export default function EditBusinessProfilePage() {
           </Card>
 
           <Card className="shadow-md">
-            <CardHeader><CardTitle>Linked Users</CardTitle><CardDescription>Select users associated with this business profile.</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Linked Users</CardTitle><CardDescription>Select customer users associated with this business profile.</CardDescription></CardHeader>
             <CardContent>
               <FormField
                 control={form.control}
@@ -314,7 +313,7 @@ export default function EditBusinessProfilePage() {
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading users...
                             </div>
                         ) : allUsers.length === 0 ? (
-                            <p className="p-4 text-center text-sm text-muted-foreground">No users available.</p>
+                            <p className="p-4 text-center text-sm text-muted-foreground">No customer users available.</p>
                         ) : (
                           <ScrollArea className="h-72">
                             <div className="p-4 space-y-2">
@@ -352,7 +351,7 @@ export default function EditBusinessProfilePage() {
           </Card>
 
           <Card className="shadow-md">
-            <CardHeader><CardTitle>Addresses *</CardTitle><CardDescription>At least one address is required.</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Addresses *</CardTitle><CardDescription>At least one address is required. Only City and State are mandatory.</CardDescription></CardHeader>
             <CardContent className="space-y-4">
               {addressFields.map((formField, index) => ( 
                 <Card key={formField.id} className="p-4 space-y-3 bg-secondary/50"> 
@@ -419,7 +418,7 @@ export default function EditBusinessProfilePage() {
                   </div>
                 </Card>
               ))}
-              <Button type="button" variant="outline" onClick={() => appendAddress({ id: null, line1: '', city: '', state: '', stateCode: '', country: 'India', postalCode: '', isDefault: addressFields.length === 0, type: 'SHIPPING' })}>
+              <Button type="button" variant="outline" onClick={() => appendAddress({ id: null, line1: '', city: '', state: '', stateCode: '', country: 'India', postalCode: '', isDefault: addressFields.length === 0, type: 'BILLING' })}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Add Address
               </Button>
               <FormMessage>{form.formState.errors.addresses?.message || form.formState.errors.addresses?.root?.message}</FormMessage>
