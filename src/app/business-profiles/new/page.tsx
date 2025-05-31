@@ -186,7 +186,7 @@ export default function CreateBusinessProfilePage() {
         }
         // API expects CreateBusinessProfileRequest structure for the first param
         const apiPayload: CreateBusinessProfileRequest = {
-            name: businessProfilePayload.companyName, // API might still use 'name'
+            companyName: businessProfilePayload.companyName, 
             gstin: businessProfilePayload.gstin,
             paymentTerms: businessProfilePayload.paymentTerms,
             creditLimit: businessProfilePayload.creditLimit,
@@ -213,8 +213,8 @@ export default function CreateBusinessProfilePage() {
             status: "ACTIVE", // Default new user to active
             addresses: userAddresses,
           },
-          businessProfile: { // This structure should match API expectation
-            name: businessProfilePayload.companyName, // API might use 'name'
+          businessProfile: { 
+            companyName: businessProfilePayload.companyName, // Corrected field from name to companyName
             gstin: businessProfilePayload.gstin,
             paymentTerms: businessProfilePayload.paymentTerms,
             creditLimit: businessProfilePayload.creditLimit,
@@ -466,5 +466,3 @@ export default function CreateBusinessProfilePage() {
     </div>
   );
 }
-
-    
