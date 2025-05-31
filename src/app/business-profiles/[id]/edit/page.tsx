@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label"; // Added import
 import { useToast } from "@/hooks/use-toast";
 import {
   fetchBusinessProfileById,
@@ -431,7 +432,9 @@ export default function EditBusinessProfilePage() {
                   </div>
                 </Card>
               ))}
-              <Button type="button" variant="outline" onClick={() => appendAddress({ id: null, line1: '', line2: '', city: '', state: '', stateCode: '', country: 'India', postalCode: '', isDefault: addressFields.length === 0, type: 'BILLING' })}><PlusCircle className="mr-2 h-4 w-4" /> Add Address</Button>
+              <Button type="button" variant="outline" onClick={() => appendAddress({ id: null, line1: '', line2: '', city: '', state: '', stateCode: '', country: 'India', postalCode: '', isDefault: addressFields.length === 0, type: 'BILLING' })}>
+                <PlusCircle className="mr-2 h-4 w-4" /> Add Address
+              </Button>
               <FormMessage>{form.formState.errors.addresses?.message || form.formState.errors.addresses?.root?.message}</FormMessage>
             </CardContent>
           </Card>
@@ -447,3 +450,4 @@ export default function EditBusinessProfilePage() {
     </div>
   );
 }
+
