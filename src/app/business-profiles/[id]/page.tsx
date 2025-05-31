@@ -7,8 +7,16 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { fetchBusinessProfileById, deleteBusinessProfile, fetchUserById, type BusinessProfileDto, type AddressDto, type UserDto } from "@/lib/apiClient";
-import { ChevronLeft, Edit, Trash2, Building2, MapPin, Users, CalendarDays, AlertCircle, Loader2, FileText, BadgeDollarSign } from "lucide-react";
+import {
+  fetchBusinessProfileById,
+  deleteBusinessProfile,
+  fetchUsersForBusinessProfileByGstin, // New import
+  type BusinessProfileDto,
+  type AddressDto,
+  type UserDto,
+  type Page, // Import Page type
+} from "@/lib/apiClient";
+import { ChevronLeft, Edit, Trash2, Building2, MapPin, Users, CalendarDays, AlertCircle, Loader2, FileText, BadgeDollarSign, Link2, Briefcase } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -39,7 +47,7 @@ function DetailItem({ label, value, icon: Icon }: { label: string; value?: strin
 
 function AddressCard({ address, isDefault }: { address: AddressDto; isDefault: boolean }) {
   return (
-    <Card className="bg-secondary/30 p-4">
+    <Card className="bg-secondary/30 p-4 shadow-sm">
       <CardHeader className="p-0 pb-2">
         <CardTitle className="text-base flex justify-between items-center">
           Address {address.id ? address.id.substring(0,6) + "..." : "N/A"} {address.type ? `(${address.type})` : ''}
@@ -77,23 +85,26 @@ export default function BusinessProfileDetailPage() {
       return;
     }
 
-    async function loadProfile() {
+    async function loadProfileAndUsers() {
       setIsLoading(true);
       setError(null);
       try {
         const fetchedProfile = await fetchBusinessProfileById(profileId);
         setProfile(fetchedProfile);
-        if (fetchedProfile.userIds && fetchedProfile.userIds.length > 0) {
+
+        if (fetchedProfile && fetchedProfile.gstin) {
           setIsLoadingUsers(true);
-          const usersDataPromises = fetchedProfile.userIds.map(id => 
-            fetchUserById(id).catch((userError) => { 
-              console.warn(`Failed to fetch user with ID: ${id}. Error: ${userError.message}`);
-              return null; 
-            })
-          );
-          const usersData = await Promise.all(usersDataPromises);
-          setLinkedUsers(usersData.filter(u => u !== null) as UserDto[]);
-          setIsLoadingUsers(false);
+          try {
+            const usersPage: Page<UserDto> = await fetchUsersForBusinessProfileByGstin(fetchedProfile.gstin);
+            setLinkedUsers(usersPage.content);
+          } catch (userError: any) {
+            console.warn(`Failed to fetch users for GSTIN ${fetchedProfile.gstin}: ${userError.message}`);
+            setLinkedUsers([]);
+            // Optionally, toast a warning for user fetching failure if desired
+            // toast({ title: "Warning", description: `Could not load linked users for ${fetchedProfile.companyName}.`, variant: "default" });
+          } finally {
+            setIsLoadingUsers(false);
+          }
         } else {
           setLinkedUsers([]);
           setIsLoadingUsers(false);
@@ -110,7 +121,7 @@ export default function BusinessProfileDetailPage() {
         setIsLoading(false);
       }
     }
-    loadProfile();
+    loadProfileAndUsers();
   }, [profileId, router, toast]);
 
   const handleDeleteProfile = async () => {
@@ -244,7 +255,7 @@ export default function BusinessProfileDetailPage() {
                   </Badge>
               </div>
             </div>
-            <DetailItem label="PAN Number" value={profile.panNumber} icon={FileText} className="md:col-span-2 lg:col-span-1" />
+            <DetailItem label="PAN Number" value={profile.panNumber} icon={FileText} />
              {profile.notes && <DetailItem label="Notes" value={profile.notes} icon={FileText} className="md:col-span-2 lg:col-span-3" />}
         </CardContent>
       </Card>
@@ -255,11 +266,32 @@ export default function BusinessProfileDetailPage() {
           {isLoadingUsers && <div className="flex items-center text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading users...</div>}
           {!isLoadingUsers && linkedUsers.length === 0 && <p className="text-muted-foreground">No users linked to this profile.</p>}
           {!isLoadingUsers && linkedUsers.length > 0 && (
-            <ul className="space-y-1 list-disc list-inside">
-              {linkedUsers.map(user => (
-                <li key={user.id} className="text-sm">{user.name} (ID: {user.id}, Email: {user.email || 'N/A'}, Phone: {user.phone || 'N/A'})</li>
-              ))}
-            </ul>
+            <div className="space-y-3">
+              {linkedUsers.map(user => {
+                const membership = user.businessMemberships?.find(bm => bm.businessProfileId === profile.id);
+                const roleInProfile = membership?.role || "N/A";
+                return (
+                  <Card key={user.id} className="p-3 bg-secondary/20 shadow-sm">
+                    <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
+                      <div>
+                        <Link href={`/users/${user.id}`} className="font-medium hover:underline flex items-center text-sm">
+                          {user.name || `User ID: ${user.id}`} <Link2 className="h-3 w-3 ml-1.5 text-primary/70" />
+                        </Link>
+                        <p className="text-xs text-muted-foreground">
+                          Phone: {user.phone || "N/A"}
+                          {user.email && `, Email: ${user.email}`}
+                        </p>
+                      </div>
+                      <div className="text-left sm:text-right mt-1 sm:mt-0">
+                        <Badge variant="outline" className="text-xs">
+                          <Briefcase className="h-3 w-3 mr-1.5"/> Role: {roleInProfile}
+                        </Badge>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -287,5 +319,6 @@ export default function BusinessProfileDetailPage() {
     </div>
   );
 }
+
 
     
