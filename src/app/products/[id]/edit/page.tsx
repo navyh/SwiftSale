@@ -11,8 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -32,7 +30,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-// Hardcoded product statuses as meta API for product statuses is not available
 const hardcodedProductStatuses = ["ACTIVE", "DRAFT", "ARCHIVED", "OUT_OF_STOCK"];
 
 const productFormSchema = z.object({
@@ -44,15 +41,6 @@ const productFormSchema = z.object({
   category: z.string().min(1, "Category name is required"),
   subCategory: z.string().optional().nullable(),
   tagsInput: z.string().optional().nullable(),
-  sku: z.string().optional().nullable(),
-  barcode: z.string().optional().nullable(),
-  costPrice: z.coerce.number({invalid_type_error: "Cost price must be a number"}).min(0).optional().nullable(),
-  imageUrlsInput: z.string().optional().nullable(),
-  weight: z.coerce.number({invalid_type_error: "Weight must be a number"}).min(0).optional().nullable(),
-  dimensions: z.string().optional().nullable(),
-  isFeatured: z.boolean().default(false).optional(),
-  metaTitle: z.string().max(70).optional().nullable(),
-  metaDescription: z.string().max(160).optional().nullable(),
   status: z.string().optional().nullable(),
 });
 
@@ -63,21 +51,17 @@ const addVariantsFormSchema = z.object({
   sizes: z.string().optional().nullable(),
 }).refine(data => data.colors || data.sizes, {
   message: "At least one color or size must be provided.",
-  path: ["colors"],
+  path: ["colors"], 
 });
 type AddVariantsFormValues = z.infer<typeof addVariantsFormSchema>;
 
-
-// Helper function for color bullet preview
 const shouldShowColorBullet = (colorString?: string | null): boolean => {
   if (!colorString || typeof colorString !== 'string') return false;
   const lowerColor = colorString.trim().toLowerCase();
   if (!lowerColor) return false;
-  // Avoid common non-color descriptive terms or overly long strings
   if (['n/a', 'default', 'various', 'assorted', 'transparent', 'none', 'na', 'mixed'].includes(lowerColor) || lowerColor.length > 25) {
     return false;
   }
-  // Avoid if it has too many spaces (likely a description not a color), unless it's an rgb/hsl string
   if (lowerColor.includes(' ') && lowerColor.split(' ').length > 3 && !['rgb', 'hsl'].some(prefix => lowerColor.startsWith(prefix))) {
       return false;
   }
@@ -202,9 +186,7 @@ export default function EditProductPage() {
     resolver: zodResolver(productFormSchema),
     defaultValues: {
       name: "", brand: "", category: "", subCategory: "", hsnCode: "", description: "",
-      gstTaxRate: undefined, status: "DRAFT", tagsInput: "", sku: "", barcode: "",
-      costPrice: undefined, imageUrlsInput: "", weight: undefined, dimensions: "",
-      isFeatured: false, metaTitle: "", metaDescription: "",
+      gstTaxRate: undefined, status: "DRAFT", tagsInput: "",
     },
   });
 
@@ -228,12 +210,6 @@ export default function EditProductPage() {
         hsnCode: fetchedProduct.hsnCode ?? "", description: fetchedProduct.description ?? "",
         gstTaxRate: fetchedProduct.gstTaxRate === null ? undefined : fetchedProduct.gstTaxRate,
         status: validStatus, tagsInput: fetchedProduct.tags?.join(", ") ?? "",
-        sku: fetchedProduct.sku ?? "", barcode: fetchedProduct.barcode ?? "", 
-        costPrice: fetchedProduct.costPrice === null ? undefined : fetchedProduct.costPrice,
-        imageUrlsInput: fetchedProduct.imageUrls?.join(", ") ?? "",
-        weight: fetchedProduct.weight === null ? undefined : fetchedProduct.weight,
-        dimensions: fetchedProduct.dimensions ?? "", isFeatured: fetchedProduct.isFeatured ?? false,
-        metaTitle: fetchedProduct.metaTitle ?? "", metaDescription: fetchedProduct.metaDescription ?? "",
       });
     } catch (error: any) {
       toast({
@@ -262,20 +238,14 @@ export default function EditProductPage() {
     setIsSubmitting(true);
     try {
       const tags = data.tagsInput?.split(',').map(t => t.trim()).filter(Boolean) || undefined;
-      const imageUrls = data.imageUrlsInput?.split(',').map(url => url.trim()).filter(Boolean) || undefined;
-
+      
       const payload: UpdateProductRequest = {
         name: data.name, brand: data.brand, category: data.category, 
         subCategory: data.subCategory || undefined, hsnCode: data.hsnCode || undefined,
         description: data.description || undefined,
         gstTaxRate: data.gstTaxRate === undefined || data.gstTaxRate === null ? undefined : Number(data.gstTaxRate),
         status: data.status as UpdateProductRequest['status'] || undefined,
-        tags: tags, sku: data.sku || undefined, barcode: data.barcode || undefined,
-        costPrice: data.costPrice === undefined || data.costPrice === null ? undefined : Number(data.costPrice),
-        imageUrls: imageUrls,
-        weight: data.weight === undefined || data.weight === null ? undefined : Number(data.weight),
-        dimensions: data.dimensions || undefined, isFeatured: data.isFeatured,
-        metaTitle: data.metaTitle || undefined, metaDescription: data.metaDescription || undefined,
+        tags: tags,
       };
 
       await updateProduct(productId, payload);
@@ -394,6 +364,11 @@ export default function EditProductPage() {
                   <FormItem><FormLabel>Category Name *</FormLabel><FormControl><Input placeholder="e.g., Apparel" {...field} /></FormControl><FormMessage /></FormItem> )} />
               <FormField control={form.control} name="subCategory" render={({ field }) => (
                   <FormItem><FormLabel>Sub-Category Name</FormLabel><FormControl><Input placeholder="e.g., T-Shirts" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
+              <FormItem>
+                <FormLabel>Base SKU (Read-only)</FormLabel>
+                <FormControl><Input value={product.sku ?? "N/A"} readOnly disabled /></FormControl>
+                <FormDescription>Base product SKU. Variant SKUs are managed per variant.</FormDescription>
+              </FormItem>
               <FormField control={form.control} name="description" render={({ field }) => (
                   <FormItem className="md:col-span-2"><FormLabel>Description</FormLabel><FormControl><Textarea rows={3} {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
             </CardContent>
@@ -406,15 +381,6 @@ export default function EditProductPage() {
                   <FormItem><FormLabel>HSN Code</FormLabel><FormControl><Input placeholder="e.g., 61091000" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
               <FormField control={form.control} name="gstTaxRate" render={({ field }) => (
                   <FormItem><FormLabel>GST Tax Rate (%)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 18" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-md">
-            <CardHeader><CardTitle>Optional Base Product Details</CardTitle><CardDescription>Base values if product has no variants or as default. API may use variant-specific data.</CardDescription></CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 md:gap-6">
-                <FormField control={form.control} name="sku" render={({ field }) => (<FormItem><FormLabel>Base SKU</FormLabel><FormControl><Input {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
-                <FormField control={form.control} name="barcode" render={({ field }) => ( <FormItem><FormLabel>Base Barcode</FormLabel><FormControl><Input {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
-                <FormField control={form.control} name="costPrice" render={({ field }) => ( <FormItem><FormLabel>Base Cost Price</FormLabel><FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
             </CardContent>
           </Card>
           
@@ -460,7 +426,7 @@ export default function EditProductPage() {
                                     name="colors"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel htmlFor={`add-variants-colors`}>Color Names (Optional)</FormLabel>
+                                            <Label htmlFor={`add-variants-colors`}>Color Names (Optional)</Label>
                                             <TagsInputWithPreview
                                                 id={`add-variants-colors`}
                                                 value={field.value ?? ""}
@@ -478,7 +444,7 @@ export default function EditProductPage() {
                                     name="sizes"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel htmlFor={`add-variants-sizes`}>Size Names (Optional)</FormLabel>
+                                            <Label htmlFor={`add-variants-sizes`}>Size Names (Optional)</Label>
                                              <TagsInputWithPreview
                                                 id={`add-variants-sizes`}
                                                 value={field.value ?? ""}
@@ -506,28 +472,25 @@ export default function EditProductPage() {
           </Card>
           
           <Card className="shadow-md">
-            <CardHeader><CardTitle>Media, Status & Other Details</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Other Properties</CardTitle></CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
               <FormField control={form.control} name="tagsInput" render={({ field }) => (
-                  <FormItem className="md:col-span-2"><FormLabel>Tags</FormLabel><FormControl><Input placeholder="e.g., electronics, new, featured" {...field} value={field.value ?? ""}/></FormControl><FormDescription>Comma-separated tags.</FormDescription><FormMessage /></FormItem> )} />
-              <FormField control={form.control} name="imageUrlsInput" render={({ field }) => (
-                  <FormItem className="md:col-span-2"><FormLabel>Image URLs</FormLabel><FormControl><Textarea rows={3} placeholder="e.g., https://example.com/image1.jpg" {...field} value={field.value ?? ""} /></FormControl><FormDescription>Comma-separated product-level image URLs.</FormDescription><FormMessage /></FormItem> )} />
-              <FormField control={form.control} name="weight" render={({ field }) => (
-                  <FormItem><FormLabel>Weight (kg)</FormLabel><FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
-              <FormField control={form.control} name="dimensions" render={({ field }) => (
-                  <FormItem><FormLabel>Dimensions (LxWxH cm)</FormLabel><FormControl><Input {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
+                  <FormItem className="md:col-span-2"><FormLabel>Tags</FormLabel>
+                    <Controller
+                        control={form.control}
+                        name="tagsInput"
+                        render={({ field: f }) => (
+                            <TagsInputWithPreview
+                                id="tagsInput-edit"
+                                value={f.value ?? ""}
+                                onChange={f.onChange}
+                                placeholder="Type tag and press Enter/Comma"
+                            />
+                        )}
+                    />
+                  <FormDescription>Comma-separated tags.</FormDescription><FormMessage /></FormItem> )} />
                <FormField control={form.control} name="status" render={({ field }) => (
                 <FormItem><FormLabel>Status</FormLabel><Select onValueChange={field.onChange} value={field.value ?? ""}><FormControl><SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger></FormControl><SelectContent>{productStatuses.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="isFeatured" render={({ field }) => (
-                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 md:col-span-2"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><div className="space-y-1 leading-none"><FormLabel>Featured Product</FormLabel><FormDescription>Mark this product as featured.</FormDescription></div></FormItem> )} />
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-md">
-            <CardHeader><CardTitle>SEO Information</CardTitle></CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2">
-              <FormField control={form.control} name="metaTitle" render={({ field }) => ( <FormItem><FormLabel>Meta Title</FormLabel><FormControl><Input {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="metaDescription" render={({ field }) => ( <FormItem><FormLabel>Meta Description</FormLabel><FormControl><Textarea rows={3} {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
             </CardContent>
           </Card>
 
@@ -542,3 +505,6 @@ export default function EditProductPage() {
     </div>
   );
 }
+
+
+    
