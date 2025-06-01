@@ -4,7 +4,7 @@
 import * as React from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useForm, useFieldArray, Controller } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area"; // Added import
 import {
   fetchProductById,
   updateProduct,
@@ -55,7 +56,7 @@ const addVariantsFormSchema = z.object({
   sizes: z.string().optional().nullable(),
 }).refine(data => data.colors || data.sizes, {
   message: "At least one color or size must be provided.",
-  path: ["colors"], 
+  path: ["colors"],
 });
 type AddVariantsFormValues = z.infer<typeof addVariantsFormSchema>;
 
@@ -155,7 +156,7 @@ const TagsInputWithPreview: React.FC<TagsInputWithPreviewProps> = ({
     setTags(newTags);
     updateFormValue(newTags);
   };
-  
+
   const handleInputBlur = () => {
     addTag(inputValue);
   };
@@ -249,9 +250,9 @@ export default function EditProductPage() {
 
       const currentStatus = fetchedProduct.status?.toUpperCase();
       const validStatus = productStatuses.includes(currentStatus as any) ? currentStatus : "DRAFT";
-      
+
       form.reset({
-        name: fetchedProduct.name || "", brand: fetchedProduct.brand || "", 
+        name: fetchedProduct.name || "", brand: fetchedProduct.brand || "",
         category: fetchedProduct.category || "", subCategory: fetchedProduct.subCategory ?? "",
         hsnCode: fetchedProduct.hsnCode ?? "", description: fetchedProduct.description ?? "",
         gstTaxRate: fetchedProduct.gstTaxRate === null ? undefined : fetchedProduct.gstTaxRate,
@@ -284,9 +285,9 @@ export default function EditProductPage() {
     setIsSubmitting(true);
     try {
       const tags = data.tagsInput?.split(',').map(t => t.trim()).filter(Boolean) || undefined;
-      
+
       const payload: UpdateProductRequest = {
-        name: data.name, brand: data.brand, category: data.category, 
+        name: data.name, brand: data.brand, category: data.category,
         subCategory: data.subCategory || undefined, hsnCode: data.hsnCode || undefined,
         description: data.description || undefined,
         gstTaxRate: data.gstTaxRate === undefined || data.gstTaxRate === null ? undefined : Number(data.gstTaxRate),
@@ -296,7 +297,7 @@ export default function EditProductPage() {
 
       await updateProduct(productId, payload);
       toast({ title: "Success", description: "Product updated successfully." });
-      fetchProductData(); 
+      fetchProductData();
     } catch (error: any) {
       toast({
         title: "Error Updating Product",
@@ -318,7 +319,7 @@ export default function EditProductPage() {
       const payload: AddProductVariantsRequest = {};
       if (colorsArray && colorsArray.length > 0) payload.color = colorsArray;
       if (sizesArray && sizesArray.length > 0) payload.size = sizesArray;
-      
+
       if (!payload.color && !payload.size) {
         addVariantsForm.setError("colors", { type: "manual", message: "Please provide at least one color or size." });
         setIsAddingVariants(false);
@@ -329,7 +330,7 @@ export default function EditProductPage() {
       toast({ title: "Success", description: "New variants added successfully." });
       setShowAddVariantsModal(false);
       addVariantsForm.reset({ colors: "", sizes: "" });
-      fetchProductData(); 
+      fetchProductData();
     } catch (error: any) {
       toast({
         title: "Error Adding Variants",
@@ -391,7 +392,7 @@ export default function EditProductPage() {
             costPrice: data.purchaseCostCostPrice,
           }
         : undefined;
-      
+
       const imageUrls = data.imageUrlsInput?.split(',').map(url => url.trim()).filter(Boolean) || undefined;
 
       const payload: UpdateVariantRequest = {
@@ -409,13 +410,13 @@ export default function EditProductPage() {
         weight: data.weight === undefined || data.weight === null ? undefined : Number(data.weight),
         purchaseCost: purchaseCost,
         imageUrls: imageUrls,
-        allowCriticalFieldUpdates: false, 
+        allowCriticalFieldUpdates: false,
       };
       await updateProductVariant(productId, editingVariant.id, payload);
       toast({ title: "Success", description: "Variant updated successfully." });
       setShowEditVariantModal(false);
       setEditingVariant(null);
-      fetchProductData(); 
+      fetchProductData();
     } catch (error: any) {
       toast({
         title: "Error Updating Variant",
@@ -513,7 +514,7 @@ export default function EditProductPage() {
                   <FormItem><FormLabel>GST Tax Rate (%)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 18" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem> )} />
             </CardContent>
           </Card>
-          
+
           <Card className="shadow-md">
             <CardHeader><CardTitle>Existing Variants</CardTitle><CardDescription>Manage existing product variants.</CardDescription></CardHeader>
             <CardContent>
@@ -526,8 +527,8 @@ export default function EditProductPage() {
                     {product.variants.map(variant => (
                       <TableRow key={variant.id}>
                         <TableCell>{variant.sku || 'N/A'}</TableCell>
-                        <TableCell>{variant.color || 'N/A'}</TableCell> 
-                        <TableCell>{variant.size || 'N/A'}</TableCell>   
+                        <TableCell>{variant.color || 'N/A'}</TableCell>
+                        <TableCell>{variant.size || 'N/A'}</TableCell>
                         <TableCell>{variant.sellingPrice !== null && variant.sellingPrice !== undefined ? `₹${variant.sellingPrice.toFixed(2)}` : 'N/A'}</TableCell>
                         <TableCell>{variant.mrp !== null && variant.mrp !== undefined ? `₹${variant.mrp.toFixed(2)}` : 'N/A'}</TableCell>
                         <TableCell>{variant.quantity ?? 'N/A'}</TableCell>
@@ -601,7 +602,7 @@ export default function EditProductPage() {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card className="shadow-md">
             <CardHeader><CardTitle>Other Properties</CardTitle></CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
@@ -740,3 +741,6 @@ export default function EditProductPage() {
     </div>
   );
 }
+
+
+    
