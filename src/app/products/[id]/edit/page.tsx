@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import {
   fetchProductById,
   updateProduct,
-  addMultipleVariants, // Added for new variant creation
+  addMultipleVariants,
   type UpdateProductRequest,
   type ProductDto,
   type ProductVariantDto,
@@ -59,11 +59,11 @@ const productFormSchema = z.object({
 type ProductFormValues = z.infer<typeof productFormSchema>;
 
 const addVariantsFormSchema = z.object({
-  colors: z.string().optional(),
-  sizes: z.string().optional(),
+  colors: z.string().optional().nullable(),
+  sizes: z.string().optional().nullable(),
 }).refine(data => data.colors || data.sizes, {
   message: "At least one color or size must be provided.",
-  path: ["colors"], // Or path: ["sizes"] or a general path
+  path: ["colors"],
 });
 type AddVariantsFormValues = z.infer<typeof addVariantsFormSchema>;
 
@@ -85,8 +85,8 @@ const shouldShowColorBullet = (colorString?: string | null): boolean => {
 };
 
 interface TagsInputWithPreviewProps {
-  value: string; 
-  onChange: (value: string) => void; 
+  value: string;
+  onChange: (value: string) => void;
   placeholder?: string;
   isColorInput?: boolean;
   id?: string;
@@ -148,7 +148,7 @@ const TagsInputWithPreview: React.FC<TagsInputWithPreviewProps> = ({
 
   return (
     <div id={id}>
-      <div className="flex flex-wrap gap-2 mb-2">
+      <div className="flex flex-wrap gap-2 mb-2 min-h-[2.25rem] items-center">
         {tags.map((tag, index) => (
           <Badge key={index} variant="secondary" className="py-1 px-2 text-sm flex items-center gap-1.5">
             {isColorInput && shouldShowColorBullet(tag) && (
@@ -176,7 +176,7 @@ const TagsInputWithPreview: React.FC<TagsInputWithPreviewProps> = ({
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}
         onBlur={handleInputBlur}
-        placeholder={placeholder}
+        placeholder={tags.length === 0 ? placeholder : "Add more..."}
         className="w-full"
       />
     </div>
@@ -188,7 +188,7 @@ export default function EditProductPage() {
   const router = useRouter();
   const params = useParams();
   const { toast } = useToast();
-  const productId = params.id as string; 
+  const productId = params.id as string;
 
   const [product, setProduct] = React.useState<ProductDto | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -245,7 +245,7 @@ export default function EditProductPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [productId, router, toast, form]); // Added form to dependencies
+  }, [productId, router, toast, form]);
 
   React.useEffect(() => {
     if (!productId) {
@@ -314,7 +314,7 @@ export default function EditProductPage() {
       toast({ title: "Success", description: "New variants added successfully." });
       setShowAddVariantsModal(false);
       addVariantsForm.reset({ colors: "", sizes: "" });
-      fetchProductData(); // Refresh product data to show new variants
+      fetchProductData(); 
     } catch (error: any) {
       toast({
         title: "Error Adding Variants",
@@ -455,23 +455,42 @@ export default function EditProductPage() {
                         <DialogHeader><DialogTitle>Add New Variant Combinations</DialogTitle></DialogHeader>
                         <Form {...addVariantsForm}>
                             <form onSubmit={addVariantsForm.handleSubmit(onAddVariantsSubmit)} className="space-y-4">
-                                <FormField control={addVariantsForm.control} name="colors" render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Color Names (Optional)</FormLabel>
-                                        <FormControl><Textarea placeholder="e.g., Red, Green, Blue" {...field} /></FormControl>
-                                        <FormDescription>Comma-separated color names. Leave blank if not applicable.</FormDescription>
-                                        <FormMessage />
-                                    </FormItem>
-                                )} />
-                                <FormField control={addVariantsForm.control} name="sizes" render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Size Names (Optional)</FormLabel>
-                                        <FormControl><Textarea placeholder="e.g., S, M, L, XL" {...field} /></FormControl>
-                                        <FormDescription>Comma-separated size names. Leave blank if not applicable.</FormDescription>
-                                        <FormMessage />
-                                    </FormItem>
-                                )} />
-                                {addVariantsForm.formState.errors.colors && <p className="text-sm font-medium text-destructive">{addVariantsForm.formState.errors.colors.message}</p>}
+                                <Controller
+                                    control={addVariantsForm.control}
+                                    name="colors"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel htmlFor={`add-variants-colors`}>Color Names (Optional)</FormLabel>
+                                            <TagsInputWithPreview
+                                                id={`add-variants-colors`}
+                                                value={field.value ?? ""}
+                                                onChange={field.onChange}
+                                                placeholder="Type color and press Enter/Comma"
+                                                isColorInput
+                                            />
+                                            <FormDescription>Comma-separated color names. Leave blank if not applicable.</FormDescription>
+                                            <FormMessage>{addVariantsForm.formState.errors.colors?.message}</FormMessage>
+                                        </FormItem>
+                                    )}
+                                />
+                                <Controller
+                                    control={addVariantsForm.control}
+                                    name="sizes"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel htmlFor={`add-variants-sizes`}>Size Names (Optional)</FormLabel>
+                                             <TagsInputWithPreview
+                                                id={`add-variants-sizes`}
+                                                value={field.value ?? ""}
+                                                onChange={field.onChange}
+                                                placeholder="Type size and press Enter/Comma"
+                                            />
+                                            <FormDescription>Comma-separated size names. Leave blank if not applicable.</FormDescription>
+                                            <FormMessage>{addVariantsForm.formState.errors.sizes?.message}</FormMessage>
+                                        </FormItem>
+                                    )}
+                                />
+                                {addVariantsForm.formState.errors.colors && !addVariantsForm.formState.errors.sizes && <p className="text-sm font-medium text-destructive">{addVariantsForm.formState.errors.colors.message}</p>}
                                 <DialogFooter>
                                     <DialogClose asChild><Button type="button" variant="ghost">Cancel</Button></DialogClose>
                                     <Button type="submit" disabled={isAddingVariants}>
@@ -523,5 +542,3 @@ export default function EditProductPage() {
     </div>
   );
 }
-
-    
