@@ -21,12 +21,12 @@ import {
   fetchProductById,
   updateProduct,
   addMultipleVariants,
-  updateProductVariant, // Added for editing variants
+  updateProductVariant,
   type UpdateProductRequest,
   type ProductDto,
   type ProductVariantDto,
   type AddProductVariantsRequest,
-  type UpdateVariantRequest, // Added for editing variants
+  type UpdateVariantRequest,
 } from "@/lib/apiClient";
 import { ChevronLeft, Save, PlusCircle, Loader2, Trash2, X as XIcon, Edit3 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -279,8 +279,7 @@ export default function EditProductPage() {
 
       await updateProduct(productId, payload);
       toast({ title: "Success", description: "Product updated successfully." });
-      // No router.push here to allow further edits like variant management
-      fetchProductData(); // Re-fetch to get latest product data if needed
+      fetchProductData(); 
     } catch (error: any) {
       toast({
         title: "Error Updating Product",
@@ -355,13 +354,13 @@ export default function EditProductPage() {
         mrp: data.mrp === undefined || data.mrp === null ? undefined : Number(data.mrp),
         sellingPrice: data.sellingPrice === undefined || data.sellingPrice === null ? undefined : Number(data.sellingPrice),
         quantity: data.quantity === undefined || data.quantity === null ? undefined : Number(data.quantity),
-        allowCriticalFieldUpdates: false, // Default, adjust if needed
+        allowCriticalFieldUpdates: false, 
       };
       await updateProductVariant(productId, editingVariant.id, payload);
       toast({ title: "Success", description: "Variant updated successfully." });
       setShowEditVariantModal(false);
       setEditingVariant(null);
-      fetchProductData(); // Refresh product data to show updated variant
+      fetchProductData(); 
     } catch (error: any) {
       toast({
         title: "Error Updating Variant",
@@ -481,8 +480,6 @@ export default function EditProductPage() {
                           <Button type="button" variant="outline" size="sm" onClick={() => handleOpenEditVariantModal(variant)}>
                             <Edit3 className="mr-1 h-3 w-3" /> Edit
                           </Button>
-                          {/* Delete variant button can be added here similarly if needed */}
-                          {/* <Button type="button" variant="destructive" size="sm" className="ml-2" onClick={() => alert(`Delete variant ${variant.id} - TBD: Implement deleteProductVariant API call.`)}>Delete</Button> */}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -649,4 +646,3 @@ export default function EditProductPage() {
     </div>
   );
 }
-
