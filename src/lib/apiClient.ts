@@ -1,4 +1,3 @@
-
 // src/lib/apiClient.ts
 "use client"; // To be used in client components
 
@@ -415,18 +414,18 @@ export async function fetchStaff(params?: { role?: string; status?: string; page
   return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
 }
 
-export async function fetchStaffById(staffId: string): Promise<StaffDto> {
+export async function fetchStaffById(staffId: number): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/staff/${staffId}`);
 }
 
-export async function createStaffMember(userId: string, staffData: CreateStaffRequest): Promise<StaffDto> {
+export async function createStaffMember(userId: number, staffData: CreateStaffRequest): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/users/${userId}/staff`, {
     method: 'POST',
     body: JSON.stringify(staffData),
   });
 }
 
-export async function updateStaffMember(staffId: string, staffData: UpdateStaffRequest): Promise<StaffDto> {
+export async function updateStaffMember(staffId: number, staffData: UpdateStaffRequest): Promise<StaffDto> {
   return fetchAPI<StaffDto>(`/staff/${staffId}`, {
     method: 'PUT',
     body: JSON.stringify(staffData),
@@ -440,7 +439,7 @@ export async function updateStaffRoles(userId: string, roles: string[]): Promise
   });
 }
 
-export async function deleteStaffMember(staffId: string): Promise<void> {
+export async function deleteStaffMember(staffId: number): Promise<void> {
   return fetchAPI<void>(`/staff/${staffId}`, {
     method: 'DELETE',
   }, false);
@@ -560,36 +559,37 @@ export interface UpdateProductRequest {
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string | null;
   title?: string | null;
   manufacturedBy?: string | null;
-  sku?: string | null;
-  barcode?: string | null;
-  costPrice?: number | null;
-  imageUrls?: string[] | null;
-  weight?: number | null;
-  dimensions?: string | null;
-  isFeatured?: boolean | null;
-  metaTitle?: string | null;
-  metaDescription?: string | null;
-  colorVariant?: string[] | null;
-  sizeVariant?: string[] | null;
+  // sku?: string | null; // Base SKU removed from editable fields here
+  // barcode?: string | null; // Base barcode removed
+  // costPrice?: number | null; // Base cost price removed
+  // imageUrls?: string[] | null; // Base images removed
+  // weight?: number | null; // Base weight removed
+  // dimensions?: string | null; // Base dimensions removed
+  // isFeatured?: boolean | null; // isFeatured removed
+  // metaTitle?: string | null; // metaTitle removed
+  // metaDescription?: string | null; // metaDescription removed
+  // colorVariant?: string[] | null; // These were for generation, not update of base product
+  // sizeVariant?: string[] | null;
 }
 
 export interface AddProductVariantsRequest {
-  color: string[];
-  size: string[];
+  color?: string[];
+  size?: string[];
 }
 
 export interface UpdateVariantRequest {
-  title?: string;
-  color?: string;
-  size?: string;
-  sku?: string;
+  title?: string | null;
+  color?: string | null;
+  size?: string | null;
+  sku?: string | null;
   barcode?: string | null;
   capacity?: string | null;
   dimension?: { length?: number; width?: number; height?: number; unit?: string } | null;
   weight?: number | null;
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | 'OUT_OF_STOCK' | string;
-  mrp?: number;
-  sellingPrice?: number;
+  mrp?: number | null;
+  sellingPrice?: number | null;
+  quantity?: number | null; // Added quantity
   imageUrls?: string[] | null;
   allowCriticalFieldUpdates?: boolean;
 }

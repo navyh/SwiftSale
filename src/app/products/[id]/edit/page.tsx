@@ -16,17 +16,19 @@ import { useToast } from "@/hooks/use-toast";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea"; // Added this import
+import { Textarea } from "@/components/ui/textarea";
 import {
   fetchProductById,
   updateProduct,
   addMultipleVariants,
+  updateProductVariant, // Added for editing variants
   type UpdateProductRequest,
   type ProductDto,
   type ProductVariantDto,
-  type AddProductVariantsRequest
+  type AddProductVariantsRequest,
+  type UpdateVariantRequest, // Added for editing variants
 } from "@/lib/apiClient";
-import { ChevronLeft, Save, PlusCircle, Loader2, Trash2, X as XIcon } from "lucide-react";
+import { ChevronLeft, Save, PlusCircle, Loader2, Trash2, X as XIcon, Edit3 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -55,6 +57,20 @@ const addVariantsFormSchema = z.object({
   path: ["colors"], 
 });
 type AddVariantsFormValues = z.infer<typeof addVariantsFormSchema>;
+
+const editVariantFormSchema = z.object({
+  sku: z.string().optional().nullable(),
+  barcode: z.string().optional().nullable(),
+  title: z.string().optional().nullable(),
+  color: z.string().optional().nullable(),
+  size: z.string().optional().nullable(),
+  status: z.string().min(1, "Status is required"),
+  mrp: z.coerce.number({invalid_type_error: "MRP must be a number"}).min(0).optional().nullable(),
+  sellingPrice: z.coerce.number({invalid_type_error: "Selling price must be a number"}).min(0).optional().nullable(),
+  quantity: z.coerce.number({invalid_type_error: "Quantity must be a number"}).int().min(0).optional().nullable(),
+});
+type EditVariantFormValues = z.infer<typeof editVariantFormSchema>;
+
 
 const shouldShowColorBullet = (colorString?: string | null): boolean => {
   if (!colorString || typeof colorString !== 'string') return false;
@@ -181,6 +197,10 @@ export default function EditProductPage() {
   const [showAddVariantsModal, setShowAddVariantsModal] = React.useState(false);
   const [isAddingVariants, setIsAddingVariants] = React.useState(false);
 
+  const [showEditVariantModal, setShowEditVariantModal] = React.useState(false);
+  const [editingVariant, setEditingVariant] = React.useState<ProductVariantDto | null>(null);
+  const [isSubmittingVariant, setIsSubmittingVariant] = React.useState(false);
+
   const productStatuses = hardcodedProductStatuses;
 
   const form = useForm<ProductFormValues>({
@@ -194,6 +214,14 @@ export default function EditProductPage() {
   const addVariantsForm = useForm<AddVariantsFormValues>({
     resolver: zodResolver(addVariantsFormSchema),
     defaultValues: { colors: "", sizes: "" },
+  });
+
+  const editVariantForm = useForm<EditVariantFormValues>({
+    resolver: zodResolver(editVariantFormSchema),
+    defaultValues: {
+      sku: "", barcode: "", title: "", color: "", size: "",
+      status: "ACTIVE", mrp: undefined, sellingPrice: undefined, quantity: undefined,
+    }
   });
 
   const fetchProductData = React.useCallback(async () => {
@@ -251,8 +279,8 @@ export default function EditProductPage() {
 
       await updateProduct(productId, payload);
       toast({ title: "Success", description: "Product updated successfully." });
-      router.push("/products"); 
-      router.refresh();
+      // No router.push here to allow further edits like variant management
+      fetchProductData(); // Re-fetch to get latest product data if needed
     } catch (error: any) {
       toast({
         title: "Error Updating Product",
@@ -297,6 +325,53 @@ export default function EditProductPage() {
     }
   }
 
+  const handleOpenEditVariantModal = (variant: ProductVariantDto) => {
+    setEditingVariant(variant);
+    editVariantForm.reset({
+      sku: variant.sku ?? "",
+      barcode: variant.barcode ?? "",
+      title: variant.title ?? "",
+      color: variant.color ?? "",
+      size: variant.size ?? "",
+      status: (variant.status?.toUpperCase() && productStatuses.includes(variant.status.toUpperCase()) ? variant.status.toUpperCase() : "ACTIVE") as EditVariantFormValues['status'],
+      mrp: variant.mrp === null || variant.mrp === undefined ? undefined : variant.mrp,
+      sellingPrice: variant.sellingPrice === null || variant.sellingPrice === undefined ? undefined : variant.sellingPrice,
+      quantity: variant.quantity === null || variant.quantity === undefined ? undefined : variant.quantity,
+    });
+    setShowEditVariantModal(true);
+  };
+
+  async function handleEditVariantSubmit(data: EditVariantFormValues) {
+    if (!productId || !editingVariant) return;
+    setIsSubmittingVariant(true);
+    try {
+      const payload: UpdateVariantRequest = {
+        sku: data.sku || undefined,
+        barcode: data.barcode || undefined,
+        title: data.title || undefined,
+        color: data.color || undefined,
+        size: data.size || undefined,
+        status: data.status as UpdateVariantRequest['status'],
+        mrp: data.mrp === undefined || data.mrp === null ? undefined : Number(data.mrp),
+        sellingPrice: data.sellingPrice === undefined || data.sellingPrice === null ? undefined : Number(data.sellingPrice),
+        quantity: data.quantity === undefined || data.quantity === null ? undefined : Number(data.quantity),
+        allowCriticalFieldUpdates: false, // Default, adjust if needed
+      };
+      await updateProductVariant(productId, editingVariant.id, payload);
+      toast({ title: "Success", description: "Variant updated successfully." });
+      setShowEditVariantModal(false);
+      setEditingVariant(null);
+      fetchProductData(); // Refresh product data to show updated variant
+    } catch (error: any) {
+      toast({
+        title: "Error Updating Variant",
+        description: error.message || "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingVariant(false);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -341,7 +416,7 @@ export default function EditProductPage() {
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight">Edit Product: {product.name}</h1>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight">Edit Product: {form.watch("name") || product.name}</h1>
           <p className="text-muted-foreground text-sm sm:text-base">Update product details, manage variants, and more.</p>
         </div>
       </div>
@@ -386,7 +461,7 @@ export default function EditProductPage() {
           </Card>
           
           <Card className="shadow-md">
-            <CardHeader><CardTitle>Existing Variants</CardTitle><CardDescription>Manage existing product variants. Price and stock updates here will use specific variant update APIs.</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Existing Variants</CardTitle><CardDescription>Manage existing product variants.</CardDescription></CardHeader>
             <CardContent>
               {(!product.variants || product.variants.length === 0) ? (
                 <p className="text-muted-foreground">No variants found for this product.</p>
@@ -401,10 +476,13 @@ export default function EditProductPage() {
                         <TableCell>{variant.size || 'N/A'}</TableCell>   
                         <TableCell>{variant.sellingPrice !== null && variant.sellingPrice !== undefined ? `₹${variant.sellingPrice.toFixed(2)}` : 'N/A'}</TableCell>
                         <TableCell>{variant.mrp !== null && variant.mrp !== undefined ? `₹${variant.mrp.toFixed(2)}` : 'N/A'}</TableCell>
-                        <TableCell>{variant.quantity}</TableCell>
+                        <TableCell>{variant.quantity ?? 'N/A'}</TableCell>
                         <TableCell className="text-right">
-                          <Button type="button" variant="outline" size="sm" onClick={() => alert(`Edit variant ${variant.id} - TBD: Implement variant edit modal/form using updateProductVariant API.`)}>Edit</Button>
-                          <Button type="button" variant="destructive" size="sm" className="ml-2" onClick={() => alert(`Delete variant ${variant.id} - TBD: Implement deleteProductVariant API call.`)}>Delete</Button>
+                          <Button type="button" variant="outline" size="sm" onClick={() => handleOpenEditVariantModal(variant)}>
+                            <Edit3 className="mr-1 h-3 w-3" /> Edit
+                          </Button>
+                          {/* Delete variant button can be added here similarly if needed */}
+                          {/* <Button type="button" variant="destructive" size="sm" className="ml-2" onClick={() => alert(`Delete variant ${variant.id} - TBD: Implement deleteProductVariant API call.`)}>Delete</Button> */}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -475,34 +553,100 @@ export default function EditProductPage() {
           <Card className="shadow-md">
             <CardHeader><CardTitle>Other Properties</CardTitle></CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
-              <FormField control={form.control} name="tagsInput" render={({ field }) => (
-                  <FormItem className="md:col-span-2"><FormLabel>Tags</FormLabel>
-                    <Controller
-                        control={form.control}
-                        name="tagsInput"
-                        render={({ field: f }) => (
-                            <TagsInputWithPreview
-                                id="tagsInput-edit"
-                                value={f.value ?? ""}
-                                onChange={f.onChange}
-                                placeholder="Type tag and press Enter/Comma"
-                            />
-                        )}
-                    />
-                  <FormDescription>Comma-separated tags.</FormDescription><FormMessage /></FormItem> )} />
+              <FormItem className="md:col-span-2">
+                <FormLabel htmlFor="tagsInput-edit">Tags</FormLabel>
+                <Controller
+                    control={form.control}
+                    name="tagsInput"
+                    render={({ field: f }) => (
+                        <TagsInputWithPreview
+                            id="tagsInput-edit"
+                            value={f.value ?? ""}
+                            onChange={f.onChange}
+                            placeholder="Type tag and press Enter/Comma"
+                        />
+                    )}
+                />
+                <FormDescription>Comma-separated tags.</FormDescription>
+                <FormMessage />
+              </FormItem>
                <FormField control={form.control} name="status" render={({ field }) => (
                 <FormItem><FormLabel>Status</FormLabel><Select onValueChange={field.onChange} value={field.value ?? ""}><FormControl><SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger></FormControl><SelectContent>{productStatuses.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
             </CardContent>
           </Card>
 
           <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 pt-6">
-            <Button type="button" variant="outline" onClick={() => router.back()} className="w-full sm:w-auto">Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => router.push("/products")} className="w-full sm:w-auto">Cancel</Button>
             <Button type="submit" disabled={isSubmitting || isLoading} className="w-full sm:w-auto">
-              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</> : <><Save className="mr-2 h-4 w-4" /> Save Changes</>}
+              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving Product...</> : <><Save className="mr-2 h-4 w-4" /> Save Product Changes</>}
             </Button>
           </CardFooter>
         </form>
       </Form>
+
+      {/* Edit Variant Modal */}
+      <Dialog open={showEditVariantModal} onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          setEditingVariant(null);
+          editVariantForm.reset();
+        }
+        setShowEditVariantModal(isOpen);
+      }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Variant: {editingVariant?.title || editingVariant?.sku || "Variant"}</DialogTitle>
+            <CardDescription>Modify the details for this specific product variant.</CardDescription>
+          </DialogHeader>
+          <Form {...editVariantForm}>
+            <form onSubmit={editVariantForm.handleSubmit(handleEditVariantSubmit)} className="space-y-4 py-2 max-h-[60vh] overflow-y-auto pr-2">
+              <FormField control={editVariantForm.control} name="title" render={({ field }) => (
+                <FormItem><FormLabel>Variant Title</FormLabel><FormControl><Input placeholder="e.g., Red - Medium" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={editVariantForm.control} name="color" render={({ field }) => (
+                  <FormItem><FormLabel>Color</FormLabel><FormControl><Input placeholder="e.g., Red" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField control={editVariantForm.control} name="size" render={({ field }) => (
+                  <FormItem><FormLabel>Size</FormLabel><FormControl><Input placeholder="e.g., M" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
+                )} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={editVariantForm.control} name="sku" render={({ field }) => (
+                  <FormItem><FormLabel>SKU</FormLabel><FormControl><Input placeholder="Variant SKU" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField control={editVariantForm.control} name="barcode" render={({ field }) => (
+                  <FormItem><FormLabel>Barcode (EAN/UPC)</FormLabel><FormControl><Input placeholder="Variant Barcode" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
+                )} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={editVariantForm.control} name="mrp" render={({ field }) => (
+                  <FormItem><FormLabel>MRP (₹)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 1299" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField control={editVariantForm.control} name="sellingPrice" render={({ field }) => (
+                  <FormItem><FormLabel>Selling Price (₹)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 999" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
+                )} />
+              </div>
+               <FormField control={editVariantForm.control} name="quantity" render={({ field }) => (
+                  <FormItem><FormLabel>Stock Quantity</FormLabel><FormControl><Input type="number" placeholder="e.g., 100" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
+                )} />
+              <FormField control={editVariantForm.control} name="status" render={({ field }) => (
+                <FormItem><FormLabel>Status *</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value ?? "ACTIVE"}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                  <SelectContent>{productStatuses.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select><FormMessage />
+                </FormItem>
+              )} />
+              <DialogFooter className="pt-4">
+                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                <Button type="submit" disabled={isSubmittingVariant}>
+                  {isSubmittingVariant ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving Variant...</> : <><Save className="mr-2 h-4 w-4" /> Save Variant</>}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
+
