@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea"; // Added this import
 import {
   fetchProductById,
   updateProduct,
@@ -221,7 +222,7 @@ export default function EditProductPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [productId, router, toast, form]);
+  }, [productId, router, toast, form, productStatuses]);
 
   React.useEffect(() => {
     if (!productId) {
@@ -505,6 +506,3 @@ export default function EditProductPage() {
     </div>
   );
 }
-
-
-    
