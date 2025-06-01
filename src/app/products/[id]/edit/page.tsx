@@ -17,6 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   fetchProductById,
   updateProduct,
@@ -28,7 +29,7 @@ import {
   type AddProductVariantsRequest,
   type UpdateVariantRequest,
 } from "@/lib/apiClient";
-import { ChevronLeft, Save, PlusCircle, Loader2, Trash2, X as XIcon, Edit3 } from "lucide-react";
+import { ChevronLeft, Save, PlusCircle, Loader2, Trash2, X as XIcon, Edit3, Image as ImageIcon, Weight, ScanBarcode, Palette, Ruler, ShoppingBasket, List, Edit, Settings2, Info, DollarSign, Archive, Shirt } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -65,9 +66,21 @@ const editVariantFormSchema = z.object({
   color: z.string().optional().nullable(),
   size: z.string().optional().nullable(),
   status: z.string().min(1, "Status is required"),
-  mrp: z.coerce.number({invalid_type_error: "MRP must be a number"}).min(0).optional().nullable(),
-  sellingPrice: z.coerce.number({invalid_type_error: "Selling price must be a number"}).min(0).optional().nullable(),
-  quantity: z.coerce.number({invalid_type_error: "Quantity must be a number"}).int().min(0).optional().nullable(),
+  mrp: z.coerce.number({invalid_type_error: "MRP must be a number"}).min(0, "MRP must be non-negative").optional().nullable(),
+  sellingPrice: z.coerce.number({invalid_type_error: "Selling price must be a number"}).min(0, "Selling price must be non-negative").optional().nullable(),
+  quantity: z.coerce.number({invalid_type_error: "Quantity must be a number"}).int().min(0, "Quantity must be non-negative").optional().nullable(),
+  capacity: z.string().optional().nullable(),
+  dimensionLength: z.coerce.number().min(0).optional().nullable(),
+  dimensionWidth: z.coerce.number().min(0).optional().nullable(),
+  dimensionHeight: z.coerce.number().min(0).optional().nullable(),
+  dimensionUnit: z.string().optional().nullable(),
+  weight: z.coerce.number().min(0).optional().nullable(),
+  purchaseCostMrp: z.coerce.number().min(0).optional().nullable(),
+  purchaseCostConsumerDiscountRate: z.coerce.number().min(0).max(100).optional().nullable(),
+  purchaseCostTraderDiscountRate: z.coerce.number().min(0).max(100).optional().nullable(),
+  purchaseCostCashDiscountRate: z.coerce.number().min(0).max(100).optional().nullable(),
+  purchaseCostCostPrice: z.coerce.number().min(0).optional().nullable(),
+  imageUrlsInput: z.string().optional().nullable(),
 });
 type EditVariantFormValues = z.infer<typeof editVariantFormSchema>;
 
@@ -221,6 +234,10 @@ export default function EditProductPage() {
     defaultValues: {
       sku: "", barcode: "", title: "", color: "", size: "",
       status: "ACTIVE", mrp: undefined, sellingPrice: undefined, quantity: undefined,
+      capacity: "", dimensionLength: undefined, dimensionWidth: undefined, dimensionHeight: undefined,
+      dimensionUnit: "MM", weight: undefined, purchaseCostMrp: undefined,
+      purchaseCostConsumerDiscountRate: undefined, purchaseCostTraderDiscountRate: undefined,
+      purchaseCostCashDiscountRate: undefined, purchaseCostCostPrice: undefined, imageUrlsInput: ""
     }
   });
 
@@ -336,6 +353,18 @@ export default function EditProductPage() {
       mrp: variant.mrp === null || variant.mrp === undefined ? undefined : variant.mrp,
       sellingPrice: variant.sellingPrice === null || variant.sellingPrice === undefined ? undefined : variant.sellingPrice,
       quantity: variant.quantity === null || variant.quantity === undefined ? undefined : variant.quantity,
+      capacity: variant.capacity ?? "",
+      dimensionLength: variant.dimension?.length ?? undefined,
+      dimensionWidth: variant.dimension?.width ?? undefined,
+      dimensionHeight: variant.dimension?.height ?? undefined,
+      dimensionUnit: variant.dimension?.unit ?? "MM",
+      weight: variant.weight ?? undefined,
+      purchaseCostMrp: variant.purchaseCost?.mrp ?? undefined,
+      purchaseCostConsumerDiscountRate: variant.purchaseCost?.consumerDiscountRate ?? undefined,
+      purchaseCostTraderDiscountRate: variant.purchaseCost?.traderDiscountRate ?? undefined,
+      purchaseCostCashDiscountRate: variant.purchaseCost?.cashDiscountRate ?? undefined,
+      purchaseCostCostPrice: variant.purchaseCost?.costPrice ?? undefined,
+      imageUrlsInput: variant.images?.join(", ") ?? "",
     });
     setShowEditVariantModal(true);
   };
@@ -344,6 +373,27 @@ export default function EditProductPage() {
     if (!productId || !editingVariant) return;
     setIsSubmittingVariant(true);
     try {
+      const dimension = (data.dimensionLength !== undefined || data.dimensionWidth !== undefined || data.dimensionHeight !== undefined)
+        ? {
+            length: data.dimensionLength,
+            width: data.dimensionWidth,
+            height: data.dimensionHeight,
+            unit: data.dimensionUnit || "MM",
+          }
+        : undefined;
+
+      const purchaseCost = (data.purchaseCostMrp !== undefined || data.purchaseCostConsumerDiscountRate !== undefined || data.purchaseCostTraderDiscountRate !== undefined || data.purchaseCostCashDiscountRate !== undefined || data.purchaseCostCostPrice !== undefined)
+        ? {
+            mrp: data.purchaseCostMrp,
+            consumerDiscountRate: data.purchaseCostConsumerDiscountRate,
+            traderDiscountRate: data.purchaseCostTraderDiscountRate,
+            cashDiscountRate: data.purchaseCostCashDiscountRate,
+            costPrice: data.purchaseCostCostPrice,
+          }
+        : undefined;
+      
+      const imageUrls = data.imageUrlsInput?.split(',').map(url => url.trim()).filter(Boolean) || undefined;
+
       const payload: UpdateVariantRequest = {
         sku: data.sku || undefined,
         barcode: data.barcode || undefined,
@@ -354,6 +404,11 @@ export default function EditProductPage() {
         mrp: data.mrp === undefined || data.mrp === null ? undefined : Number(data.mrp),
         sellingPrice: data.sellingPrice === undefined || data.sellingPrice === null ? undefined : Number(data.sellingPrice),
         quantity: data.quantity === undefined || data.quantity === null ? undefined : Number(data.quantity),
+        capacity: data.capacity || undefined,
+        dimension: dimension,
+        weight: data.weight === undefined || data.weight === null ? undefined : Number(data.weight),
+        purchaseCost: purchaseCost,
+        imageUrls: imageUrls,
         allowCriticalFieldUpdates: false, 
       };
       await updateProductVariant(productId, editingVariant.id, payload);
@@ -589,50 +644,90 @@ export default function EditProductPage() {
         }
         setShowEditVariantModal(isOpen);
       }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>Edit Variant: {editingVariant?.title || editingVariant?.sku || "Variant"}</DialogTitle>
             <CardDescription>Modify the details for this specific product variant.</CardDescription>
           </DialogHeader>
           <Form {...editVariantForm}>
-            <form onSubmit={editVariantForm.handleSubmit(handleEditVariantSubmit)} className="space-y-4 py-2 max-h-[60vh] overflow-y-auto pr-2">
-              <FormField control={editVariantForm.control} name="title" render={({ field }) => (
-                <FormItem><FormLabel>Variant Title</FormLabel><FormControl><Input placeholder="e.g., Red - Medium" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <div className="grid grid-cols-2 gap-4">
-                <FormField control={editVariantForm.control} name="color" render={({ field }) => (
-                  <FormItem><FormLabel>Color</FormLabel><FormControl><Input placeholder="e.g., Red" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
-                )} />
-                <FormField control={editVariantForm.control} name="size" render={({ field }) => (
-                  <FormItem><FormLabel>Size</FormLabel><FormControl><Input placeholder="e.g., M" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
-                )} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <FormField control={editVariantForm.control} name="sku" render={({ field }) => (
-                  <FormItem><FormLabel>SKU</FormLabel><FormControl><Input placeholder="Variant SKU" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
-                )} />
-                <FormField control={editVariantForm.control} name="barcode" render={({ field }) => (
-                  <FormItem><FormLabel>Barcode (EAN/UPC)</FormLabel><FormControl><Input placeholder="Variant Barcode" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
-                )} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <FormField control={editVariantForm.control} name="mrp" render={({ field }) => (
-                  <FormItem><FormLabel>MRP (₹)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 1299" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
-                )} />
-                <FormField control={editVariantForm.control} name="sellingPrice" render={({ field }) => (
-                  <FormItem><FormLabel>Selling Price (₹)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 999" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
-                )} />
-              </div>
-               <FormField control={editVariantForm.control} name="quantity" render={({ field }) => (
-                  <FormItem><FormLabel>Stock Quantity</FormLabel><FormControl><Input type="number" placeholder="e.g., 100" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
-                )} />
-              <FormField control={editVariantForm.control} name="status" render={({ field }) => (
-                <FormItem><FormLabel>Status *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value ?? "ACTIVE"}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                  <SelectContent>{productStatuses.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select><FormMessage />
-                </FormItem>
-              )} />
-              <DialogFooter className="pt-4">
+            <form onSubmit={editVariantForm.handleSubmit(handleEditVariantSubmit)}>
+              <ScrollArea className="h-[65vh] pr-3"> {/* Scroll area for modal content */}
+              <Tabs defaultValue="general" className="w-full">
+                <TabsList className="grid w-full grid-cols-3 md:grid-cols-5 mb-4">
+                  <TabsTrigger value="general"><Info className="mr-1 h-4 w-4 md:hidden"/>General</TabsTrigger>
+                  <TabsTrigger value="pricing"><DollarSign className="mr-1 h-4 w-4 md:hidden"/>Pricing</TabsTrigger>
+                  <TabsTrigger value="purchase"><Archive className="mr-1 h-4 w-4 md:hidden"/>Purchase</TabsTrigger>
+                  <TabsTrigger value="physical"><Shirt className="mr-1 h-4 w-4 md:hidden"/>Physical</TabsTrigger>
+                  <TabsTrigger value="images"><ImageIcon className="mr-1 h-4 w-4 md:hidden"/>Images</TabsTrigger>
+                </TabsList>
+
+                <div className="space-y-4 py-2">
+                  <TabsContent value="general" className="space-y-4">
+                    <FormField control={editVariantForm.control} name="title" render={({ field }) => (<FormItem><FormLabel>Variant Title</FormLabel><FormControl><Input placeholder="e.g., Red - Medium" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField control={editVariantForm.control} name="color" render={({ field }) => (<FormItem><FormLabel>Color</FormLabel><FormControl><Input placeholder="e.g., Red" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={editVariantForm.control} name="size" render={({ field }) => (<FormItem><FormLabel>Size</FormLabel><FormControl><Input placeholder="e.g., M" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField control={editVariantForm.control} name="sku" render={({ field }) => (<FormItem><FormLabel>SKU</FormLabel><FormControl><Input placeholder="Variant SKU" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={editVariantForm.control} name="barcode" render={({ field }) => (<FormItem><FormLabel>Barcode (EAN/UPC)</FormLabel><FormControl><Input placeholder="Variant Barcode" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                    </div>
+                    <FormField control={editVariantForm.control} name="status" render={({ field }) => (<FormItem><FormLabel>Status *</FormLabel><Select onValueChange={field.onChange} value={field.value ?? "ACTIVE"}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent>{productStatuses.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                  </TabsContent>
+
+                  <TabsContent value="pricing" className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormField control={editVariantForm.control} name="mrp" render={({ field }) => (<FormItem><FormLabel>MRP (₹)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 1299" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={editVariantForm.control} name="sellingPrice" render={({ field }) => (<FormItem><FormLabel>Selling Price (₹)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 999" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                    </div>
+                    <FormField control={editVariantForm.control} name="quantity" render={({ field }) => (<FormItem><FormLabel>Stock Quantity</FormLabel><FormControl><Input type="number" placeholder="e.g., 100" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                  </TabsContent>
+
+                  <TabsContent value="purchase" className="space-y-4">
+                     <FormField control={editVariantForm.control} name="purchaseCostMrp" render={({ field }) => (<FormItem><FormLabel>Purchase MRP (₹)</FormLabel><FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <FormField control={editVariantForm.control} name="purchaseCostConsumerDiscountRate" render={({ field }) => (<FormItem><FormLabel>Consumer Disc. (%)</FormLabel><FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={editVariantForm.control} name="purchaseCostTraderDiscountRate" render={({ field }) => (<FormItem><FormLabel>Trader Disc. (%)</FormLabel><FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={editVariantForm.control} name="purchaseCostCashDiscountRate" render={({ field }) => (<FormItem><FormLabel>Cash Disc. (%)</FormLabel><FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                     </div>
+                     <FormField control={editVariantForm.control} name="purchaseCostCostPrice" render={({ field }) => (<FormItem><FormLabel>Actual Cost Price (₹)</FormLabel><FormControl><Input type="number" step="0.01" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                  </TabsContent>
+
+                  <TabsContent value="physical" className="space-y-4">
+                    <FormField control={editVariantForm.control} name="capacity" render={({ field }) => (<FormItem><FormLabel>Capacity</FormLabel><FormControl><Input placeholder="e.g., 250ml, 1kg" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={editVariantForm.control} name="weight" render={({ field }) => (<FormItem><FormLabel>Weight (kg)</FormLabel><FormControl><Input type="number" step="0.001" placeholder="e.g., 0.5" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormLabel>Dimensions</FormLabel>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
+                        <FormField control={editVariantForm.control} name="dimensionLength" render={({ field }) => (<FormItem><FormLabel className="text-xs">Length</FormLabel><FormControl><Input type="number" step="0.1" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={editVariantForm.control} name="dimensionWidth" render={({ field }) => (<FormItem><FormLabel className="text-xs">Width</FormLabel><FormControl><Input type="number" step="0.1" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={editVariantForm.control} name="dimensionHeight" render={({ field }) => (<FormItem><FormLabel className="text-xs">Height</FormLabel><FormControl><Input type="number" step="0.1" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={editVariantForm.control} name="dimensionUnit" render={({ field }) => (<FormItem><FormLabel className="text-xs">Unit</FormLabel><Select onValueChange={field.onChange} value={field.value ?? "MM"}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="MM">MM</SelectItem><SelectItem value="CM">CM</SelectItem><SelectItem value="IN">IN</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
+                    </div>
+                  </TabsContent>
+
+                   <TabsContent value="images" className="space-y-4">
+                    <FormField
+                        control={editVariantForm.control}
+                        name="imageUrlsInput"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Variant Image URLs</FormLabel>
+                                <TagsInputWithPreview
+                                    id="variant-imageUrlsInput"
+                                    value={field.value ?? ""}
+                                    onChange={field.onChange}
+                                    placeholder="Paste URL and press Enter/Comma"
+                                />
+                                <FormDescription>Comma-separated image URLs specific to this variant.</FormDescription>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                  </TabsContent>
+                </div>
+              </Tabs>
+              </ScrollArea>
+              <DialogFooter className="pt-4 mt-4 border-t">
                 <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
                 <Button type="submit" disabled={isSubmittingVariant}>
                   {isSubmittingVariant ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving Variant...</> : <><Save className="mr-2 h-4 w-4" /> Save Variant</>}
@@ -642,7 +737,6 @@ export default function EditProductPage() {
           </Form>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }
