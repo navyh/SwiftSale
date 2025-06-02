@@ -84,9 +84,10 @@ export interface OrderItemDisplay {
   sgstAmount: number;
   cgstAmount: number;
   finalItemPrice: number; // calculated: sellingPrice (inclusive) * quantity
+  taxableAmount: number;
 }
 
-const SELLER_STATE_CODE = "KA"; 
+const SELLER_STATE_CODE = "04"; 
 const STANDARD_GST_RATES = [0, 5, 12, 18, 28];
 const DEFAULT_GST_FOR_QUICK_CREATE = 18; // Default GST for quick create products if not specified by product
 
@@ -179,9 +180,9 @@ export default function CreateOrderPage() {
     const anyBilling = targetAddresses.find(a => a.type === "BILLING");
     const firstAddress = targetAddresses.length > 0 ? targetAddresses[0] : null;
 
-    const stateFromAddress = defaultBilling?.state || anyBilling?.state || firstAddress?.state || null;
+    const stateCodeFromAddress = defaultBilling?.stateCode || anyBilling?.stateCode || firstAddress?.stateCode || null;
     
-    const newCustomerStateCode = stateFromAddress || SELLER_STATE_CODE;
+    const newCustomerStateCode = stateCodeFromAddress || SELLER_STATE_CODE;
     if (newCustomerStateCode !== customerStateCode) {
       setCustomerStateCode(newCustomerStateCode); 
     }
@@ -481,6 +482,7 @@ export default function CreateOrderPage() {
           sgstAmount: derivedCustomerState === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
           cgstAmount: derivedCustomerState === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
           finalItemPrice: variantInclusiveSellingPrice * 1,
+          taxableAmount: variantPreTaxSellingPrice * 1
         };
         setOrderItems(prevItems => [...prevItems, newItem]);
         setSelectedProductForDetails(null); setSelectedVariant(null); setSelectedQuantity(1);
@@ -560,6 +562,7 @@ export default function CreateOrderPage() {
         sgstAmount: (derivedCustomerState === SELLER_STATE_CODE) ? gstAmountForLine / 2 : 0,
         cgstAmount: (derivedCustomerState === SELLER_STATE_CODE) ? gstAmountForLine / 2 : 0,
         finalItemPrice: variantInclusiveSellingPrice * selectedQuantity,
+        taxableAmount: preTaxSellingPrice * selectedQuantity
       };
       setOrderItems(prevItems => [...prevItems, newItem]);
     }
@@ -614,6 +617,7 @@ export default function CreateOrderPage() {
             gstTaxRate: newGstTaxRate,
             gstAmount: totalGstAmountForLine,
             finalItemPrice: finalItemPriceForLine,
+            taxableAmount: preTaxUnitPrice * quantity,
             igstAmount: (derivedCustomerState !== SELLER_STATE_CODE) ? totalGstAmountForLine : 0,
             sgstAmount: (derivedCustomerState === SELLER_STATE_CODE) ? totalGstAmountForLine / 2 : 0,
             cgstAmount: (derivedCustomerState === SELLER_STATE_CODE) ? totalGstAmountForLine / 2 : 0,
@@ -665,6 +669,7 @@ export default function CreateOrderPage() {
          const qty = Math.max(1, newQuantity);
          // item.sellingPrice is GST-inclusive, item.unitPrice is pre-GST
          const preTaxSellingPrice = item.unitPrice; 
+         const taxableAmount = item.unitPrice * qty;
          const gstRate = item.gstTaxRate;
          
          // item.mrp is GST-inclusive
@@ -680,6 +685,7 @@ export default function CreateOrderPage() {
          return {
            ...item,
            quantity: qty,
+           taxableAmount,
            discountAmount: lineDiscountAmountTotal,
            gstAmount: totalGstAmountForLine,
            finalItemPrice: finalItemPriceForLine,
