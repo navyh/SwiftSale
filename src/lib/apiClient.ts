@@ -639,7 +639,7 @@ export async function addMultipleVariants(productId: string, data: AddProductVar
 
 export async function updateProductVariant(productId: string, variantId: string, variantData: UpdateVariantRequest): Promise<ProductVariantDto> {
   return fetchAPI<ProductVariantDto>(`/products/${productId}/variants/${variantId}`, {
-    method: 'PATCH', // Assuming PATCH for partial updates, PUT could also be used
+    method: 'PUT', // Assuming PATCH for partial updates, PUT could also be used
     body: JSON.stringify(variantData),
   });
 }
