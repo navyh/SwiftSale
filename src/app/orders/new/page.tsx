@@ -809,6 +809,7 @@ export default function CreateOrderPage() {
             color: color,
             quantity: item.quantity,
             unitPrice: parseFloat(item.unitPrice.toFixed(2)), // This is pre-GST selling price
+            taxableAmount: parseFloat((item.unitPrice * item.quantity).toFixed(2)),
             discountRate: parseFloat(item.discountRate.toFixed(2)), // As entered/calculated
             discountAmount: perUnitPreTaxDiscount, // Per unit pre-tax discount amount
             hsnCode: item.hsnCode,

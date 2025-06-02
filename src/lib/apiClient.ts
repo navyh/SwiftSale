@@ -690,6 +690,7 @@ export interface OrderItemRequest {
     color?: string | null;
     quantity: number;
     unitPrice: number;
+    taxableAmount: number;
     discountRate?: number | null;
     discountAmount?: number | null;
     hsnCode?: string | null;
