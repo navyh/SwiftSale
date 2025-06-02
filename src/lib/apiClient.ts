@@ -619,7 +619,7 @@ export async function createProduct(productData: CreateProductRequest): Promise<
 
 export async function updateProduct(id: string, productData: UpdateProductRequest): Promise<ProductDto> {
   return fetchAPI<ProductDto>(`/products/${id}`, {
-    method: 'PATCH',
+    method: 'PUT', // Changed from PATCH to PUT
     body: JSON.stringify(productData),
   });
 }
@@ -941,3 +941,4 @@ export async function updateCurrentUser(data: UpdateUserRequest): Promise<Curren
     body: JSON.stringify(data),
   });
 }
+
