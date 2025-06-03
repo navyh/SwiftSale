@@ -534,8 +534,11 @@ export default function CreateOrderPage() {
       const newQuantity = currentItem.quantity + selectedQuantity;
 
       // Apply the new calculation logic as per requirements
-      const discountAmount = (currentItem.unitPrice * newQuantity * currentItem.discountRate) / 100;
-      const taxableAmount = (currentItem.unitPrice * newQuantity) - discountAmount;
+      // Calculate pre-tax MRP from the GST-inclusive MRP
+      const preTaxMrpForExisting = currentItem.gstTaxRate > 0 ? currentItem.mrp / (1 + (currentItem.gstTaxRate / 100)) : currentItem.mrp;
+      // Calculate discount amount as the difference between pre-tax MRP and pre-tax unit price, multiplied by quantity
+      const discountAmount = (preTaxMrpForExisting - currentItem.unitPrice) * newQuantity;
+      const taxableAmount = currentItem.unitPrice * newQuantity;
       const gstAmount = (taxableAmount * currentItem.gstTaxRate) / 100;
       const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;
 
@@ -577,8 +580,9 @@ export default function CreateOrderPage() {
       setOrderItems(updatedItems);
     } else {
       // Apply the new calculation logic as per requirements
-      const discountAmount = (preTaxSellingPrice * selectedQuantity * Math.max(0, discountRate)) / 100;
-      const taxableAmount = (preTaxSellingPrice * selectedQuantity) - discountAmount;
+      // Calculate discount amount as the difference between pre-tax MRP and pre-tax selling price, multiplied by quantity
+      const discountAmount = (preTaxMrp - preTaxSellingPrice) * selectedQuantity;
+      const taxableAmount = preTaxSellingPrice * selectedQuantity;
       const gstAmount = (taxableAmount * productGstRate) / 100;
       const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;
 
@@ -664,8 +668,9 @@ export default function CreateOrderPage() {
           const preTaxMrp = newGstTaxRate > 0 ? newInclusiveMrp / (1 + (newGstTaxRate / 100)) : newInclusiveMrp;
 
           // Apply the new calculation logic as per requirements
-          const discountAmount = (preTaxUnitPrice * quantity * newDiscountRate) / 100;
-          const taxableAmount = (preTaxUnitPrice * quantity) - discountAmount;
+          // Calculate discount amount as the difference between pre-tax MRP and pre-tax unit price, multiplied by quantity
+          const discountAmount = (preTaxMrp - preTaxUnitPrice) * quantity;
+          const taxableAmount = preTaxUnitPrice * quantity;
           const gstAmount = (taxableAmount * newGstTaxRate) / 100;
           const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;
 
@@ -758,8 +763,11 @@ export default function CreateOrderPage() {
        if (item.variantId === variantId) {
          const qty = Math.max(1, newQuantity);
          // Apply the new calculation logic as per requirements
-         const discountAmount = (item.unitPrice * qty * item.discountRate) / 100;
-         const taxableAmount = (item.unitPrice * qty) - discountAmount;
+         // Calculate pre-tax MRP from the GST-inclusive MRP
+         const preTaxMrp = item.gstTaxRate > 0 ? item.mrp / (1 + (item.gstTaxRate / 100)) : item.mrp;
+         // Calculate discount amount as the difference between pre-tax MRP and pre-tax unit price, multiplied by quantity
+         const discountAmount = (preTaxMrp - item.unitPrice) * qty;
+         const taxableAmount = item.unitPrice * qty;
          const gstRate = item.gstTaxRate;
          const gstAmount = (taxableAmount * gstRate) / 100;
          const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;

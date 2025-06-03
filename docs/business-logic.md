@@ -90,16 +90,68 @@ GST calculation depends on the customer's state code:
 - If customer state code === seller state code (default "04"): Apply CGST & SGST
 - If customer state code !== seller state code: Apply IGST
 
-### Tax Calculation Logic
+### Price Derivation and GST Calculation
 
-For each order item:
+#### Unit Price Derivation
+
+In SwiftSale, the pricing model follows these principles:
+
+1. **MRP (Maximum Retail Price)**: This is the GST-inclusive maximum price that can be charged to the customer. It's the starting point for pricing calculations.
+
+2. **Selling Price**: This is the actual GST-inclusive price charged to the customer after applying discounts.
+
+3. **Unit Price**: This is the pre-tax, pre-discount price used for internal calculations and API payloads.
+
+The system derives the Unit Price as follows:
 
 ```javascript
-// Calculate discount amount
-const discountAmount = (unitPrice * quantity * discountRate) / 100;
+// When a POS user inputs an MRP (GST-inclusive)
+const inclusiveMrp = mrpInputByUser;
 
-// Calculate taxable amount (pre-tax, post-discount)
-const taxableAmount = (unitPrice * quantity) - discountAmount;
+// Back-calculate the pre-tax MRP
+const preTaxMrp = gstRate > 0 ? inclusiveMrp / (1 + (gstRate / 100)) : inclusiveMrp;
+
+// When a discount is applied (either as a percentage or by directly setting a selling price)
+const discountRate = discountRateInputByUser; // e.g., 10%
+const preTaxSellingPrice = preTaxMrp * (1 - (discountRate / 100));
+
+// Calculate the GST-inclusive selling price (what customer pays)
+const inclusiveSellingPrice = preTaxSellingPrice * (1 + (gstRate / 100));
+
+// The Unit Price used in calculations is the pre-tax selling price
+const unitPrice = preTaxSellingPrice;
+```
+
+Alternatively, if the user directly inputs a selling price:
+
+```javascript
+// When a POS user inputs a selling price (GST-inclusive)
+const inclusiveSellingPrice = sellingPriceInputByUser;
+
+// Back-calculate the pre-tax selling price (Unit Price)
+const preTaxSellingPrice = gstRate > 0 ? inclusiveSellingPrice / (1 + (gstRate / 100)) : inclusiveSellingPrice;
+const unitPrice = preTaxSellingPrice;
+
+// If MRP is known, calculate the effective discount rate
+if (preTaxMrp > 0 && preTaxSellingPrice <= preTaxMrp) {
+  const discountAmount = preTaxMrp - preTaxSellingPrice;
+  const discountRate = (discountAmount / preTaxMrp) * 100;
+}
+```
+
+#### Tax Calculation Logic
+
+For each order item, once the Unit Price is derived:
+
+```javascript
+// Calculate pre-tax MRP from the GST-inclusive MRP
+const preTaxMrp = gstTaxRate > 0 ? inclusiveMrp / (1 + (gstTaxRate / 100)) : inclusiveMrp;
+
+// Calculate discount amount as the difference between pre-tax MRP and pre-tax unit price, multiplied by quantity
+const discountAmount = (preTaxMrp - unitPrice) * quantity;
+
+// Calculate taxable amount (pre-tax)
+const taxableAmount = unitPrice * quantity;
 
 // Calculate GST amount
 const gstAmount = (taxableAmount * gstTaxRate) / 100;
@@ -117,9 +169,16 @@ if (customerStateCode !== SELLER_STATE_CODE) {
   sGstAmount = gstAmount / 2;
 }
 
-// Calculate total amount
+// Calculate total amount (what customer pays)
 const totalAmount = taxableAmount + gstAmount;
 ```
+
+This approach ensures that:
+1. The selling price entered by the user is exactly what the customer pays
+2. GST is correctly back-calculated from the selling price
+3. Discounts are properly applied to the pre-tax amount
+4. GST is calculated on the post-discount taxable amount
+5. GST is correctly split between IGST vs CGST/SGST based on customer state
 
 ### Order Totals Calculation
 
