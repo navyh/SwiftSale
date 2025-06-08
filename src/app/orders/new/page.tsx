@@ -356,7 +356,7 @@ export default function CreateOrderPage() {
   const handleBpWithUserCreateDialogSubmit = async (data: BpWithUserCreateDialogValues) => {
     setIsBpWithUserCreateSubmitting(true);
     const payload: CreateBusinessProfileWithUserRequest = {
-      businessProfile: { name: data.bpName, gstin: data.bpGstin, status: 'ACTIVE' },
+      businessProfile: { companyName: data.bpName, gstin: data.bpGstin, status: 'ACTIVE' },
       user: { name: data.userName, phone: data.userPhone, email: data.userEmail || undefined, status: 'ACTIVE' }
     };
     try {
@@ -461,15 +461,15 @@ export default function CreateOrderPage() {
         const productGstRate = responseProduct.gstTaxRate ?? DEFAULT_GST_FOR_QUICK_CREATE;
 
         // unitPrice from API quick create response is pre-tax.
-        const variantPreTaxSellingPrice = newVariant.sellingPrice ?? responseProduct.unitPrice ?? 0;
-        const variantInclusiveSellingPrice = variantPreTaxSellingPrice * (1 + (productGstRate / 100));
-        const variantMrp = newVariant.mrp ?? variantInclusiveSellingPrice;
+        const variantUnitSellingPrice = newVariant.sellingPrice ?? 0;
+        const variantUnitTaxableAmount = variantUnitSellingPrice * (1 + (productGstRate / 100));
+        const variantMrp = newVariant.mrp ?? 0;
 
-        const preTaxMrp = productGstRate > 0 ? variantMrp / (1 + (productGstRate / 100)) : variantMrp;
-        const discountAmountPerUnit = preTaxMrp - variantPreTaxSellingPrice;
-        const discountRate = preTaxMrp > 0 ? (discountAmountPerUnit / preTaxMrp) * 100 : 0;
+        // const preTaxMrp = productGstRate > 0 ? variantMrp / (1 + (productGstRate / 100)) : variantMrp;
+        const discountAmountPerUnit = variantMrp - variantUnitSellingPrice;
+        const discountRate = variantMrp > 0 ? (discountAmountPerUnit / variantMrp) * 100 : 0;
 
-        const linePreTaxTotal = variantPreTaxSellingPrice * 1; // for quantity 1
+        const linePreTaxTotal = variantUnitTaxableAmount * 1; // for quantity 1
         const lineGstAmount = linePreTaxTotal * (productGstRate / 100);
         const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;
 
@@ -483,15 +483,22 @@ export default function CreateOrderPage() {
           mrp: variantMrp, // Inclusive MRP
           discountRate: Math.max(0, discountRate),
           discountAmount: Math.max(0, discountAmountPerUnit), // Per unit pre-tax discount
-          sellingPrice: variantInclusiveSellingPrice, // Inclusive Selling Price
-          unitPrice: variantPreTaxSellingPrice, // Pre-tax Selling Price
+          sellingPrice: variantUnitSellingPrice, // Inclusive Selling Price
+          unitPrice: variantMrp,
           gstTaxRate: productGstRate,
           gstAmount: lineGstAmount, 
           igstAmount: derivedCustomerState !== SELLER_STATE_CODE ? lineGstAmount : 0,
           sgstAmount: derivedCustomerState === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
           cgstAmount: derivedCustomerState === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
-          finalItemPrice: variantInclusiveSellingPrice * 1,
-          taxableAmount: variantPreTaxSellingPrice * 1
+          iGstRate: derivedCustomerState !== SELLER_STATE_CODE ? productGstRate : 0,
+          iGstAmount: derivedCustomerState !== SELLER_STATE_CODE ? lineGstAmount : 0,
+          sGstRate: derivedCustomerState === SELLER_STATE_CODE ? productGstRate / 2 : 0,
+          sGstAmount: derivedCustomerState === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
+          cGstRate: derivedCustomerState === SELLER_STATE_CODE ? productGstRate / 2 : 0,
+          cGstAmount: derivedCustomerState === SELLER_STATE_CODE ? lineGstAmount / 2 : 0,
+          finalItemPrice: variantUnitSellingPrice * 1,
+          taxableAmount: variantUnitTaxableAmount * 1,
+          totalAmount: linePreTaxTotal + lineGstAmount
         };
         setOrderItems(prevItems => [...prevItems, newItem]);
         setSelectedProductForDetails(null); setSelectedVariant(null); setSelectedQuantity(1);
@@ -523,10 +530,10 @@ export default function CreateOrderPage() {
     // Calculate pre-tax selling price
     const preTaxSellingPrice = productGstRate > 0 ? variantInclusiveSellingPrice / (1 + (productGstRate / 100)) : variantInclusiveSellingPrice;
     // Calculate pre-tax MRP
-    const preTaxMrp = productGstRate > 0 ? variantInclusiveMrp / (1 + (productGstRate / 100)) : variantInclusiveMrp;
+    // const preTaxMrp = productGstRate > 0 ? variantInclusiveMrp / (1 + (productGstRate / 100)) : variantInclusiveMrp;
 
-    const discountAmountPerUnit = preTaxMrp - preTaxSellingPrice;
-    const discountRate = preTaxMrp > 0 ? (discountAmountPerUnit / preTaxMrp) * 100 : 0;
+    const discountAmountPerUnit = variantInclusiveMrp - variantInclusiveSellingPrice;
+    const discountRate = variantInclusiveMrp > 0 ? (discountAmountPerUnit / variantInclusiveMrp) * 100 : 0;
 
     if (existingItemIndex > -1) {
       const updatedItems = [...orderItems];
@@ -535,10 +542,10 @@ export default function CreateOrderPage() {
 
       // Apply the new calculation logic as per requirements
       // Calculate pre-tax MRP from the GST-inclusive MRP
-      const preTaxMrpForExisting = currentItem.gstTaxRate > 0 ? currentItem.mrp / (1 + (currentItem.gstTaxRate / 100)) : currentItem.mrp;
+      // const preTaxMrpForExisting = currentItem.gstTaxRate > 0 ? currentItem.mrp / (1 + (currentItem.gstTaxRate / 100)) : currentItem.mrp;
       // Calculate discount amount as the difference between pre-tax MRP and pre-tax unit price, multiplied by quantity
-      const discountAmount = (preTaxMrpForExisting - currentItem.unitPrice) * newQuantity;
-      const taxableAmount = currentItem.unitPrice * newQuantity;
+      const discountAmount = discountAmountPerUnit * newQuantity;
+      const taxableAmount = preTaxSellingPrice * newQuantity;
       const gstAmount = (taxableAmount * currentItem.gstTaxRate) / 100;
       const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;
 
@@ -581,7 +588,7 @@ export default function CreateOrderPage() {
     } else {
       // Apply the new calculation logic as per requirements
       // Calculate discount amount as the difference between pre-tax MRP and pre-tax selling price, multiplied by quantity
-      const discountAmount = (preTaxMrp - preTaxSellingPrice) * selectedQuantity;
+      const discountAmount = (variantInclusiveMrp - variantInclusiveSellingPrice) * selectedQuantity;
       const taxableAmount = preTaxSellingPrice * selectedQuantity;
       const gstAmount = (taxableAmount * productGstRate) / 100;
       const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;
@@ -665,11 +672,11 @@ export default function CreateOrderPage() {
           const preTaxUnitPrice = newGstTaxRate > 0 ? newInclusiveSellingPrice / (1 + (newGstTaxRate / 100)) : newInclusiveSellingPrice;
 
           // Derive pre-tax MRP from the INCLUSIVE MRP provided from modal
-          const preTaxMrp = newGstTaxRate > 0 ? newInclusiveMrp / (1 + (newGstTaxRate / 100)) : newInclusiveMrp;
+          // const preTaxMrp = newGstTaxRate > 0 ? newInclusiveMrp / (1 + (newGstTaxRate / 100)) : newInclusiveMrp;
 
           // Apply the new calculation logic as per requirements
           // Calculate discount amount as the difference between pre-tax MRP and pre-tax unit price, multiplied by quantity
-          const discountAmount = (preTaxMrp - preTaxUnitPrice) * quantity;
+          const discountAmount = (newInclusiveMrp - newInclusiveSellingPrice) * quantity;
           const taxableAmount = preTaxUnitPrice * quantity;
           const gstAmount = (taxableAmount * newGstTaxRate) / 100;
           const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;
@@ -763,11 +770,11 @@ export default function CreateOrderPage() {
        if (item.variantId === variantId) {
          const qty = Math.max(1, newQuantity);
          // Apply the new calculation logic as per requirements
-         // Calculate pre-tax MRP from the GST-inclusive MRP
-         const preTaxMrp = item.gstTaxRate > 0 ? item.mrp / (1 + (item.gstTaxRate / 100)) : item.mrp;
+
+         const itemTaxableAmount = item.gstTaxRate > 0 ? item.sellingPrice / (1 + (item.gstTaxRate / 100)) : item.sellingPrice;
          // Calculate discount amount as the difference between pre-tax MRP and pre-tax unit price, multiplied by quantity
-         const discountAmount = (preTaxMrp - item.unitPrice) * qty;
-         const taxableAmount = item.unitPrice * qty;
+         const discountAmount = (item.mrp - item.sellingPrice) * qty;
+         const taxableAmount = itemTaxableAmount * qty;
          const gstRate = item.gstTaxRate;
          const gstAmount = (taxableAmount * gstRate) / 100;
          const derivedCustomerState = customerStateCode || SELLER_STATE_CODE;
@@ -821,7 +828,7 @@ export default function CreateOrderPage() {
 
   // Calculates sum of (pre-tax unit price * quantity) for all items
   const calculateOrderSubtotalPreTax = (): number => {
-    return orderItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+    return orderItems.reduce((sum, item) => sum + item.mrp * item.quantity, 0);
   };
 
   // Calculates sum of (total discount for each line item)
@@ -911,7 +918,7 @@ export default function CreateOrderPage() {
 
     if (customerType === 'B2B' && foundBusinessProfile) {
       customerDetailsPayload.businessProfileId = foundBusinessProfile.id; 
-      customerDetailsPayload.companyName = foundBusinessProfile.name;
+      customerDetailsPayload.companyName = foundBusinessProfile.companyName;
       customerDetailsPayload.gstin = foundBusinessProfile.gstin;
     }
 
@@ -1099,7 +1106,7 @@ export default function CreateOrderPage() {
                     <ScrollArea className="h-40">
                       {searchedBusinessProfiles.map(bp => (
                         <Button key={bp.id} variant="ghost" className="w-full justify-start text-left h-auto py-1.5 px-2 mb-1" onClick={() => handleSelectBusinessProfileFromList(bp)}>
-                          {bp.name} ({bp.gstin})
+                          {bp.companyName} ({bp.gstin})
                         </Button>
                       ))}
                     </ScrollArea>
@@ -1135,7 +1142,7 @@ export default function CreateOrderPage() {
                      <div className="flex justify-between items-start">
                         <div>
                             <CardDescription className="font-medium text-green-700">Selected Business:</CardDescription>
-                            <p className="text-sm text-green-800">{foundBusinessProfile.name} ({foundBusinessProfile.gstin})</p>
+                            <p className="text-sm text-green-800">{foundBusinessProfile.companyName} ({foundBusinessProfile.gstin})</p>
                             {selectedUserDisplay && <p className="mt-1 text-xs text-green-600">Associated User: {selectedUserDisplay.name} ({selectedUserDisplay.phone})</p>}
                             {!selectedUserDisplay && foundBusinessProfile.userIds && foundBusinessProfile.userIds.length === 0 && <p className="mt-1 text-xs text-orange-600">No primary user linked. Order can proceed, or link user via BP Management.</p>}
                              {selectedUserDisplay === null && foundBusinessProfile.userIds && foundBusinessProfile.userIds.length > 0 && !foundBusinessProfile.user && <p className="mt-1 text-xs text-orange-600">Primary user associated with this BP could not be fetched. Order can proceed with BP details, or verify user linkage via BP Management.</p>}
@@ -1404,7 +1411,7 @@ export default function CreateOrderPage() {
                 {orderItems.length > 0 && (
                 <div className="mt-6 pt-4 border-t">
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                        <p>Subtotal (Pre-tax, Pre-discount):</p><p className="text-right font-medium">₹{calculateOrderSubtotalPreTax().toFixed(2)}</p>
+                        <p>Subtotal (MRP):</p><p className="text-right font-medium">₹{calculateOrderSubtotalPreTax().toFixed(2)}</p>
                         <p>Total Discount:</p><p className="text-right font-medium text-green-600">- ₹{calculateTotalLineDiscountPreTax().toFixed(2)}</p>
                         <p>Total Taxable Amount:</p><p className="text-right font-medium">₹{calculateTotalTaxableAmount().toFixed(2)}</p>
                         <p>Total GST:</p><p className="text-right font-medium">₹{calculateTotalOrderGst().toFixed(2)}</p>
@@ -1590,7 +1597,7 @@ export default function CreateOrderPage() {
                     )}
                     {customerType === "B2B" && foundBusinessProfile && (
                         <>
-                            <p><span className="font-medium">Company:</span> {foundBusinessProfile.name}</p>
+                            <p><span className="font-medium">Company:</span> {foundBusinessProfile.companyName}</p>
                             <p><span className="font-medium">GSTIN:</span> {foundBusinessProfile.gstin}</p>
                             {selectedUserDisplay && <p><span className="font-medium">Contact:</span> {selectedUserDisplay.name} ({selectedUserDisplay.phone})</p>}
                         </>
@@ -1644,7 +1651,7 @@ export default function CreateOrderPage() {
                 </div>
                   <div className="mt-4 pt-4 border-t">
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                        <p>Subtotal (Pre-tax, Pre-discount):</p><p className="text-right font-medium">₹{calculateOrderSubtotalPreTax().toFixed(2)}</p>
+                        <p>Subtotal (MRP):</p><p className="text-right font-medium">₹{calculateOrderSubtotalPreTax().toFixed(2)}</p>
                         <p>Total Discount:</p><p className="text-right font-medium text-green-600">- ₹{calculateTotalLineDiscountPreTax().toFixed(2)}</p>
                         <p>Total Taxable Amount:</p><p className="text-right font-medium">₹{orderItems.reduce((sum, item) => sum + item.taxableAmount, 0).toFixed(2)}</p>
                         <p>Total GST:</p><p className="text-right font-medium">₹{calculateTotalOrderGst().toFixed(2)}</p>
