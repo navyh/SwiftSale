@@ -31,6 +31,7 @@ import {
   searchUserByPhone, searchUsersByName,
   fetchBusinessProfileById, createBusinessProfile, type CreateBusinessProfileRequest, type BusinessProfileDto,
   searchBusinessProfileByGstin, searchBusinessProfilesByName, createBusinessProfileWithUser, type CreateBusinessProfileWithUserRequest,
+  fetchUsersForBusinessProfileByGstin,
   searchProductsFuzzy, type ProductSearchResultDto, type ProductDto, fetchProductById, type ProductVariantDto,
   quickCreateProduct, type QuickCreateProductRequest, type QuickCreateProductResponse,
   createOrder, type CreateOrderRequest, type OrderItemRequest, type CustomerDetailsDto, type AddressCreateDto, type AddressDto as ApiAddressDto,
@@ -138,7 +139,7 @@ export default function CreateOrderPage() {
 
   const [selectedUserDisplay, setSelectedUserDisplay] = React.useState<UserDto | null>(null);
   const [foundBusinessProfile, setFoundBusinessProfile] = React.useState<BusinessProfileDto | null>(null);
-  const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null); 
+  const [selectedUserId, setSelectedUserId] = React.useState<string>('');
   const [selectedBusinessProfileId, setSelectedBusinessProfileId] = React.useState<string | null>(null); 
 
   const [customerStateCode, setCustomerStateCode] = React.useState<string | null>(SELLER_STATE_CODE);
@@ -218,7 +219,7 @@ export default function CreateOrderPage() {
     if (!phoneSearch) return;
     setIsSearchingUser(true);
     setSearchedUsers([]);
-    setSelectedUserId(null);
+    setSelectedUserId('');
     setSelectedUserDisplay(null);
     try {
       const users = await searchUserByPhone(phoneSearch);
@@ -239,7 +240,7 @@ export default function CreateOrderPage() {
     if (!userNameSearch.trim()) return;
     setIsSearchingUserByName(true);
     setSearchedUsers([]);
-    setSelectedUserId(null);
+    setSelectedUserId('');
     setSelectedUserDisplay(null);
     try {
       const usersPage = await searchUsersByName(userNameSearch.trim());
@@ -271,7 +272,7 @@ export default function CreateOrderPage() {
     setSearchedBusinessProfiles([]);
     setFoundBusinessProfile(null);
     setSelectedBusinessProfileId(null);
-    setSelectedUserId(null); 
+    setSelectedUserId('');
     setSelectedUserDisplay(null);
     try {
       const bp = await searchBusinessProfileByGstin(gstinSearch);
@@ -295,7 +296,7 @@ export default function CreateOrderPage() {
     setSearchedBusinessProfiles([]);
     setFoundBusinessProfile(null);
     setSelectedBusinessProfileId(null);
-    setSelectedUserId(null);
+    setSelectedUserId('');
     setSelectedUserDisplay(null);
     try {
       const bpPage = await searchBusinessProfilesByName(businessNameSearch.trim());
@@ -316,19 +317,53 @@ export default function CreateOrderPage() {
   const handleSelectBusinessProfileFromList = async (bp: BusinessProfileDto) => {
     setFoundBusinessProfile(bp);
     setSelectedBusinessProfileId(bp.id); 
-    if (bp.userIds && bp.userIds.length > 0 && bp.userIds[0]) {
-      try {
-        const user = await fetchUserById(bp.userIds[0]); 
-        setSelectedUserDisplay(user);
-        if (user && user.id) setSelectedUserId(user.id); 
-      } catch (userError: any) {
-         toast({ title: "Warning", description: `Could not fetch primary user for BP: ${userError.message}`, variant: "default" });
+
+    try {
+      // Fetch users associated with this business profile using GSTIN
+      if (bp.gstin) {
+        const usersPage = await fetchUsersForBusinessProfileByGstin(bp.gstin);
+
+        if (usersPage.content.length > 0) {
+          // Find a user that has this business profile in their memberships
+          const matchingUser = usersPage.content.find(user => 
+            user.businessMemberships?.some(membership => 
+              membership.businessProfileId === bp.id
+            )
+          );
+
+          if (matchingUser) {
+            setSelectedUserDisplay(matchingUser);
+            if (matchingUser.id) setSelectedUserId(matchingUser.id);
+          } else {
+            // Fallback to first user if no matching membership found
+            const firstUser = usersPage.content[0];
+            setSelectedUserDisplay(firstUser);
+            if (firstUser.id) setSelectedUserId(firstUser.id);
+          }
+        } else {
+          // No users found for this business profile
+          toast({ title: "Info", description: "Business profile selected. No users found. Order can proceed with this BP, or link a user via BP Management to have a specific user associated.", variant: "default", duration: 7000 });
+          setSelectedUserDisplay(null); 
+          setSelectedUserId('');
+        }
+      } else {
+        // Fallback to old method if no GSTIN available
+        if (bp.userIds && bp.userIds.length > 0 && bp.userIds[0]) {
+          const user = await fetchUserById(bp.userIds[0]); 
+          setSelectedUserDisplay(user);
+          if (user && user.id) setSelectedUserId(user.id);
+        } else {
+          toast({ title: "Info", description: "Business profile selected. No primary user linked. Order can proceed with this BP, or link a user via BP Management to have a specific user associated.", variant: "default", duration: 7000 });
+          setSelectedUserDisplay(null); 
+          setSelectedUserId('');
+        }
       }
-    } else {
-      toast({ title: "Info", description: "Business profile selected. No primary user linked. Order can proceed with this BP, or link a user via BP Management to have a specific user associated.", variant: "default", duration: 7000 });
+    } catch (userError: any) {
+      toast({ title: "Warning", description: `Could not fetch users for BP: ${userError.message}`, variant: "default" });
       setSelectedUserDisplay(null); 
-      setSelectedUserId(null);
+      setSelectedUserId('');
     }
+
     setSearchedBusinessProfiles([]);
     setGstinSearch("");
     setBusinessNameSearch("");
@@ -863,8 +898,16 @@ export default function CreateOrderPage() {
 
 
   const handleSubmitOrder = async () => {
-    if (!selectedUserId) { // Ensure a customer is selected for the order
+    // For B2C orders, a user must be selected
+    // For B2B orders, either a user or a business profile must be selected
+    if (customerType === 'B2C' && !selectedUserId) {
       toast({ title: "Error", description: "Customer selection is required to place an order.", variant: "destructive" });
+      return;
+    }
+
+    // For B2B orders, ensure a business profile is selected
+    if (customerType === 'B2B' && !selectedBusinessProfileId) {
+      toast({ title: "Error", description: "Business profile selection is required to place an order.", variant: "destructive" });
       return;
     }
     if (orderItems.length === 0) {
@@ -907,7 +950,7 @@ export default function CreateOrderPage() {
     }
 
     const customerDetailsPayload: CustomerDetailsDto = {
-      userId: selectedUserId, // This is the end customer/BP's primary user ID
+      userId: selectedUserId || undefined, // This is the end customer/BP's primary user ID (may be undefined for B2B)
       name: selectedUserDisplay?.name || undefined,
       phone: selectedUserDisplay?.phone || undefined,
       email: selectedUserDisplay?.email || undefined,
@@ -923,8 +966,10 @@ export default function CreateOrderPage() {
     }
 
     const orderPayload: CreateOrderRequest = {
-      placedByUserId: selectedUserId!, // User for whom order is placed
-      businessProfileId: customerType === 'B2B' && selectedBusinessProfileId ? selectedBusinessProfileId : undefined, 
+      // For B2B orders without a selected user, we'll use the system user ID or null
+      // The backend should handle this appropriately
+      placedByUserId: selectedUserId, // User for whom order is placed (may be undefined for B2B)
+      businessProfileId: customerType === 'B2B' && selectedBusinessProfileId ? selectedBusinessProfileId : undefined,
       customerDetails: customerDetailsPayload,
       items: orderItems.map(item => {
         const variantParts = item.variantName.split(' / ');

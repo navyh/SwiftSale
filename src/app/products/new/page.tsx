@@ -4,6 +4,7 @@
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
+import { Suspense } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -124,7 +125,7 @@ const TagsInputWithPreview: React.FC<TagsInputWithPreviewProps> = ({
     setTags(newTags);
     updateFormValue(newTags);
   };
-  
+
   const handleInputBlur = () => {
     addTag(inputValue);
   };
@@ -167,14 +168,24 @@ const TagsInputWithPreview: React.FC<TagsInputWithPreviewProps> = ({
 };
 
 
+// Wrapper component that uses useSearchParams
+function ProductFormWithSearchParams({ onFormReady }: { onFormReady: (initialStatus: string | null) => void }) {
+  const searchParams = useSearchParams();
+  const initialStatusQueryParam = searchParams.get('status');
+
+  React.useEffect(() => {
+    onFormReady(initialStatusQueryParam);
+  }, [onFormReady, initialStatusQueryParam]);
+
+  return null;
+}
+
 export default function CreateProductPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { toast } = useToast();
-  
-  const initialStatusQueryParam = searchParams.get('status');
-  const productStatuses = hardcodedProductStatuses; 
-  
+  const [initialStatusQueryParam, setInitialStatusQueryParam] = React.useState<string | null>(null);
+  const productStatuses = hardcodedProductStatuses;
+
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
@@ -195,12 +206,19 @@ export default function CreateProductPage() {
     },
   });
 
+  // Handler for when the search params are ready
+  const handleSearchParamsReady = React.useCallback((initialStatus: string | null) => {
+    setInitialStatusQueryParam(initialStatus);
+  }, []);
+
   React.useEffect(() => {
-    const validInitialStatus = initialStatusQueryParam && productStatuses.includes(initialStatusQueryParam.toUpperCase())
-      ? initialStatusQueryParam.toUpperCase()
-      : (productStatuses.includes('DRAFT') ? 'DRAFT' : productStatuses[0]);
-    if (form.getValues('status') !== validInitialStatus) {
-      form.reset({ ...form.getValues(), status: validInitialStatus });
+    if (initialStatusQueryParam !== null) {
+      const validInitialStatus = initialStatusQueryParam && productStatuses.includes(initialStatusQueryParam.toUpperCase())
+        ? initialStatusQueryParam.toUpperCase()
+        : (productStatuses.includes('DRAFT') ? 'DRAFT' : productStatuses[0]);
+      if (form.getValues('status') !== validInitialStatus) {
+        form.reset({ ...form.getValues(), status: validInitialStatus });
+      }
     }
   }, [form, initialStatusQueryParam, productStatuses]);
 
@@ -224,7 +242,7 @@ export default function CreateProductPage() {
         sizeVariant: sizeVariants,
         tags: tags,
         status: data.status as CreateProductRequest['status'] || 'DRAFT',
-        
+
         // Fields for removed sections are removed from payload
         // sku: data.sku || undefined,
         // barcode: data.barcode || undefined,
@@ -238,7 +256,7 @@ export default function CreateProductPage() {
         // metaTitle: data.metaTitle || undefined,
         // metaDescription: data.metaDescription || undefined,
       };
-      
+
       await createProduct(productPayload);
       toast({
         title: "Success",
@@ -255,9 +273,14 @@ export default function CreateProductPage() {
       });
     }
   }
-  
+
   return (
     <div className="space-y-6 pb-8">
+      {/* Wrap the component that uses useSearchParams in a Suspense boundary */}
+      <Suspense fallback={<div>Loading...</div>}>
+        <ProductFormWithSearchParams onFormReady={handleSearchParamsReady} />
+      </Suspense>
+
       <div className="flex items-center gap-2 md:gap-4">
         <Link href="/products" passHref>
           <Button variant="outline" size="icon" aria-label="Back to Products">
@@ -344,7 +367,7 @@ export default function CreateProductPage() {
               />
             </CardContent>
           </Card>
-          
+
           <Card className="shadow-md">
             <CardHeader>
                 <CardTitle>Variant Generation</CardTitle>
@@ -390,7 +413,7 @@ export default function CreateProductPage() {
           </Card>
 
           {/* Removed "Optional Base Product Details" Card */}
-          
+
           <Card className="shadow-md">
             <CardHeader>
               <CardTitle>Tags &amp; Status</CardTitle>
@@ -439,7 +462,7 @@ export default function CreateProductPage() {
               {/* isFeatured Checkbox removed */}
             </CardContent>
           </Card>
-          
+
           {/* Removed "SEO Information" Card */}
 
           <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 pt-6">
@@ -455,6 +478,3 @@ export default function CreateProductPage() {
     </div>
   );
 }
-    
-
-    
