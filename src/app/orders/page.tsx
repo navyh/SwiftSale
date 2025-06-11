@@ -1,20 +1,162 @@
 
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PlusCircle, Search, Eye, Filter, UserPlus, ShoppingBag } from "lucide-react";
-import Link from "next/link"; // Added Link import
-
-const orders = [
-  { id: "ORD001", customer: "Alice Wonderland", date: "2024-07-20", total: "$125.50", status: "Processing", items: 3 },
-  { id: "ORD002", customer: "Bob The Builder", date: "2024-07-19", total: "$89.99", status: "Shipped", items: 2 },
-  { id: "ORD003", customer: "Charlie Brown", date: "2024-07-19", total: "$240.00", status: "Delivered", items: 5 },
-  { id: "ORD004", customer: "Diana Prince", date: "2024-07-18", total: "$45.75", status: "Pending", items: 1 },
-  { id: "ORD005", customer: "Edward Scissorhands", date: "2024-07-17", total: "$199.00", status: "Cancelled", items: 4 },
-];
+import { PlusCircle, Search, Eye, Filter, UserPlus, ShoppingBag, ChevronLeft, ChevronRight, Loader2, Phone } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { 
+  fetchOrders, 
+  searchOrders, 
+  fetchOrderStatuses,
+  type OrderDto, 
+  type Page 
+} from "@/lib/apiClient";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
+import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 export default function OrdersPage() {
+  const router = useRouter();
+  const { toast } = useToast();
+
+  // State for orders and pagination
+  const [orders, setOrders] = useState<OrderDto[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+
+  // State for filters
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [orderStatuses, setOrderStatuses] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState("createdAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  // Search debounce timer
+  const [searchTimer, setSearchTimer] = useState<NodeJS.Timeout | null>(null);
+
+  // Fetch order statuses for filter dropdown
+  useEffect(() => {
+    const loadOrderStatuses = async () => {
+      try {
+        const statuses = await fetchOrderStatuses();
+        setOrderStatuses(statuses);
+      } catch (error) {
+        console.error("Failed to load order statuses:", error);
+      }
+    };
+    loadOrderStatuses();
+  }, []);
+
+
+  // Fetch orders based on current filters and pagination
+  useEffect(() => {
+    const loadOrders = async () => {
+      if (searchKeyword.trim()) {
+        return; // Skip this effect when searchKeyword changes - the search effect will handle it
+      }
+
+      setIsLoading(true);
+      try {
+        // Use regular fetch with filters
+        const result = await fetchOrders({
+          sortBy,
+          sortDir,
+          status: statusFilter === "all" ? undefined : statusFilter,
+          page: currentPage,
+          size: pageSize,
+        });
+        setOrders(result.content);
+        setTotalPages(result.totalPages);
+      } catch (error: any) {
+        toast({
+          title: "Error loading orders",
+          description: error.message || "Failed to load orders. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadOrders();
+  }, [currentPage, pageSize, sortBy, sortDir, statusFilter, toast]);
+
+  // Handle search keyword changes with debounce
+  useEffect(() => {
+    // Only proceed if there's a search keyword
+    if (!searchKeyword.trim()) return;
+
+    // Clear any existing timer
+    if (searchTimer) {
+      clearTimeout(searchTimer);
+    }
+
+    // Set a new timer
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      setCurrentPage(0); // Reset to first page when searching
+
+      try {
+        const result = await searchOrders(
+          searchKeyword,
+          0,
+          pageSize,
+          `${sortBy},${sortDir}`
+        );
+        setOrders(result.content);
+        setTotalPages(result.totalPages);
+      } catch (error: any) {
+        toast({
+          title: "Search failed",
+          description: error.message || "Failed to search orders. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsSearching(false);
+      }
+    }, 800); // 800ms debounce delay
+
+    setSearchTimer(timer);
+
+    // Cleanup function to clear the timer if the component unmounts or dependencies change
+    return () => {
+      if (searchTimer) {
+        clearTimeout(searchTimer);
+      }
+    };
+  }, [searchKeyword, pageSize, sortBy, sortDir, toast]);
+
+  // Handle clear search
+  const handleClearSearch = () => {
+    setSearchKeyword("");
+    setCurrentPage(0);
+    // This will trigger the useEffect to reload orders without search
+  };
+
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    try {
+      return format(new Date(dateString), "MMM dd, yyyy");
+    } catch (error) {
+      return dateString;
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -36,60 +178,258 @@ export default function OrdersPage() {
             <div className="flex items-center gap-2 w-full md:w-auto">
               <div className="relative flex-grow md:flex-grow-0">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input type="search" placeholder="Search orders..." className="pl-8 w-full md:w-[250px]" />
+                <Input 
+                  type="search" 
+                  placeholder="Search orders..." 
+                  className="pl-8 w-full md:w-[250px]"
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                />
+                {isSearching && (
+                  <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
+                )}
               </div>
-              <Button variant="outline">
-                <Filter className="mr-2 h-4 w-4" /> Filters
-              </Button>
+              {searchKeyword.trim() && (
+                <Button 
+                  variant="ghost" 
+                  onClick={handleClearSearch}
+                  disabled={isSearching}
+                  size="sm"
+                >
+                  Clear
+                </Button>
+              )}
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {orderStatuses.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {status}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <CardDescription>View, manage, and track all customer orders.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Order ID</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Items</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {orders.map((order) => (
-                <TableRow key={order.id}>
-                  <TableCell className="font-medium">{order.id}</TableCell>
-                  <TableCell>{order.customer}</TableCell>
-                  <TableCell>{order.date}</TableCell>
-                  <TableCell>{order.items}</TableCell>
-                  <TableCell>{order.total}</TableCell>
-                  <TableCell>
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      order.status === "Delivered" ? "bg-green-100 text-green-700" :
-                      order.status === "Shipped" ? "bg-blue-100 text-blue-700" :
-                      order.status === "Processing" ? "bg-yellow-100 text-yellow-700" :
-                      order.status === "Pending" ? "bg-orange-100 text-orange-700" :
-                      "bg-red-100 text-red-700" // Cancelled
-                    }`}>
-                      {order.status}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" className="hover:text-primary">
-                      <Eye className="h-4 w-4" />
-                       <span className="sr-only">View Order</span>
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          {isLoading ? (
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <span className="ml-2">Loading orders...</span>
+            </div>
+          ) : orders.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>No orders found. Try adjusting your search or filters.</p>
+            </div>
+          ) : (
+            <>
+              {/* Desktop view - Table */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Order #</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Items</TableHead>
+                      <TableHead>Total</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {orders.map((order) => (
+                      <TableRow key={order.id}>
+                        <TableCell className="font-medium">{order.orderNumber || order.id.substring(0, 8)}</TableCell>
+                        <TableCell>
+                          {order.customerDetails?.companyName || order.businessProfile?.companyName ? (
+                            // B2B order
+                            <div className="flex flex-col">
+                              <span className="font-medium">{order.customerDetails?.companyName || order.businessProfile?.companyName}</span>
+                              {order.customerDetails?.gstin && (
+                                <span className="text-xs text-muted-foreground">GSTIN: {order.customerDetails.gstin}</span>
+                              )}
+                              <span className="text-xs mt-1">
+                                {order.customerDetails?.name || order.user?.name || ""}
+                                {(order.customerDetails?.phone || order.user?.phone) && (
+                                  <span className="ml-1 text-muted-foreground">
+                                    ({order.customerDetails?.phone || order.user?.phone})
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          ) : (
+                            // B2C order
+                            <div className="flex flex-col">
+                              <span className="font-medium">{order.customerDetails?.name || order.user?.name || "Unknown"}</span>
+                              {(order.customerDetails?.phone || order.user?.phone) && (
+                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Phone className="h-3 w-3" />
+                                  {order.customerDetails?.phone || order.user?.phone}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>{formatDate(order.createdAt)}</TableCell>
+                        <TableCell>{order.items?.length || 0} items</TableCell>
+                        <TableCell>
+                          ₹{order.paymentSummary? order.paymentSummary.totalAmount ? order.totalAmount.toFixed(2) : "0.00"}
+                        </TableCell>
+                        <TableCell>
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            order.status === "DELIVERED" ? "bg-green-100 text-green-700" :
+                            order.status === "SHIPPED" ? "bg-blue-100 text-blue-700" :
+                            order.status === "PROCESSING" ? "bg-yellow-100 text-yellow-700" :
+                            order.status === "PENDING" ? "bg-orange-100 text-orange-700" :
+                            order.status === "CANCELLED" ? "bg-red-100 text-red-700" :
+                            "bg-gray-100 text-gray-700" // Other statuses
+                          }`}>
+                            {order.status}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Link href={`/orders/${order.id}`} passHref>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="hover:text-primary"
+                            >
+                              <Eye className="h-4 w-4" />
+                              <span className="sr-only">View Order</span>
+                            </Button>
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile view - Card list */}
+              <div className="md:hidden space-y-4">
+                {orders.map((order) => (
+                  <Link href={`/orders/${order.id}`} key={order.id} className="block">
+                    <Card className="hover:bg-accent/50 transition-colors">
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <p className="font-medium">{order.orderNumber || order.id.substring(0, 8)}</p>
+                            <p className="text-xs text-muted-foreground">{formatDate(order.createdAt)}</p>
+                          </div>
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            order.status === "DELIVERED" ? "bg-green-100 text-green-700" :
+                            order.status === "SHIPPED" ? "bg-blue-100 text-blue-700" :
+                            order.status === "PROCESSING" ? "bg-yellow-100 text-yellow-700" :
+                            order.status === "PENDING" ? "bg-orange-100 text-orange-700" :
+                            order.status === "CANCELLED" ? "bg-red-100 text-red-700" :
+                            "bg-gray-100 text-gray-700" // Other statuses
+                          }`}>
+                            {order.status}
+                          </span>
+                        </div>
+
+                        <div className="mb-2">
+                          {order.customerDetails?.companyName || order.businessProfile?.companyName ? (
+                            // B2B order
+                            <div>
+                              <p className="font-medium">{order.customerDetails?.companyName || order.businessProfile?.companyName}</p>
+                              {order.customerDetails?.gstin && (
+                                <p className="text-xs text-muted-foreground">GSTIN: {order.customerDetails.gstin}</p>
+                              )}
+                              <p className="text-xs mt-1">
+                                {order.customerDetails?.name || order.user?.name || ""}
+                                {(order.customerDetails?.phone || order.user?.phone) && (
+                                  <span className="ml-1 text-muted-foreground">
+                                    ({order.customerDetails?.phone || order.user?.phone})
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          ) : (
+                            // B2C order
+                            <div>
+                              <p className="font-medium">{order.customerDetails?.name || order.user?.name || "Unknown"}</p>
+                              {(order.customerDetails?.phone || order.user?.phone) && (
+                                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Phone className="h-3 w-3" />
+                                  {order.customerDetails?.phone || order.user?.phone}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex justify-between items-center text-sm">
+                          <span>{order.items?.length || 0} items</span>
+                          <span className="font-medium">₹{order.totalAmount ? order.totalAmount.toFixed(2) : "0.00"}</span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Pagination Controls */}
+          {!isLoading && orders.length > 0 && (
+            <div className="flex items-center justify-between space-x-2 py-4">
+              <div className="text-sm text-muted-foreground">
+                Showing <span className="font-medium">{orders.length}</span> of{" "}
+                <span className="font-medium">{totalPages * pageSize}</span> orders
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+                  disabled={currentPage === 0 || isLoading}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="sr-only">Previous Page</span>
+                </Button>
+                <div className="text-sm font-medium">
+                  Page {currentPage + 1} of {Math.max(1, totalPages)}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
+                  disabled={currentPage >= totalPages - 1 || isLoading}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                  <span className="sr-only">Next Page</span>
+                </Button>
+                <Select 
+                  value={pageSize.toString()} 
+                  onValueChange={(value) => {
+                    setPageSize(Number(value));
+                    setCurrentPage(0); // Reset to first page when changing page size
+                  }}
+                >
+                  <SelectTrigger className="w-[100px]">
+                    <SelectValue placeholder="10 per page" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5 per page</SelectItem>
+                    <SelectItem value="10">10 per page</SelectItem>
+                    <SelectItem value="20">20 per page</SelectItem>
+                    <SelectItem value="50">50 per page</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
-      
+
+
       <Card className="shadow-md">
         <CardHeader>
             <CardTitle>Order Creation Tools</CardTitle>

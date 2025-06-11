@@ -820,6 +820,49 @@ export async function downloadInvoicePdf(orderId: string): Promise<Blob> {
     return response.blob();
 }
 
+export async function fetchOrders(params?: { 
+    sortBy?: string; 
+    sortDir?: 'asc' | 'desc'; 
+    status?: string; 
+    createdFrom?: string; 
+    createdTo?: string; 
+    userId?: string;
+    businessProfileId?: string;
+    page?: number; 
+    size?: number;
+}): Promise<Page<OrderDto>> {
+    const queryParams = new URLSearchParams();
+    if (params?.sortBy) queryParams.append('sortBy', params.sortBy);
+    if (params?.sortDir) queryParams.append('sortDir', params.sortDir);
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.createdFrom) queryParams.append('createdFrom', params.createdFrom);
+    if (params?.createdTo) queryParams.append('createdTo', params.createdTo);
+    if (params?.userId) queryParams.append('userId', params.userId);
+    if (params?.businessProfileId) queryParams.append('businessProfileId', params.businessProfileId);
+    if (params?.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+
+    const queryString = queryParams.toString();
+    const data = await fetchAPI<Page<OrderDto> | undefined>(`/orders${queryString ? `?${queryString}` : ''}`);
+    return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
+}
+
+export async function searchOrders(keyword: string, page: number = 0, size: number = 10, sort: string = 'createdAt,desc'): Promise<Page<OrderDto>> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('keyword', keyword);
+    queryParams.append('page', page.toString());
+    queryParams.append('size', size.toString());
+    queryParams.append('sort', sort);
+
+    const queryString = queryParams.toString();
+    const data = await fetchAPI<Page<OrderDto> | undefined>(`/orders/search?${queryString}`);
+    return data ?? { content: [], totalPages: 0, totalElements: 0, size: size, number: page, first: true, last: true, empty: true };
+}
+
+export async function fetchOrderById(orderId: string): Promise<OrderDto> {
+    return fetchAPI<OrderDto>(`/orders/${orderId}`);
+}
+
 
 // === V2 META ENDPOINTS ===
 
@@ -942,4 +985,3 @@ export async function updateCurrentUser(data: UpdateUserRequest): Promise<Curren
     body: JSON.stringify(data),
   });
 }
-
