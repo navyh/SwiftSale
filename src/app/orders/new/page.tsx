@@ -21,6 +21,12 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StateCombobox } from "@/components/ui/state-combobox";
@@ -36,6 +42,7 @@ import {
   searchProductsFuzzy, type ProductSearchResultDto, type ProductDto, fetchProductById, type ProductVariantDto,
   quickCreateProduct, type QuickCreateProductRequest, type QuickCreateProductResponse,
   createOrder, type CreateOrderRequest, type OrderItemRequest, type CustomerDetailsDto, type AddressCreateDto, type AddressDto as ApiAddressDto,
+  fetchProductBrands, type Brand, fetchProductCategoriesFlat, type Category,
   type Page
 } from "@/lib/apiClient";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -74,9 +81,12 @@ const quickProductCreateDialogSchema = z.object({
   name: z.string().min(1, "Product name is required"),
   brandName: z.string().min(1, "Brand name is required"),
   categoryName: z.string().min(1, "Category name is required"),
-  colors: z.string().min(1, "At least one color is required (comma-separated)"),
-  sizes: z.string().min(1, "At least one size is required (comma-separated)"),
-  unitPrice: z.coerce.number().min(0.01, "Unit Price (GST-Inclusive) must be greater than 0"),
+  subCategory: z.string().min(1, "Subcategory is required"),
+  color: z.string().min(1, "Color is required"),
+  size: z.string().min(1, "Size is required"),
+  gstTaxRate: z.coerce.number().min(0, "GST Tax Rate is required"),
+  mrp: z.coerce.number().min(0.01, "MRP must be greater than 0"),
+  consumerDiscount: z.coerce.number().min(0, "Consumer Discount must be 0 or greater"),
 });
 type QuickProductCreateDialogValues = z.infer<typeof quickProductCreateDialogSchema>;
 
@@ -177,16 +187,75 @@ export default function CreateOrderPage() {
   const [orderItems, setOrderItems] = React.useState<OrderItemDisplay[]>([]);
   const [showQuickProductDialog, setShowQuickProductDialog] = React.useState(false);
   const [isQuickProductSubmitting, setIsQuickProductSubmitting] = React.useState(false);
+  const [brands, setBrands] = React.useState<Brand[]>([]);
+  const [categories, setCategories] = React.useState<Category[]>([]);
+  const [isLoadingBrands, setIsLoadingBrands] = React.useState(false);
+  const [isLoadingCategories, setIsLoadingCategories] = React.useState(false);
 
   const [editPricingModal, setEditPricingModal] = React.useState<EditPricingModalState>(initialEditPricingModalState);
 
   const [orderNotes, setOrderNotes] = React.useState("");
   const [paymentMethod, setPaymentMethod] = React.useState("PENDING");
 
+  // Fetch brands and categories when the quick product dialog opens
+  React.useEffect(() => {
+    if (showQuickProductDialog) {
+      // Fetch brands
+      const fetchBrands = async () => {
+        setIsLoadingBrands(true);
+        try {
+          const brandsList = await fetchProductBrands();
+          setBrands(brandsList);
+        } catch (error: any) {
+          toast({ 
+            title: "Error fetching brands", 
+            description: error.message || "Failed to fetch brands list.", 
+            variant: "destructive" 
+          });
+        } finally {
+          setIsLoadingBrands(false);
+        }
+      };
+
+      // Fetch categories
+      const fetchCategories = async () => {
+        setIsLoadingCategories(true);
+        try {
+          const categoriesList = await fetchProductCategoriesFlat();
+          setCategories(categoriesList);
+        } catch (error: any) {
+          toast({ 
+            title: "Error fetching categories", 
+            description: error.message || "Failed to fetch categories list.", 
+            variant: "destructive" 
+          });
+        } finally {
+          setIsLoadingCategories(false);
+        }
+      };
+
+      fetchBrands();
+      fetchCategories();
+    }
+  }, [showQuickProductDialog, toast]);
+
 
   const userCreateForm = useForm<UserCreateDialogValues>({ resolver: zodResolver(userCreateDialogSchema) });
   const bpWithUserCreateForm = useForm<BpWithUserCreateDialogValues>({ resolver: zodResolver(bpWithUserCreateDialogSchema) });
-  const quickProductCreateForm = useForm<QuickProductCreateDialogValues>({ resolver: zodResolver(quickProductCreateDialogSchema) });
+  const quickProductCreateForm = useForm<QuickProductCreateDialogValues>({ 
+      resolver: zodResolver(quickProductCreateDialogSchema),
+      defaultValues: {
+        name: "",
+        brandName: "",
+        categoryName: "",
+        subCategory: "",
+        color: "",
+        size: "",
+        gstTaxRate: DEFAULT_GST_FOR_QUICK_CREATE,
+        mrp: 0,
+        consumerDiscount: 0
+      }
+    });
 
   const [isSubmittingOrder, setIsSubmittingOrder] = React.useState(false);
 
@@ -526,21 +595,24 @@ export default function CreateOrderPage() {
   const handleQuickProductCreateDialogSubmit = async (data: QuickProductCreateDialogValues) => {
     setIsQuickProductSubmitting(true);
 
-    const inclusiveUnitPriceFromForm = data.unitPrice; 
-    const gstRateForQuickCreate = DEFAULT_GST_FOR_QUICK_CREATE; // Use a default GST for simplicity here
+    const gstRateForQuickCreate = data.gstTaxRate; // Use the GST rate from the form
 
-    // Backend for /products/quick expects pre-tax unitPrice
-    const preTaxUnitPriceForApi = gstRateForQuickCreate > 0
-        ? inclusiveUnitPriceFromForm / (1 + (gstRateForQuickCreate / 100))
-        : inclusiveUnitPriceFromForm;
+    // Calculate selling price based on MRP and consumer discount
+    const inclusiveMrp = data.mrp;
+    const consumerDiscountRate = data.consumerDiscount;
+    const inclusiveSellingPrice = inclusiveMrp * (1 - (consumerDiscountRate / 100));
 
     const payload: QuickCreateProductRequest = {
       name: data.name,
-      brandName: data.brandName,
-      categoryName: data.categoryName,
-      colorVariants: data.colors.split(',').map(c => c.trim()).filter(Boolean),
-      sizeVariants: data.sizes.split(',').map(s => s.trim()).filter(Boolean),
-      unitPrice: preTaxUnitPriceForApi, 
+      brand: data.brandName,
+      gstTaxRate: data.gstTaxRate,
+      category: data.categoryName,
+      subCategory: data.subCategory,
+      color: data.color,
+      size: data.size,
+      mrp: inclusiveMrp,
+      consumerDiscount: consumerDiscountRate,
+      status: "DRAFT"
     };
 
     try {
@@ -1398,21 +1470,174 @@ export default function CreateOrderPage() {
                             <DialogContent className="max-h-[80vh] overflow-y-auto">
                                 <DialogHeader><DialogTitle>Quick Add New Product</DialogTitle></DialogHeader>
                                 <form onSubmit={quickProductCreateForm.handleSubmit(handleQuickProductCreateDialogSubmit)} className="space-y-3">
-                                    <Input {...quickProductCreateForm.register("name")} placeholder="Product Name *" />
-                                    {quickProductCreateForm.formState.errors.name && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.name.message}</p>}
-                                    <Input {...quickProductCreateForm.register("brandName")} placeholder="Brand Name *" />
-                                    {quickProductCreateForm.formState.errors.brandName && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.brandName.message}</p>}
-                                    <Input {...quickProductCreateForm.register("categoryName")} placeholder="Category Name *" />
-                                    {quickProductCreateForm.formState.errors.categoryName && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.categoryName.message}</p>}
-                                    <Input {...quickProductCreateForm.register("colors")} placeholder="Colors (comma-separated) *" />
-                                    {quickProductCreateForm.formState.errors.colors && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.colors.message}</p>}
-                                    <Input {...quickProductCreateForm.register("sizes")} placeholder="Sizes (comma-separated) *" />
-                                     {quickProductCreateForm.formState.errors.sizes && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.sizes.message}</p>}
                                     <div>
-                                      <Label htmlFor="quick_product_unit_price">Unit Price (GST-Inclusive) *</Label>
-                                      <Input id="quick_product_unit_price" type="number" step="0.01" {...quickProductCreateForm.register("unitPrice")} placeholder="GST-Inclusive unit price" />
+                                        <Label htmlFor="product-name">Product Name *</Label>
+                                        <Input id="product-name" {...quickProductCreateForm.register("name")} placeholder="Product Name" />
+                                        {quickProductCreateForm.formState.errors.name && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.name.message}</p>}
                                     </div>
-                                    {quickProductCreateForm.formState.errors.unitPrice && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.unitPrice.message}</p>}
+
+                                    <div>
+                                        <Label htmlFor="brand-name">Brand Name *</Label>
+                                        <Controller
+                                            name="brandName"
+                                            control={quickProductCreateForm.control}
+                                            render={({ field }) => (
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <div className="flex items-center">
+                                                            <Input
+                                                                id="brand-name"
+                                                                placeholder="Select or type brand name"
+                                                                value={field.value}
+                                                                onChange={(e) => field.onChange(e.target.value)}
+                                                                className="w-full"
+                                                            />
+                                                            {isLoadingBrands ? (
+                                                                <Loader2 className="h-4 w-4 animate-spin ml-2" />
+                                                            ) : (
+                                                                <Button 
+                                                                    type="button"
+                                                                    variant="ghost" 
+                                                                    size="sm" 
+                                                                    className="ml-1 px-2"
+                                                                >
+                                                                    <ChevronRight className="h-4 w-4" />
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                                        <Command>
+                                                            <CommandInput placeholder="Search brands..." />
+                                                            <CommandList>
+                                                                <CommandEmpty>No brands found. Type to create new.</CommandEmpty>
+                                                                <CommandGroup>
+                                                                    {brands.map((brand) => (
+                                                                        <CommandItem
+                                                                            key={brand.id}
+                                                                            value={brand.name}
+                                                                            onSelect={(value) => {
+                                                                                field.onChange(value);
+                                                                            }}
+                                                                        >
+                                                                            {brand.name}
+                                                                        </CommandItem>
+                                                                    ))}
+                                                                </CommandGroup>
+                                                            </CommandList>
+                                                        </Command>
+                                                    </PopoverContent>
+                                                </Popover>
+                                            )}
+                                        />
+                                        {quickProductCreateForm.formState.errors.brandName && (
+                                            <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.brandName.message}</p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <Label htmlFor="category-name">Category Name *</Label>
+                                        <Controller
+                                            name="categoryName"
+                                            control={quickProductCreateForm.control}
+                                            render={({ field }) => (
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <div className="flex items-center">
+                                                            <Input
+                                                                id="category-name"
+                                                                placeholder="Select or type category name"
+                                                                value={field.value}
+                                                                onChange={(e) => field.onChange(e.target.value)}
+                                                                className="w-full"
+                                                            />
+                                                            {isLoadingCategories ? (
+                                                                <Loader2 className="h-4 w-4 animate-spin ml-2" />
+                                                            ) : (
+                                                                <Button 
+                                                                    type="button"
+                                                                    variant="ghost" 
+                                                                    size="sm" 
+                                                                    className="ml-1 px-2"
+                                                                >
+                                                                    <ChevronRight className="h-4 w-4" />
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                                        <Command>
+                                                            <CommandInput placeholder="Search categories..." />
+                                                            <CommandList>
+                                                                <CommandEmpty>No categories found. Type to create new.</CommandEmpty>
+                                                                <CommandGroup>
+                                                                    {categories.map((category) => (
+                                                                        <CommandItem
+                                                                            key={category.id}
+                                                                            value={category.name}
+                                                                            onSelect={(value) => {
+                                                                                field.onChange(value);
+                                                                            }}
+                                                                        >
+                                                                            {category.name}
+                                                                        </CommandItem>
+                                                                    ))}
+                                                                </CommandGroup>
+                                                            </CommandList>
+                                                        </Command>
+                                                    </PopoverContent>
+                                                </Popover>
+                                            )}
+                                        />
+                                        {quickProductCreateForm.formState.errors.categoryName && (
+                                            <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.categoryName.message}</p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <Label htmlFor="subcategory">Subcategory *</Label>
+                                        <Input id="subcategory" {...quickProductCreateForm.register("subCategory")} placeholder="Subcategory" />
+                                        {quickProductCreateForm.formState.errors.subCategory && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.subCategory.message}</p>}
+                                    </div>
+
+                                    <div>
+                                        <Label htmlFor="color">Color *</Label>
+                                        <Input id="color" {...quickProductCreateForm.register("color")} placeholder="Color" />
+                                        {quickProductCreateForm.formState.errors.color && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.color.message}</p>}
+                                    </div>
+
+                                    <div>
+                                        <Label htmlFor="size">Size *</Label>
+                                        <Input id="size" {...quickProductCreateForm.register("size")} placeholder="Size" />
+                                        {quickProductCreateForm.formState.errors.size && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.size.message}</p>}
+                                    </div>
+
+                                    <div>
+                                        <Label htmlFor="gst-tax-rate">GST Tax Rate *</Label>
+                                        <Select onValueChange={(value) => quickProductCreateForm.setValue("gstTaxRate", parseInt(value))} defaultValue={DEFAULT_GST_FOR_QUICK_CREATE.toString()}>
+                                            <SelectTrigger id="gst-tax-rate">
+                                                <SelectValue placeholder="Select GST Rate" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {STANDARD_GST_RATES.map((rate) => (
+                                                    <SelectItem key={rate} value={rate.toString()}>{rate}%</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        {quickProductCreateForm.formState.errors.gstTaxRate && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.gstTaxRate.message}</p>}
+                                    </div>
+
+                                    <div>
+                                        <Label htmlFor="mrp">MRP *</Label>
+                                        <Input id="mrp" type="number" step="0.01" {...quickProductCreateForm.register("mrp")} placeholder="MRP" />
+                                        {quickProductCreateForm.formState.errors.mrp && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.mrp.message}</p>}
+                                    </div>
+
+                                    <div>
+                                        <Label htmlFor="consumer-discount">Consumer Discount (%) *</Label>
+                                        <Input id="consumer-discount" type="number" step="0.01" {...quickProductCreateForm.register("consumerDiscount")} placeholder="Consumer Discount" />
+                                        {quickProductCreateForm.formState.errors.consumerDiscount && <p className="text-xs text-destructive">{quickProductCreateForm.formState.errors.consumerDiscount.message}</p>}
+                                    </div>
                                     <DialogFooter><DialogClose asChild><Button variant="ghost">Cancel</Button></DialogClose><Button type="submit" disabled={isQuickProductSubmitting}>
                                       {isQuickProductSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : null} Quick Create</Button></DialogFooter>
                                 </form>

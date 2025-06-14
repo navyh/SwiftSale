@@ -682,11 +682,15 @@ export interface ProductSearchResultDto {
 
 export interface QuickCreateProductRequest {
     name: string;
-    brandName: string;
-    categoryName: string;
-    colorVariants: string[];
-    sizeVariants: string[];
-    unitPrice: number;
+    brand: string;
+    gstTaxRate: number;
+    category: string;
+    subCategory: string;
+    color: string;
+    size: string;
+    mrp: number;
+    consumerDiscount: number;
+    status: string;
 }
 export interface QuickCreateProductResponse extends ProductDto {}
 
