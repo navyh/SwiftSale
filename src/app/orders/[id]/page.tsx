@@ -20,7 +20,7 @@ export default function OrderDetailsPage() {
   useEffect(() => {
     const loadOrderDetails = async () => {
       if (!params.id) return;
-      
+
       setIsLoading(true);
       try {
         const orderId = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -191,6 +191,12 @@ export default function OrderDetailsPage() {
                       <TableHead>Item</TableHead>
                       <TableHead>Quantity</TableHead>
                       <TableHead>Unit Price</TableHead>
+                      {order.items.some(item => item.discountAmount && item.discountAmount > 0) && (
+                        <TableHead>Discount</TableHead>
+                      )}
+                      <TableHead>GST Rate</TableHead>
+                      <TableHead>Taxable Amount</TableHead>
+                      <TableHead>GST Amount</TableHead>
                       <TableHead>Total</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -198,16 +204,40 @@ export default function OrderDetailsPage() {
                     {order.items.map((item, index) => (
                       <TableRow key={item.id || index}>
                         <TableCell>
-                          {item.product?.name || "Product"} 
-                          {item.variant && (
+                          {item.productName} <br/>
+                          {item.variantName && (
                             <span className="text-muted-foreground text-xs">
-                              {" "}({item.color || item.variant.color}{item.size || item.variant.size ? `, ${item.size || item.variant.size}` : ""})
+                              {" ( "}{item.color} {item.size} {" ) --  MRP: "}<b>₹{item.mrp}</b>
                             </span>
+                          )}
+                          {item.hsnCode && (
+                            <div className="text-xs text-muted-foreground mt-1">
+                              HSN: {item.hsnCode}
+                            </div>
                           )}
                         </TableCell>
                         <TableCell>{item.quantity}</TableCell>
                         <TableCell>₹{item.unitPrice?.toFixed(2) || "0.00"}</TableCell>
-                        <TableCell>₹{(item.quantity * item.unitPrice)?.toFixed(2) || "0.00"}</TableCell>
+                        {order.items.some(i => i.discountAmount && i.discountAmount > 0) && (
+                          <TableCell>
+                            {item.discountAmount && item.discountAmount > 0 ? (
+                              <>
+                                ₹{item.discountAmount.toFixed(2)}
+                                {item.discountRate && (
+                                  <span className="text-xs text-muted-foreground"> ({item.discountRate}%)</span>
+                                )}
+                              </>
+                            ) : "-"}
+                          </TableCell>
+                        )}
+                        <TableCell>{item.gstTaxRate || 0}%</TableCell>
+                        <TableCell>₹{item.taxableAmount?.toFixed(2) || ((item.quantity * item.unitPrice) - (item.discountAmount || 0))?.toFixed(2) || "0.00"}</TableCell>
+                        <TableCell>
+                          ₹{(item.taxableAmount && item.gstTaxRate ? (item.taxableAmount * item.gstTaxRate / 100) : 0)?.toFixed(2) || "0.00"}
+                        </TableCell>
+                        <TableCell>₹{(item.taxableAmount && item.gstTaxRate ? 
+                          (item.taxableAmount + (item.taxableAmount * item.gstTaxRate / 100)) : 
+                          (item.quantity * item.unitPrice))?.toFixed(2) || "0.00"}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -217,21 +247,81 @@ export default function OrderDetailsPage() {
               <div className="flex flex-col items-end mt-6 space-y-1">
                 <div className="flex justify-between w-full md:w-1/3 text-sm">
                   <span>Subtotal:</span>
-                  <span>₹{(order.totalAmount - (order.taxAmount || 0))?.toFixed(2) || "0.00"}</span>
+                  <span>₹{order.paymentSummary?.totalTaxableAmount?.toFixed(2) || (order.totalAmount - (order.taxAmount || 0))?.toFixed(2) || "0.00"}</span>
                 </div>
-                <div className="flex justify-between w-full md:w-1/3 text-sm">
-                  <span>Tax:</span>
-                  <span>₹{order.taxAmount?.toFixed(2) || "0.00"}</span>
-                </div>
-                {order.discount && order.discount > 0 && (
+
+                {/* GST Details */}
+                {order.paymentSummary?.totalGst && (
+                  <>
+                    <div className="flex justify-between w-full md:w-1/3 text-sm">
+                      <span>GST Total:</span>
+                      <span>₹{(
+                        (order.paymentSummary.totalGst.igstAmount || 0) + 
+                        (order.paymentSummary.totalGst.cgstAmount || 0) + 
+                        (order.paymentSummary.totalGst.sgstAmount || 0)
+                      ).toFixed(2)}</span>
+                    </div>
+
+                    {/* IGST Details */}
+                    {order.paymentSummary.totalGst.igstAmount && order.paymentSummary.totalGst.igstAmount > 0 && (
+                      <div className="flex justify-between w-full md:w-1/3 text-muted-foreground text-xs pl-4">
+                        <span>IGST ({order.paymentSummary.totalGst.igstRate}%):</span>
+                        <span>₹{order.paymentSummary.totalGst.igstAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+
+                    {/* CGST Details */}
+                    {order.paymentSummary.totalGst.cgstAmount && order.paymentSummary.totalGst.cgstAmount > 0 && (
+                      <div className="flex justify-between w-full md:w-1/3 text-muted-foreground text-xs pl-4">
+                        <span>CGST ({order.paymentSummary.totalGst.cgstRate}%):</span>
+                        <span>₹{order.paymentSummary.totalGst.cgstAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+
+                    {/* SGST Details */}
+                    {order.paymentSummary.totalGst.sgstAmount && order.paymentSummary.totalGst.sgstAmount > 0 && (
+                      <div className="flex justify-between w-full md:w-1/3 text-muted-foreground text-xs pl-4">
+                        <span>SGST ({order.paymentSummary.totalGst.sgstRate}%):</span>
+                        <span>₹{order.paymentSummary.totalGst.sgstAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Fallback to taxAmount if paymentSummary is not available */}
+                {!order.paymentSummary?.totalGst && order.taxAmount && order.taxAmount > 0 && (
                   <div className="flex justify-between w-full md:w-1/3 text-sm">
-                    <span>Discount:</span>
-                    <span>-₹{order.discount.toFixed(2)}</span>
+                    <span>Tax:</span>
+                    <span>₹{order.taxAmount.toFixed(2)}</span>
                   </div>
                 )}
+
+                {/* Discount */}
+                {(order.paymentSummary?.totalDiscountAmount || order.discount) && (
+                  <div className="flex justify-between w-full md:w-1/3 text-sm">
+                    <span>Discount:</span>
+                    <span>-₹{(order.paymentSummary?.totalDiscountAmount || order.discount || 0).toFixed(2)}</span>
+                  </div>
+                )}
+
+                {/* Shipping Charges */}
+                {order.paymentSummary?.shippingCharges > 0 && (
+                  <div className="flex justify-between w-full md:w-1/3 text-sm">
+                    <span>Shipping:</span>
+                    <span>₹{order.paymentSummary?.shippingCharges.toFixed(2)}</span>
+                  </div>
+                )}
+
+                {/* Total Amount */}
                 <div className="flex justify-between w-full md:w-1/3 font-bold text-lg pt-2 border-t">
                   <span>Total:</span>
-                  <span>₹{order.totalAmount?.toFixed(2) || "0.00"}</span>
+                  <span>₹{order.paymentSummary?.totalAmount?.toFixed(2) || order.totalAmount?.toFixed(2) || "0.00"}</span>
+                </div>
+
+                {/* Total Items */}
+                <div className="flex justify-between w-full md:w-1/3 text-xs text-muted-foreground mt-2">
+                  <span>Total Items:</span>
+                  <span>{order.paymentSummary?.totalItems || order.items.length}</span>
                 </div>
               </div>
             </CardContent>

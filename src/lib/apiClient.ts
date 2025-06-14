@@ -3,6 +3,7 @@
 "use client"; // To be used in client components
 
 const API_BASE_URL = 'https://orca-app-k6zka.ondigitalocean.app/api/v2';
+// const API_BASE_URL = 'http://localhost:8080/api/v2';
 
 // Helper function for API calls
 async function fetchAPI<T>(endpoint: string, options?: RequestInit, expectJson = true): Promise<T> {
@@ -685,10 +686,13 @@ export interface QuickCreateProductResponse extends ProductDto {}
 
 export interface OrderItemRequest {
     productId: string;
+    productName: string;
     variantId: string;
+    variantName: string;
     size?: string | null;
     color?: string | null;
     quantity: number;
+    mrp: number;
     unitPrice: number;
     taxableAmount: number;
     discountRate?: number | null;
@@ -727,6 +731,24 @@ export interface PaymentDetailRequest {
     status: 'PENDING' | 'SUCCESS' | 'FAILED' | string;
 }
 
+export interface TotalGstDto {
+    igstRate?: number | null;
+    igstAmount?: number | null;
+    cgstRate?: number | null;
+    cgstAmount?: number | null;
+    sgstRate?: number | null;
+    sgstAmount?: number | null;
+}
+
+export interface PaymentSummaryDto {
+    totalItems: number;
+    totalTaxableAmount: number;
+    totalGst: TotalGstDto;
+    totalDiscountAmount: number;
+    shippingCharges: number;
+    totalAmount: number;
+}
+
 export interface OrderDto {
     id: string;
     orderNumber?: string | null;
@@ -743,6 +765,7 @@ export interface OrderDto {
     billingAddress?: AddressDto | null;
     status: string;
     paymentDetails?: PaymentDetailRequest[] | null;
+    paymentSummary?: PaymentSummaryDto | null;
     paymentMethod?: string | null;
     notes?: string | null;
     createdAt: string;

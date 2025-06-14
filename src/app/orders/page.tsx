@@ -279,7 +279,7 @@ export default function OrdersPage() {
                         <TableCell>{formatDate(order.createdAt)}</TableCell>
                         <TableCell>{order.items?.length || 0} items</TableCell>
                         <TableCell>
-                          ₹{order.paymentSummary? order.paymentSummary.totalAmount ? order.totalAmount.toFixed(2) : "0.00"}
+                          ₹{order.paymentSummary && order.paymentSummary.totalAmount ? order.paymentSummary.totalAmount.toFixed(2) : order.totalAmount ? order.totalAmount.toFixed(2) : "0.00"}
                         </TableCell>
                         <TableCell>
                           <span className={`px-2 py-1 text-xs rounded-full ${
@@ -366,8 +366,8 @@ export default function OrdersPage() {
                         </div>
 
                         <div className="flex justify-between items-center text-sm">
-                          <span>{order.items?.length || 0} items</span>
-                          <span className="font-medium">₹{order.totalAmount ? order.totalAmount.toFixed(2) : "0.00"}</span>
+                          <span>{order.paymentSummary?.totalItems || order.items?.length || 0} items</span>
+                          <span className="font-medium">₹{order.paymentSummary && order.paymentSummary.totalAmount ? order.paymentSummary.totalAmount.toFixed(2) : order.totalAmount ? order.totalAmount.toFixed(2) : "0.00"}</span>
                         </div>
                       </CardContent>
                     </Card>
