@@ -248,8 +248,9 @@ export interface CreateBusinessProfileWithUserRequest {
   user: UserForCreateWithBpDto;
   businessProfile: BusinessProfileForCreateWithBpDto;
 }
-export interface CreateBusinessProfileWithUserResponse extends BusinessProfileDto {
-  user?: UserDto;
+export interface CreateBusinessProfileWithUserResponse {
+  user: UserDto;
+  businessProfiles: BusinessProfileDto[];
 }
 
 
@@ -339,11 +340,17 @@ export async function createBusinessProfileWithUser(data: CreateBusinessProfileW
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  return {
-    ...response,
-    companyName: response.companyName || (response as any).name,
-    isActive: response.isActive !== undefined ? response.isActive : (response.status === 'ACTIVE'),
+
+  // Process the response to ensure businessProfiles have the required properties
+  if (response.businessProfiles && response.businessProfiles.length > 0) {
+    response.businessProfiles = response.businessProfiles.map(profile => ({
+      ...profile,
+      companyName: profile.companyName || (profile as any).name,
+      isActive: profile.isActive !== undefined ? profile.isActive : (profile.status === 'ACTIVE'),
+    }));
   }
+
+  return response;
 }
 
 export async function fetchUsersForBusinessProfileByGstin(gstin: string, params?: { page?: number; size?: number }): Promise<Page<UserDto>> {

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { StateCombobox } from "@/components/ui/state-combobox";
 import {
   ChevronLeft, ChevronRight, PlusCircle, Trash2, Search as SearchIcon, UserPlus, Building, ShoppingCart, Loader2, X, Edit2, Edit
 } from "lucide-react";
@@ -44,6 +45,12 @@ const userCreateDialogSchema = z.object({
   name: z.string().min(1, "Name is required"),
   phone: z.string().min(1, "Phone is required").regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone format"),
   email: z.string().email("Invalid email").optional().or(z.literal("")),
+  city: z.string().min(1, "City is required"),
+  state: z.string().min(1, "State is required"),
+  stateCode: z.string().min(1, "State code is required"),
+  line1: z.string().optional().or(z.literal("")),
+  line2: z.string().optional().or(z.literal("")),
+  postalCode: z.string().optional().or(z.literal("")),
 });
 type UserCreateDialogValues = z.infer<typeof userCreateDialogSchema>;
 
@@ -53,6 +60,13 @@ const bpWithUserCreateDialogSchema = z.object({
   userName: z.string().min(1, "User name is required"),
   userPhone: z.string().min(1, "User phone is required").regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone format"),
   userEmail: z.string().email("Invalid email").optional().or(z.literal("")),
+  // Common address fields for both business profile and user
+  city: z.string().min(1, "City is required"),
+  state: z.string().min(1, "State is required"),
+  stateCode: z.string().min(1, "State code is required"),
+  line1: z.string().optional().or(z.literal("")),
+  line2: z.string().optional().or(z.literal("")),
+  postalCode: z.string().optional().or(z.literal("")),
 });
 type BpWithUserCreateDialogValues = z.infer<typeof bpWithUserCreateDialogSchema>;
 
@@ -373,7 +387,26 @@ export default function CreateOrderPage() {
   const handleCreateUserDialogSubmit = async (data: UserCreateDialogValues) => {
     setIsUserCreateSubmitting(true);
     try {
-      const newUser = await createUser({ name: data.name, phone: data.phone, email: data.email || undefined, status: 'ACTIVE' });
+      // Create address object
+      const address: AddressCreateDto = {
+        city: data.city,
+        state: data.state,
+        stateCode: data.stateCode,
+        line1: data.line1 || undefined,
+        line2: data.line2 || undefined,
+        postalCode: data.postalCode || undefined,
+        type: 'BILLING',
+        isDefault: true
+      };
+
+      const newUser = await createUser({ 
+        name: data.name, 
+        phone: data.phone, 
+        email: data.email || undefined, 
+        status: 'ACTIVE',
+        addresses: [address]
+      });
+
       setSelectedUserDisplay(newUser);
       if (newUser && newUser.id) setSelectedUserId(newUser.id); 
       setShowUserCreateDialog(false);
@@ -390,24 +423,49 @@ export default function CreateOrderPage() {
 
   const handleBpWithUserCreateDialogSubmit = async (data: BpWithUserCreateDialogValues) => {
     setIsBpWithUserCreateSubmitting(true);
-    const payload: CreateBusinessProfileWithUserRequest = {
-      businessProfile: { companyName: data.bpName, gstin: data.bpGstin, status: 'ACTIVE' },
-      user: { name: data.userName, phone: data.userPhone, email: data.userEmail || undefined, status: 'ACTIVE' }
+
+    // Create a single address to be used for both business profile and user
+    const commonAddress: AddressCreateDto = {
+      city: data.city,
+      state: data.state,
+      stateCode: data.stateCode,
+      line1: data.line1 || undefined,
+      line2: data.line2 || undefined,
+      postalCode: data.postalCode || undefined,
+      type: 'BILLING',
+      isDefault: true
     };
+
+    const payload: CreateBusinessProfileWithUserRequest = {
+      businessProfile: { 
+        companyName: data.bpName, 
+        gstin: data.bpGstin, 
+        status: 'ACTIVE',
+        addresses: [commonAddress]
+      },
+      user: { 
+        name: data.userName, 
+        phone: data.userPhone, 
+        email: data.userEmail || undefined, 
+        status: 'ACTIVE',
+        addresses: [commonAddress]
+      }
+    };
+
     try {
       const response = await createBusinessProfileWithUser(payload);
-      setFoundBusinessProfile(response);
-      if (response && response.id) setSelectedBusinessProfileId(response.id); 
 
-      const createdUserInResponse = response.user;
-      if (createdUserInResponse && createdUserInResponse.id) {
-        setSelectedUserDisplay(createdUserInResponse);
-        setSelectedUserId(createdUserInResponse.id); 
-      } else if (response.userIds && response.userIds.length > 0 && response.userIds[0]) {
-        // Fallback to fetching user if not directly in response
-        const user = await fetchUserById(response.userIds[0]); 
-        setSelectedUserDisplay(user);
-        if (user && user.id) setSelectedUserId(user.id); 
+      // Extract user from response
+      if (response.user && response.user.id) {
+        setSelectedUserDisplay(response.user);
+        setSelectedUserId(response.user.id);
+      }
+
+      // Extract business profile from response
+      if (response.businessProfiles && response.businessProfiles.length > 0) {
+        const businessProfile = response.businessProfiles[0];
+        setFoundBusinessProfile(businessProfile);
+        if (businessProfile.id) setSelectedBusinessProfileId(businessProfile.id);
       }
       setShowBpWithUserCreateDialog(false);
       bpWithUserCreateForm.reset();
@@ -992,6 +1050,7 @@ export default function CreateOrderPage() {
             size: size,
             color: color,
             quantity: item.quantity,
+            mrp: parseFloat(item.mrp.toFixed(2)), // Include MRP
             unitPrice: parseFloat(item.unitPrice.toFixed(2)), // Pre-tax, pre-discount price
             discountRate: parseFloat(item.discountRate.toFixed(2)),
             discountAmount: parseFloat(item.discountAmount.toFixed(2)), // Total discount for the line
@@ -1097,6 +1156,50 @@ export default function CreateOrderPage() {
                             {userCreateForm.formState.errors.phone && <p className="text-xs text-destructive">{userCreateForm.formState.errors.phone.message}</p>}
                             <Input {...userCreateForm.register("email")} placeholder="Email (Optional)" />
                             {userCreateForm.formState.errors.email && <p className="text-xs text-destructive">{userCreateForm.formState.errors.email.message}</p>}
+
+                            <div className="pt-2">
+                              <Label className="font-medium">Address Information</Label>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                                <div>
+                                  <Input {...userCreateForm.register("line1")} placeholder="Address Line 1 (Optional)" />
+                                  {userCreateForm.formState.errors.line1 && <p className="text-xs text-destructive">{userCreateForm.formState.errors.line1.message}</p>}
+                                </div>
+                                <div>
+                                  <Input {...userCreateForm.register("line2")} placeholder="Address Line 2 (Optional)" />
+                                  {userCreateForm.formState.errors.line2 && <p className="text-xs text-destructive">{userCreateForm.formState.errors.line2.message}</p>}
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                                <div>
+                                  <Input {...userCreateForm.register("city")} placeholder="City *" />
+                                  {userCreateForm.formState.errors.city && <p className="text-xs text-destructive">{userCreateForm.formState.errors.city.message}</p>}
+                                </div>
+                                <div>
+                                  <Input {...userCreateForm.register("postalCode")} placeholder="Postal Code (Optional)" />
+                                  {userCreateForm.formState.errors.postalCode && <p className="text-xs text-destructive">{userCreateForm.formState.errors.postalCode.message}</p>}
+                                </div>
+                              </div>
+                              <div className="mt-2">
+                                <Controller
+                                  name="state"
+                                  control={userCreateForm.control}
+                                  render={({ field }) => (
+                                    <StateCombobox
+                                      value={field.value}
+                                      onValueChange={(value) => {
+                                        userCreateForm.setValue("state", value || "");
+                                      }}
+                                      onStateCodeChange={(code) => {
+                                        userCreateForm.setValue("stateCode", code || "");
+                                      }}
+                                    />
+                                  )}
+                                />
+                                {userCreateForm.formState.errors.state && <p className="text-xs text-destructive">{userCreateForm.formState.errors.state.message}</p>}
+                                {userCreateForm.formState.errors.stateCode && <p className="text-xs text-destructive">{userCreateForm.formState.errors.stateCode.message}</p>}
+                              </div>
+                            </div>
+
                             <DialogFooter><DialogClose asChild><Button variant="ghost">Cancel</Button></DialogClose><Button type="submit" disabled={isUserCreateSubmitting}>
                                {isUserCreateSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : null} Create User</Button></DialogFooter>
                         </form>
@@ -1169,13 +1272,58 @@ export default function CreateOrderPage() {
                             {bpWithUserCreateForm.formState.errors.bpName && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.bpName.message}</p>}
                             <Input {...bpWithUserCreateForm.register("bpGstin")} placeholder="GSTIN" defaultValue={gstinSearch} />
                             {bpWithUserCreateForm.formState.errors.bpGstin && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.bpGstin.message}</p>}
-                            <Label className="font-medium pt-2 block">User Details</Label>
+
+                            <Label className="font-medium pt-4 block">User Details</Label>
                             <Input {...bpWithUserCreateForm.register("userName")} placeholder="User Full Name" />
                              {bpWithUserCreateForm.formState.errors.userName && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.userName.message}</p>}
                             <Input {...bpWithUserCreateForm.register("userPhone")} placeholder="User Phone Number" />
                             {bpWithUserCreateForm.formState.errors.userPhone && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.userPhone.message}</p>}
                             <Input {...bpWithUserCreateForm.register("userEmail")} placeholder="User Email (Optional)" />
                             {bpWithUserCreateForm.formState.errors.userEmail && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.userEmail.message}</p>}
+
+                            <div className="pt-4">
+                              <Label className="font-medium">Common Address (for both Business and User)</Label>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                                <div>
+                                  <Input {...bpWithUserCreateForm.register("line1")} placeholder="Address Line 1 (Optional)" />
+                                  {bpWithUserCreateForm.formState.errors.line1 && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.line1.message}</p>}
+                                </div>
+                                <div>
+                                  <Input {...bpWithUserCreateForm.register("line2")} placeholder="Address Line 2 (Optional)" />
+                                  {bpWithUserCreateForm.formState.errors.line2 && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.line2.message}</p>}
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                                <div>
+                                  <Input {...bpWithUserCreateForm.register("city")} placeholder="City *" />
+                                  {bpWithUserCreateForm.formState.errors.city && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.city.message}</p>}
+                                </div>
+                                <div>
+                                  <Input {...bpWithUserCreateForm.register("postalCode")} placeholder="Postal Code (Optional)" />
+                                  {bpWithUserCreateForm.formState.errors.postalCode && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.postalCode.message}</p>}
+                                </div>
+                              </div>
+                              <div className="mt-2">
+                                <Controller
+                                  name="state"
+                                  control={bpWithUserCreateForm.control}
+                                  render={({ field }) => (
+                                    <StateCombobox
+                                      value={field.value}
+                                      onValueChange={(value) => {
+                                        bpWithUserCreateForm.setValue("state", value || "");
+                                      }}
+                                      onStateCodeChange={(code) => {
+                                        bpWithUserCreateForm.setValue("stateCode", code || "");
+                                      }}
+                                    />
+                                  )}
+                                />
+                                {bpWithUserCreateForm.formState.errors.state && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.state.message}</p>}
+                                {bpWithUserCreateForm.formState.errors.stateCode && <p className="text-xs text-destructive">{bpWithUserCreateForm.formState.errors.stateCode.message}</p>}
+                              </div>
+                            </div>
+
                             <DialogFooter><DialogClose asChild><Button variant="ghost">Cancel</Button></DialogClose><Button type="submit" disabled={isBpWithUserCreateSubmitting}>
                               {isBpWithUserCreateSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : null}  Create BP & User</Button></DialogFooter>
                         </form>
