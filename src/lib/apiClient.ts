@@ -2,8 +2,8 @@
 // src/lib/apiClient.ts
 "use client"; // To be used in client components
 
-const API_BASE_URL = 'https://orca-app-k6zka.ondigitalocean.app/api/v2';
-// const API_BASE_URL = 'http://localhost:8080/api/v2';
+// const API_BASE_URL = 'https://orca-app-k6zka.ondigitalocean.app/api/v2';
+const API_BASE_URL = 'http://localhost:8080/api/v2';
 
 // Helper function for API calls
 async function fetchAPI<T>(endpoint: string, options?: RequestInit, expectJson = true): Promise<T> {
@@ -884,6 +884,13 @@ export async function searchOrders(keyword: string, page: number = 0, size: numb
 
 export async function fetchOrderById(orderId: string): Promise<OrderDto> {
     return fetchAPI<OrderDto>(`/orders/${orderId}`);
+}
+
+export async function updateOrderStatus(orderId: string, newStatus: string): Promise<OrderDto> {
+    return fetchAPI<OrderDto>(`/orders/${orderId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ newStatus }),
+    });
 }
 
 

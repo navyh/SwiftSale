@@ -5,8 +5,8 @@ import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ChevronLeft, Loader2 } from "lucide-react";
-import { fetchOrderById, type OrderDto } from "@/lib/apiClient";
+import { ChevronLeft, Loader2, XCircle } from "lucide-react";
+import { fetchOrderById, updateOrderStatus, type OrderDto } from "@/lib/apiClient";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
@@ -16,6 +16,7 @@ export default function OrderDetailsPage() {
   const { toast } = useToast();
   const [order, setOrder] = useState<OrderDto | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   useEffect(() => {
     const loadOrderDetails = async () => {
@@ -46,6 +47,32 @@ export default function OrderDetailsPage() {
       return format(new Date(dateString), "MMM dd, yyyy");
     } catch (error) {
       return dateString;
+    }
+  };
+
+  // Handle cancel order
+  const handleCancelOrder = async () => {
+    if (!order) return;
+
+    setIsCancelling(true);
+    try {
+      const updatedOrder = await updateOrderStatus(order.id, "CANCELLED");
+
+      // Update the order in the local state
+      setOrder(updatedOrder);
+
+      toast({
+        title: "Order cancelled",
+        description: "The order has been cancelled successfully.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Failed to cancel order",
+        description: error.message || "Could not cancel the order. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -95,7 +122,7 @@ export default function OrderDetailsPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Status</p>
-                  <p>
+                  <div className="flex items-center gap-2">
                     <span className={`px-2 py-1 text-xs rounded-full ${
                       order.status === "DELIVERED" ? "bg-green-100 text-green-700" :
                       order.status === "SHIPPED" ? "bg-blue-100 text-blue-700" :
@@ -106,7 +133,23 @@ export default function OrderDetailsPage() {
                     }`}>
                       {order.status}
                     </span>
-                  </p>
+                    {order.status !== "CANCELLED" && (
+                      <Button 
+                        variant="destructive" 
+                        size="sm" 
+                        onClick={handleCancelOrder}
+                        disabled={isCancelling}
+                        className="ml-2"
+                      >
+                        {isCancelling ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                        ) : (
+                          <XCircle className="h-4 w-4 mr-1" />
+                        )}
+                        Cancel Order
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Payment Method</p>

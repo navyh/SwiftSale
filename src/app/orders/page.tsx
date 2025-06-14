@@ -6,16 +6,29 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PlusCircle, Search, Eye, Filter, UserPlus, ShoppingBag, ChevronLeft, ChevronRight, Loader2, Phone } from "lucide-react";
+import { PlusCircle, Search, Eye, Filter, UserPlus, ShoppingBag, ChevronLeft, ChevronRight, Loader2, Phone, Truck, FileText, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { 
   fetchOrders, 
   searchOrders, 
   fetchOrderStatuses,
+  updateOrderStatus,
+  downloadInvoicePdf,
   type OrderDto, 
   type Page 
 } from "@/lib/apiClient";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { 
   Select, 
   SelectContent, 
@@ -36,6 +49,12 @@ export default function OrdersPage() {
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [pageSize, setPageSize] = useState(10);
+
+  // State for action loading
+  const [processingOrderId, setProcessingOrderId] = useState<string | null>(null);
+  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null);
+  const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
+  const [orderToCancel, setOrderToCancel] = useState<OrderDto | null>(null);
 
   // State for filters
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -145,6 +164,101 @@ export default function OrdersPage() {
     setSearchKeyword("");
     setCurrentPage(0);
     // This will trigger the useEffect to reload orders without search
+  };
+
+  // Handle mark as delivered
+  const handleMarkAsDelivered = async (orderId: string) => {
+    setProcessingOrderId(orderId);
+    try {
+      const updatedOrder = await updateOrderStatus(orderId, "DELIVERED");
+
+      // Update the order in the local state
+      setOrders(orders.map(order => 
+        order.id === orderId ? { ...order, status: updatedOrder.status } : order
+      ));
+
+      toast({
+        title: "Order updated",
+        description: "Order has been marked as delivered.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Failed to update order",
+        description: error.message || "Could not update order status. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessingOrderId(null);
+    }
+  };
+
+  // Handle print invoice
+  const handlePrintInvoice = async (orderId: string) => {
+    setDownloadingInvoiceId(orderId);
+    try {
+      const blob = await downloadInvoicePdf(orderId);
+
+      // Create a URL for the blob
+      const url = window.URL.createObjectURL(blob);
+
+      // Create a link and click it to trigger download
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice-${orderId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+
+      // Clean up
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast({
+        title: "Invoice downloaded",
+        description: "The invoice has been downloaded successfully.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Failed to download invoice",
+        description: error.message || "Could not download the invoice. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setDownloadingInvoiceId(null);
+    }
+  };
+
+  // Handle open cancel dialog
+  const handleOpenCancelDialog = (order: OrderDto) => {
+    setOrderToCancel(order);
+  };
+
+  // Handle cancel order
+  const handleCancelOrder = async () => {
+    if (!orderToCancel) return;
+
+    setCancellingOrderId(orderToCancel.id);
+    try {
+      const updatedOrder = await updateOrderStatus(orderToCancel.id, "CANCELLED");
+
+      // Update the order in the local state
+      setOrders(orders.map(order => 
+        order.id === orderToCancel.id ? { ...order, status: updatedOrder.status } : order
+      ));
+
+      toast({
+        title: "Order cancelled",
+        description: "The order has been cancelled successfully.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Failed to cancel order",
+        description: error.message || "Could not cancel the order. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setCancellingOrderId(null);
+      setOrderToCancel(null);
+    }
   };
 
 
@@ -294,16 +408,92 @@ export default function OrdersPage() {
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Link href={`/orders/${order.id}`} passHref>
+                          <div className="flex justify-end space-x-1">
+                            <Link href={`/orders/${order.id}`} passHref>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="hover:text-primary"
+                                title="View Order"
+                              >
+                                <Eye className="h-4 w-4" />
+                                <span className="sr-only">View Order</span>
+                              </Button>
+                            </Link>
+
+                            {order.status !== "DELIVERED" && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="hover:text-green-600"
+                                onClick={() => handleMarkAsDelivered(order.id)}
+                                disabled={processingOrderId === order.id}
+                                title="Mark as Delivered"
+                              >
+                                {processingOrderId === order.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Truck className="h-4 w-4" />
+                                )}
+                                <span className="sr-only">Mark as Delivered</span>
+                              </Button>
+                            )}
+
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="hover:text-primary"
+                              className="hover:text-blue-600"
+                              onClick={() => handlePrintInvoice(order.id)}
+                              disabled={downloadingInvoiceId === order.id}
+                              title="Print Invoice"
                             >
-                              <Eye className="h-4 w-4" />
-                              <span className="sr-only">View Order</span>
+                              {downloadingInvoiceId === order.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <FileText className="h-4 w-4" />
+                              )}
+                              <span className="sr-only">Print Invoice</span>
                             </Button>
-                          </Link>
+
+                            {order.status !== "CANCELLED" && (
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="hover:text-red-600"
+                                    onClick={() => handleOpenCancelDialog(order)}
+                                    disabled={cancellingOrderId === order.id}
+                                    title="Cancel Order"
+                                  >
+                                    {cancellingOrderId === order.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <XCircle className="h-4 w-4" />
+                                    )}
+                                    <span className="sr-only">Cancel Order</span>
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Cancel Order</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Are you sure you want to cancel this order? This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction 
+                                      onClick={handleCancelOrder}
+                                      className="bg-red-600 hover:bg-red-700"
+                                    >
+                                      Confirm
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -314,64 +504,148 @@ export default function OrdersPage() {
               {/* Mobile view - Card list */}
               <div className="md:hidden space-y-4">
                 {orders.map((order) => (
-                  <Link href={`/orders/${order.id}`} key={order.id} className="block">
-                    <Card className="hover:bg-accent/50 transition-colors">
-                      <CardContent className="p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <p className="font-medium">{order.orderNumber || order.id.substring(0, 8)}</p>
-                            <p className="text-xs text-muted-foreground">{formatDate(order.createdAt)}</p>
-                          </div>
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            order.status === "DELIVERED" ? "bg-green-100 text-green-700" :
-                            order.status === "SHIPPED" ? "bg-blue-100 text-blue-700" :
-                            order.status === "PROCESSING" ? "bg-yellow-100 text-yellow-700" :
-                            order.status === "PENDING" ? "bg-orange-100 text-orange-700" :
-                            order.status === "CANCELLED" ? "bg-red-100 text-red-700" :
-                            "bg-gray-100 text-gray-700" // Other statuses
-                          }`}>
-                            {order.status}
-                          </span>
+                  <Card key={order.id} className="hover:bg-accent/50 transition-colors">
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <p className="font-medium">{order.orderNumber || order.id.substring(0, 8)}</p>
+                          <p className="text-xs text-muted-foreground">{formatDate(order.createdAt)}</p>
                         </div>
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          order.status === "DELIVERED" ? "bg-green-100 text-green-700" :
+                          order.status === "SHIPPED" ? "bg-blue-100 text-blue-700" :
+                          order.status === "PROCESSING" ? "bg-yellow-100 text-yellow-700" :
+                          order.status === "PENDING" ? "bg-orange-100 text-orange-700" :
+                          order.status === "CANCELLED" ? "bg-red-100 text-red-700" :
+                          "bg-gray-100 text-gray-700" // Other statuses
+                        }`}>
+                          {order.status}
+                        </span>
+                      </div>
 
-                        <div className="mb-2">
-                          {order.customerDetails?.companyName || order.businessProfile?.companyName ? (
-                            // B2B order
-                            <div>
-                              <p className="font-medium">{order.customerDetails?.companyName || order.businessProfile?.companyName}</p>
-                              {order.customerDetails?.gstin && (
-                                <p className="text-xs text-muted-foreground">GSTIN: {order.customerDetails.gstin}</p>
-                              )}
-                              <p className="text-xs mt-1">
-                                {order.customerDetails?.name || order.user?.name || ""}
-                                {(order.customerDetails?.phone || order.user?.phone) && (
-                                  <span className="ml-1 text-muted-foreground">
-                                    ({order.customerDetails?.phone || order.user?.phone})
-                                  </span>
-                                )}
-                              </p>
-                            </div>
-                          ) : (
-                            // B2C order
-                            <div>
-                              <p className="font-medium">{order.customerDetails?.name || order.user?.name || "Unknown"}</p>
+                      <div className="mb-2">
+                        {order.customerDetails?.companyName || order.businessProfile?.companyName ? (
+                          // B2B order
+                          <div>
+                            <p className="font-medium">{order.customerDetails?.companyName || order.businessProfile?.companyName}</p>
+                            {order.customerDetails?.gstin && (
+                              <p className="text-xs text-muted-foreground">GSTIN: {order.customerDetails.gstin}</p>
+                            )}
+                            <p className="text-xs mt-1">
+                              {order.customerDetails?.name || order.user?.name || ""}
                               {(order.customerDetails?.phone || order.user?.phone) && (
-                                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                  <Phone className="h-3 w-3" />
-                                  {order.customerDetails?.phone || order.user?.phone}
-                                </p>
+                                <span className="ml-1 text-muted-foreground">
+                                  ({order.customerDetails?.phone || order.user?.phone})
+                                </span>
                               )}
-                            </div>
+                            </p>
+                          </div>
+                        ) : (
+                          // B2C order
+                          <div>
+                            <p className="font-medium">{order.customerDetails?.name || order.user?.name || "Unknown"}</p>
+                            {(order.customerDetails?.phone || order.user?.phone) && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Phone className="h-3 w-3" />
+                                {order.customerDetails?.phone || order.user?.phone}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex justify-between items-center text-sm mb-3">
+                        <span>{order.paymentSummary?.totalItems || order.items?.length || 0} items</span>
+                        <span className="font-medium">₹{order.paymentSummary && order.paymentSummary.totalAmount ? order.paymentSummary.totalAmount.toFixed(2) : order.totalAmount ? order.totalAmount.toFixed(2) : "0.00"}</span>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex justify-between items-center pt-2 border-t">
+                        <Link href={`/orders/${order.id}`} passHref>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="text-primary"
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            View
+                          </Button>
+                        </Link>
+
+                        <div className="flex space-x-1">
+                          {order.status !== "DELIVERED" && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="text-green-600"
+                              onClick={() => handleMarkAsDelivered(order.id)}
+                              disabled={processingOrderId === order.id}
+                            >
+                              {processingOrderId === order.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                              ) : (
+                                <Truck className="h-4 w-4 mr-1" />
+                              )}
+                              Deliver
+                            </Button>
+                          )}
+
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="text-blue-600"
+                            onClick={() => handlePrintInvoice(order.id)}
+                            disabled={downloadingInvoiceId === order.id}
+                          >
+                            {downloadingInvoiceId === order.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                            ) : (
+                              <FileText className="h-4 w-4 mr-1" />
+                            )}
+                            Invoice
+                          </Button>
+
+                          {order.status !== "CANCELLED" && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="text-red-600"
+                                  onClick={() => handleOpenCancelDialog(order)}
+                                  disabled={cancellingOrderId === order.id}
+                                >
+                                  {cancellingOrderId === order.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                                  ) : (
+                                    <XCircle className="h-4 w-4 mr-1" />
+                                  )}
+                                  Cancel
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Cancel Order</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to cancel this order? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction 
+                                    onClick={handleCancelOrder}
+                                    className="bg-red-600 hover:bg-red-700"
+                                  >
+                                    Confirm
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           )}
                         </div>
-
-                        <div className="flex justify-between items-center text-sm">
-                          <span>{order.paymentSummary?.totalItems || order.items?.length || 0} items</span>
-                          <span className="font-medium">₹{order.paymentSummary && order.paymentSummary.totalAmount ? order.paymentSummary.totalAmount.toFixed(2) : order.totalAmount ? order.totalAmount.toFixed(2) : "0.00"}</span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </Link>
+                      </div>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
             </>
