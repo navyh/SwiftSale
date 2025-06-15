@@ -7,6 +7,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
 } from "@/components/ui/card";
@@ -31,7 +32,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StateCombobox } from "@/components/ui/state-combobox";
 import {
-  ChevronLeft, ChevronRight, PlusCircle, Trash2, Search as SearchIcon, UserPlus, Building, ShoppingCart, Loader2, X, Edit2, Edit
+  ChevronLeft, ChevronRight, PlusCircle, Trash2, Search as SearchIcon, UserPlus, Building, ShoppingCart, Loader2, X, Edit2, Edit, X as XIcon
 } from "lucide-react";
 import {
   fetchUserById, createUser, type CreateUserRequest, type UserDto,
@@ -43,6 +44,7 @@ import {
   quickCreateProduct, type QuickCreateProductRequest, type QuickCreateProductResponse,
   createOrder, type CreateOrderRequest, type OrderItemRequest, type CustomerDetailsDto, type AddressCreateDto, type AddressDto as ApiAddressDto,
   fetchProductBrands, type Brand, fetchProductCategoriesFlat, type Category,
+  addMultipleVariants, type AddProductVariantsRequest,
   type Page
 } from "@/lib/apiClient";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -90,6 +92,12 @@ const quickProductCreateDialogSchema = z.object({
 });
 type QuickProductCreateDialogValues = z.infer<typeof quickProductCreateDialogSchema>;
 
+const addVariantDialogSchema = z.object({
+  colors: z.string().min(1, "At least one color is required"),
+  sizes: z.string().min(1, "At least one size is required"),
+});
+type AddVariantDialogValues = z.infer<typeof addVariantDialogSchema>;
+
 
 export interface OrderItemDisplay {
   productId: string;
@@ -124,6 +132,119 @@ export interface OrderItemDisplay {
 const SELLER_STATE_CODE = "04"; 
 const STANDARD_GST_RATES = [0, 5, 12, 18, 28];
 const DEFAULT_GST_FOR_QUICK_CREATE = 18; // Default GST for quick create products if not specified by product
+
+// Helper function for color bullet preview
+const shouldShowColorBullet = (colorString?: string | null): boolean => {
+  if (!colorString || typeof colorString !== 'string') return false;
+  const lowerColor = colorString.trim().toLowerCase();
+  if (!lowerColor) return false;
+  if (['n/a', 'default', 'various', 'assorted', 'transparent', 'none', 'na', 'mixed'].includes(lowerColor) || lowerColor.length > 25) {
+    return false;
+  }
+  if (lowerColor.includes(' ') && lowerColor.split(' ').length > 3 && !['rgb', 'hsl'].some(prefix => lowerColor.startsWith(prefix))) {
+      return false;
+  }
+  return true;
+};
+
+interface TagsInputWithPreviewProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  isColorInput?: boolean;
+  id?: string;
+}
+
+const TagsInputWithPreview: React.FC<TagsInputWithPreviewProps> = ({
+  value,
+  onChange,
+  placeholder,
+  isColorInput = false,
+  id
+}) => {
+  const [inputValue, setInputValue] = React.useState('');
+  const [tags, setTags] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    setTags(value ? value.split(',').map(tag => tag.trim()).filter(tag => tag) : []);
+  }, [value]);
+
+  const updateFormValue = (newTags: string[]) => {
+    onChange(newTags.join(','));
+  };
+
+  const addTag = (tagToAdd: string) => {
+    const trimmedTag = tagToAdd.trim();
+    if (trimmedTag && !tags.includes(trimmedTag)) {
+      const newTags = [...tags, trimmedTag];
+      setTags(newTags);
+      updateFormValue(newTags);
+    }
+    setInputValue('');
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e.target.value);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (['Enter', ',', 'Tab'].includes(e.key)) {
+      e.preventDefault();
+      addTag(inputValue);
+    } else if (e.key === 'Backspace' && inputValue === '' && tags.length > 0) {
+      e.preventDefault();
+      const newTags = tags.slice(0, -1);
+      setTags(newTags);
+      updateFormValue(newTags);
+    }
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    const newTags = tags.filter(tag => tag !== tagToRemove);
+    setTags(newTags);
+    updateFormValue(newTags);
+  };
+
+  const handleInputBlur = () => {
+    addTag(inputValue);
+  };
+
+  return (
+    <div id={id}>
+      <div className="flex flex-wrap gap-2 mb-2 min-h-[2.25rem] items-center">
+        {tags.map((tag, index) => (
+          <Badge key={index} variant="secondary" className="py-1 px-2 text-sm flex items-center gap-1.5">
+            {isColorInput && shouldShowColorBullet(tag) && (
+              <span
+                className="inline-block h-3 w-3 rounded-full border border-gray-400 shrink-0"
+                style={{ backgroundColor: tag }}
+                title={tag}
+              />
+            )}
+            <span>{tag}</span>
+            <button
+              type="button"
+              onClick={() => handleRemoveTag(tag)}
+              className="ml-1 text-muted-foreground hover:text-foreground"
+              aria-label={`Remove ${tag}`}
+            >
+              <XIcon className="h-3 w-3" />
+            </button>
+          </Badge>
+        ))}
+      </div>
+      <Input
+        type="text"
+        value={inputValue}
+        onChange={handleInputChange}
+        onKeyDown={handleKeyDown}
+        onBlur={handleInputBlur}
+        placeholder={tags.length === 0 ? placeholder : "Add more..."}
+        className="w-full"
+      />
+    </div>
+  );
+};
 
 interface EditPricingModalState {
   isOpen: boolean;
@@ -187,6 +308,8 @@ export default function CreateOrderPage() {
   const [orderItems, setOrderItems] = React.useState<OrderItemDisplay[]>([]);
   const [showQuickProductDialog, setShowQuickProductDialog] = React.useState(false);
   const [isQuickProductSubmitting, setIsQuickProductSubmitting] = React.useState(false);
+  const [showAddVariantDialog, setShowAddVariantDialog] = React.useState(false);
+  const [isAddVariantSubmitting, setIsAddVariantSubmitting] = React.useState(false);
   const [brands, setBrands] = React.useState<Brand[]>([]);
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [isLoadingBrands, setIsLoadingBrands] = React.useState(false);
@@ -254,6 +377,14 @@ export default function CreateOrderPage() {
         gstTaxRate: DEFAULT_GST_FOR_QUICK_CREATE,
         mrp: 0,
         consumerDiscount: 0
+      }
+    });
+
+  const addVariantForm = useForm<AddVariantDialogValues>({
+      resolver: zodResolver(addVariantDialogSchema),
+      defaultValues: {
+        colors: "",
+        sizes: ""
       }
     });
 
@@ -675,6 +806,45 @@ export default function CreateOrderPage() {
       toast({ title: "Error Quick Creating Product", description: error.message || "Failed to quick create product.", variant: "destructive" });
     } finally {
       setIsQuickProductSubmitting(false);
+    }
+  };
+
+  const handleAddVariantDialogSubmit = async (data: AddVariantDialogValues) => {
+    if (!selectedProductForDetails || !selectedProductForDetails.id) {
+      toast({ title: "Error", description: "No product selected to add variants to.", variant: "destructive" });
+      return;
+    }
+
+    setIsAddVariantSubmitting(true);
+
+    // Parse the comma-separated values into arrays
+    const colors = data.colors.split(',').map(color => color.trim()).filter(color => color !== '');
+    const sizes = data.sizes.split(',').map(size => size.trim()).filter(size => size !== '');
+
+    if (colors.length === 0 && sizes.length === 0) {
+      toast({ title: "Warning", description: "Please enter at least one color or size.", variant: "default" });
+      setIsAddVariantSubmitting(false);
+      return;
+    }
+
+    const payload: AddProductVariantsRequest = {
+      color: colors.length > 0 ? colors : undefined,
+      size: sizes.length > 0 ? sizes : undefined
+    };
+
+    try {
+      const updatedVariant = await addMultipleVariants(selectedProductForDetails.id, payload);
+      setShowAddVariantDialog(false);
+      addVariantForm.reset();
+      toast({ title: "Success", description: `Variants added to "${selectedProductForDetails.name}" successfully.` });
+
+      // Refresh the product details to show the new variants
+      await handleSelectSearchedProduct(selectedProductForDetails.id);
+
+    } catch (error: any) {
+      toast({ title: "Error Adding Variants", description: error.message || "Failed to add variants to product.", variant: "destructive" });
+    } finally {
+      setIsAddVariantSubmitting(false);
     }
   };
 
@@ -1654,7 +1824,19 @@ export default function CreateOrderPage() {
                     {selectedProductForDetails.variants && selectedProductForDetails.variants.length > 0 ? (
                       <div className="space-y-4">
                         <div>
-                          <Label className="font-medium text-sm">Select Variant:</Label>
+                          <div className="flex justify-between items-center mb-2">
+                            <Label className="font-medium text-sm">Select Variant:</Label>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => {
+                                setShowAddVariantDialog(true);
+                                addVariantForm.reset();
+                              }}
+                            >
+                              <PlusCircle className="mr-2 h-3 w-3" /> Add Variant
+                            </Button>
+                          </div>
                            <RadioGroup
                                 onValueChange={(variantId) => {
                                     const v = selectedProductForDetails.variants?.find(va => va.id === variantId);
@@ -1695,7 +1877,19 @@ export default function CreateOrderPage() {
                         )}
                       </div>
                     ) : (
-                      <p className="text-muted-foreground py-3">This product has no variants defined or available.</p>
+                      <div className="py-3">
+                        <p className="text-muted-foreground mb-3">This product has no variants defined or available.</p>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => {
+                            setShowAddVariantDialog(true);
+                            addVariantForm.reset();
+                          }}
+                        >
+                          <PlusCircle className="mr-2 h-3 w-3" /> Add Variant
+                        </Button>
+                      </div>
                     )}
                   </Card>
                 )}
@@ -2115,6 +2309,63 @@ export default function CreateOrderPage() {
           </CardFooter>
         </Card>
       )}
+
+      {/* Add Variant Dialog */}
+      <Dialog open={showAddVariantDialog} onOpenChange={setShowAddVariantDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Variants to {selectedProductForDetails?.name}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={addVariantForm.handleSubmit(handleAddVariantDialogSubmit)} className="space-y-4">
+            <div>
+              <Label htmlFor="colors">Colors</Label>
+              <Controller
+                control={addVariantForm.control}
+                name="colors"
+                render={({ field }) => (
+                  <TagsInputWithPreview
+                    id="colors"
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Type color and press Enter/Comma"
+                    isColorInput={true}
+                  />
+                )}
+              />
+              {addVariantForm.formState.errors.colors && (
+                <p className="text-xs text-destructive">{addVariantForm.formState.errors.colors.message}</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="sizes">Sizes</Label>
+              <Controller
+                control={addVariantForm.control}
+                name="sizes"
+                render={({ field }) => (
+                  <TagsInputWithPreview
+                    id="sizes"
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Type size and press Enter/Comma"
+                  />
+                )}
+              />
+              {addVariantForm.formState.errors.sizes && (
+                <p className="text-xs text-destructive">{addVariantForm.formState.errors.sizes.message}</p>
+              )}
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="ghost">Cancel</Button>
+              </DialogClose>
+              <Button type="submit" disabled={isAddVariantSubmitting}>
+                {isAddVariantSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : null} 
+                Add Variants
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
