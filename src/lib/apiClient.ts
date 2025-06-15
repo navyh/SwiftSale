@@ -3,6 +3,7 @@
 "use client"; // To be used in client components
 
 const API_BASE_URL = 'https://orca-app-k6zka.ondigitalocean.app/api/v2';
+// const API_BASE_URL = 'http://localhost:8080/api/v2';
 
 // Helper function for API calls
 async function fetchAPI<T>(endpoint: string, options?: RequestInit, expectJson = true): Promise<T> {
@@ -247,8 +248,9 @@ export interface CreateBusinessProfileWithUserRequest {
   user: UserForCreateWithBpDto;
   businessProfile: BusinessProfileForCreateWithBpDto;
 }
-export interface CreateBusinessProfileWithUserResponse extends BusinessProfileDto {
-  user?: UserDto;
+export interface CreateBusinessProfileWithUserResponse {
+  user: UserDto;
+  businessProfiles: BusinessProfileDto[];
 }
 
 
@@ -338,11 +340,17 @@ export async function createBusinessProfileWithUser(data: CreateBusinessProfileW
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  return {
-    ...response,
-    companyName: response.companyName || (response as any).name,
-    isActive: response.isActive !== undefined ? response.isActive : (response.status === 'ACTIVE'),
+
+  // Process the response to ensure businessProfiles have the required properties
+  if (response.businessProfiles && response.businessProfiles.length > 0) {
+    response.businessProfiles = response.businessProfiles.map(profile => ({
+      ...profile,
+      companyName: profile.companyName || (profile as any).name,
+      isActive: profile.isActive !== undefined ? profile.isActive : (profile.status === 'ACTIVE'),
+    }));
   }
+
+  return response;
 }
 
 export async function fetchUsersForBusinessProfileByGstin(gstin: string, params?: { page?: number; size?: number }): Promise<Page<UserDto>> {
@@ -674,21 +682,28 @@ export interface ProductSearchResultDto {
 
 export interface QuickCreateProductRequest {
     name: string;
-    brandName: string;
-    categoryName: string;
-    colorVariants: string[];
-    sizeVariants: string[];
-    unitPrice: number;
+    brand: string;
+    gstTaxRate: number;
+    category: string;
+    subCategory: string;
+    color: string;
+    size: string;
+    mrp: number;
+    consumerDiscount: number;
+    status: string;
 }
 export interface QuickCreateProductResponse extends ProductDto {}
 
 
 export interface OrderItemRequest {
     productId: string;
+    productName: string;
     variantId: string;
+    variantName: string;
     size?: string | null;
     color?: string | null;
     quantity: number;
+    mrp: number;
     unitPrice: number;
     taxableAmount: number;
     discountRate?: number | null;
@@ -727,6 +742,24 @@ export interface PaymentDetailRequest {
     status: 'PENDING' | 'SUCCESS' | 'FAILED' | string;
 }
 
+export interface TotalGstDto {
+    igstRate?: number | null;
+    igstAmount?: number | null;
+    cgstRate?: number | null;
+    cgstAmount?: number | null;
+    sgstRate?: number | null;
+    sgstAmount?: number | null;
+}
+
+export interface PaymentSummaryDto {
+    totalItems: number;
+    totalTaxableAmount: number;
+    totalGst: TotalGstDto;
+    totalDiscountAmount: number;
+    shippingCharges: number;
+    totalAmount: number;
+}
+
 export interface OrderDto {
     id: string;
     orderNumber?: string | null;
@@ -743,6 +776,7 @@ export interface OrderDto {
     billingAddress?: AddressDto | null;
     status: string;
     paymentDetails?: PaymentDetailRequest[] | null;
+    paymentSummary?: PaymentSummaryDto | null;
     paymentMethod?: string | null;
     notes?: string | null;
     createdAt: string;
@@ -818,6 +852,56 @@ export async function downloadInvoicePdf(orderId: string): Promise<Blob> {
         throw new Error(`Invoice PDF download failed: ${response.status} ${response.statusText}`);
     }
     return response.blob();
+}
+
+export async function fetchOrders(params?: { 
+    sortBy?: string; 
+    sortDir?: 'asc' | 'desc'; 
+    status?: string; 
+    createdFrom?: string; 
+    createdTo?: string; 
+    userId?: string;
+    businessProfileId?: string;
+    page?: number; 
+    size?: number;
+}): Promise<Page<OrderDto>> {
+    const queryParams = new URLSearchParams();
+    if (params?.sortBy) queryParams.append('sortBy', params.sortBy);
+    if (params?.sortDir) queryParams.append('sortDir', params.sortDir);
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.createdFrom) queryParams.append('createdFrom', params.createdFrom);
+    if (params?.createdTo) queryParams.append('createdTo', params.createdTo);
+    if (params?.userId) queryParams.append('userId', params.userId);
+    if (params?.businessProfileId) queryParams.append('businessProfileId', params.businessProfileId);
+    if (params?.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+
+    const queryString = queryParams.toString();
+    const data = await fetchAPI<Page<OrderDto> | undefined>(`/orders${queryString ? `?${queryString}` : ''}`);
+    return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size ?? 10, number: params?.page ?? 0, first: true, last: true, empty: true };
+}
+
+export async function searchOrders(keyword: string, page: number = 0, size: number = 10, sort: string = 'createdAt,desc'): Promise<Page<OrderDto>> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('keyword', keyword);
+    queryParams.append('page', page.toString());
+    queryParams.append('size', size.toString());
+    queryParams.append('sort', sort);
+
+    const queryString = queryParams.toString();
+    const data = await fetchAPI<Page<OrderDto> | undefined>(`/orders/search?${queryString}`);
+    return data ?? { content: [], totalPages: 0, totalElements: 0, size: size, number: page, first: true, last: true, empty: true };
+}
+
+export async function fetchOrderById(orderId: string): Promise<OrderDto> {
+    return fetchAPI<OrderDto>(`/orders/${orderId}`);
+}
+
+export async function updateOrderStatus(orderId: string, newStatus: string): Promise<OrderDto> {
+    return fetchAPI<OrderDto>(`/orders/${orderId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ newStatus }),
+    });
 }
 
 
@@ -942,4 +1026,3 @@ export async function updateCurrentUser(data: UpdateUserRequest): Promise<Curren
     body: JSON.stringify(data),
   });
 }
-
