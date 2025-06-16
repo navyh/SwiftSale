@@ -905,6 +905,126 @@ export async function updateOrderStatus(orderId: string, newStatus: string): Pro
 }
 
 
+// === PROCUREMENT MANAGEMENT ===
+
+export interface ProcurementItemDto {
+    id?: string;
+    productId: string;
+    productName: string;
+    variantId: string;
+    variantName: string;
+    quantity: number;
+    unitPrice: number;
+}
+
+export interface ProcurementDto {
+    id?: string;
+    businessProfileId: string;
+    businessProfile?: BusinessProfileDto;
+    invoiceNumber: string;
+    invoiceAmount: number;
+    creditPeriod: number;
+    invoiceDate: string;
+    receiptDate: string;
+    notes?: string;
+    invoiceImage?: string;
+    status?: string;
+    items: ProcurementItemDto[];
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface CreateProcurementRequest {
+    procurementDto: Omit<ProcurementDto, 'id' | 'businessProfile' | 'createdAt' | 'updatedAt'>;
+    invoiceImage?: string;
+}
+
+export interface UpdateProcurementRequest {
+    procurementDto: Partial<Omit<ProcurementDto, 'id' | 'businessProfile' | 'createdAt' | 'updatedAt'>>;
+    invoiceImage?: string;
+}
+
+export async function createProcurement(data: CreateProcurementRequest): Promise<ProcurementDto> {
+    return fetchAPI<ProcurementDto>('/procurements', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function fetchProcurements(params?: { 
+    sortBy?: string; 
+    sortDir?: 'asc' | 'desc'; 
+    status?: string; 
+    createdFrom?: string; 
+    createdTo?: string; 
+    businessProfileId?: string;
+    page?: number; 
+    size?: number;
+}): Promise<Page<ProcurementDto>> {
+    const queryParams = new URLSearchParams();
+    if (params?.sortBy) queryParams.append('sortBy', params.sortBy);
+    if (params?.sortDir) queryParams.append('sortDir', params.sortDir);
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.createdFrom) queryParams.append('createdFrom', params.createdFrom);
+    if (params?.createdTo) queryParams.append('createdTo', params.createdTo);
+    if (params?.businessProfileId) queryParams.append('businessProfileId', params.businessProfileId);
+    if (params?.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+
+    const queryString = queryParams.toString();
+    const endpoint = queryString ? `/procurements?${queryString}` : '/procurements';
+
+    const data = await fetchAPI<Page<ProcurementDto> | undefined>(endpoint);
+    return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size || 10, number: params?.page || 0, first: true, last: true, empty: true };
+}
+
+export async function searchProcurements(
+    keyword: string,
+    page: number = 0,
+    size: number = 20,
+    sort: string = 'createdAt,desc'
+): Promise<Page<ProcurementDto>> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('keyword', keyword);
+    queryParams.append('page', page.toString());
+    queryParams.append('size', size.toString());
+    queryParams.append('sort', sort);
+
+    const queryString = queryParams.toString();
+    const data = await fetchAPI<Page<ProcurementDto> | undefined>(`/procurements/search?${queryString}`);
+    return data ?? { content: [], totalPages: 0, totalElements: 0, size: size, number: page, first: true, last: true, empty: true };
+}
+
+export async function fetchProcurementById(procurementId: string): Promise<ProcurementDto> {
+    return fetchAPI<ProcurementDto>(`/procurements/${procurementId}`);
+}
+
+export async function updateProcurement(procurementId: string, data: UpdateProcurementRequest): Promise<ProcurementDto> {
+    return fetchAPI<ProcurementDto>(`/procurements/${procurementId}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function updateProcurementStatus(procurementId: string, newStatus: string): Promise<ProcurementDto> {
+    return fetchAPI<ProcurementDto>(`/procurements/${procurementId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ newStatus }),
+    });
+}
+
+export async function deleteProcurement(procurementId: string): Promise<void> {
+    return fetchAPI<void>(`/procurements/${procurementId}`, {
+        method: 'DELETE',
+    }, false);
+}
+
+export async function fetchProcurementStatuses(): Promise<string[]> {
+    const data = await fetchAPI<string[] | undefined>('/meta/procurement/statuses');
+    return Array.isArray(data) ? data : [];
+}
+
+
 // === V2 META ENDPOINTS ===
 
 export interface InventoryAdjustmentReason extends MetaItem {}
