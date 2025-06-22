@@ -74,6 +74,8 @@ export default function EditProcurementPage({ params }: { params: { id: string }
   const [procurement, setProcurement] = React.useState<ProcurementDto | null>(null);
   const [vendorDetails, setVendorDetails] = React.useState<BusinessProfileDto | null>(null);
   const [isLoadingVendor, setIsLoadingVendor] = React.useState(false);
+  const [invoiceDateOpen, setInvoiceDateOpen] = React.useState(false);
+  const [receiptDateOpen, setReceiptDateOpen] = React.useState(false);
 
   // Product search and selection
   const [productSearchQuery, setProductSearchQuery] = React.useState("");
@@ -684,7 +686,7 @@ export default function EditProcurementPage({ params }: { params: { id: string }
                     control={procurementForm.control}
                     name="invoiceDate"
                     render={({ field }) => (
-                      <Popover>
+                      <Popover open={invoiceDateOpen} onOpenChange={setInvoiceDateOpen}>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
@@ -698,7 +700,10 @@ export default function EditProcurementPage({ params }: { params: { id: string }
                           <Calendar
                             mode="single"
                             selected={field.value}
-                            onSelect={field.onChange}
+                            onSelect={(date) => {
+                              field.onChange(date);
+                              setInvoiceDateOpen(false);
+                            }}
                             initialFocus
                           />
                         </PopoverContent>
@@ -716,7 +721,7 @@ export default function EditProcurementPage({ params }: { params: { id: string }
                     control={procurementForm.control}
                     name="receiptDate"
                     render={({ field }) => (
-                      <Popover>
+                      <Popover open={receiptDateOpen} onOpenChange={setReceiptDateOpen}>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
@@ -730,7 +735,10 @@ export default function EditProcurementPage({ params }: { params: { id: string }
                           <Calendar
                             mode="single"
                             selected={field.value}
-                            onSelect={field.onChange}
+                            onSelect={(date) => {
+                              field.onChange(date);
+                              setReceiptDateOpen(false);
+                            }}
                             initialFocus
                           />
                         </PopoverContent>

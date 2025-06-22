@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/command";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ItemList, ItemListCard } from "@/components/ui/item-list";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import {
@@ -66,6 +67,7 @@ interface ProcurementItemDisplay {
   variantName: string;
   quantity: number;
   unitPrice: number;
+  customUnitPrice?: boolean;
 }
 
 export default function CreateProcurementPage() {
@@ -88,7 +90,12 @@ export default function CreateProcurementPage() {
   const [isLoadingProductDetails, setIsLoadingProductDetails] = React.useState(false);
   const [selectedVariant, setSelectedVariant] = React.useState<ProductVariantDto | null>(null);
   const [selectedQuantity, setSelectedQuantity] = React.useState(1);
+  const [selectedUnitPrice, setSelectedUnitPrice] = React.useState<number | ''>('');
+  const [isCustomUnitPrice, setIsCustomUnitPrice] = React.useState(false);
   const [procurementItems, setProcurementItems] = React.useState<ProcurementItemDisplay[]>([]);
+  const [editingItemIndex, setEditingItemIndex] = React.useState<number | null>(null);
+  const [invoiceDateOpen, setInvoiceDateOpen] = React.useState(false);
+  const [receiptDateOpen, setReceiptDateOpen] = React.useState(false);
 
   // Form for procurement details
   const procurementForm = useForm<ProcurementFormValues>({
@@ -205,19 +212,56 @@ export default function CreateProcurementPage() {
       return;
     }
 
-    const newItem: ProcurementItemDisplay = {
-      productId: selectedProductForDetails.id,
-      productName: selectedProductForDetails.name,
-      variantId: selectedVariant.id,
-      variantName: `${selectedVariant.color || ''} ${selectedVariant.size || ''}`.trim() || 'Default',
-      quantity: selectedQuantity,
-      unitPrice: selectedVariant.mrp || 0,
-    };
+    // Use custom unit price if provided, otherwise use variant MRP
+    const unitPrice = isCustomUnitPrice && typeof selectedUnitPrice === 'number' 
+      ? selectedUnitPrice 
+      : (selectedVariant.mrp || 0);
 
-    setProcurementItems([...procurementItems, newItem]);
+    if (editingItemIndex !== null) {
+      // Update existing item
+      const updatedItems = [...procurementItems];
+      updatedItems[editingItemIndex] = {
+        ...updatedItems[editingItemIndex],
+        quantity: selectedQuantity,
+        unitPrice: unitPrice,
+        customUnitPrice: isCustomUnitPrice
+      };
+      setProcurementItems(updatedItems);
+      setEditingItemIndex(null);
+    } else {
+      // Add new item
+      const newItem: ProcurementItemDisplay = {
+        productId: selectedProductForDetails.id,
+        productName: selectedProductForDetails.name,
+        variantId: selectedVariant.id,
+        variantName: `${selectedVariant.color || ''} ${selectedVariant.size || ''}`.trim() || 'Default',
+        quantity: selectedQuantity,
+        unitPrice: unitPrice,
+        customUnitPrice: isCustomUnitPrice
+      };
+      setProcurementItems([...procurementItems, newItem]);
+    }
+
+    // Reset selection states
     setSelectedProductForDetails(null);
     setSelectedVariant(null);
     setSelectedQuantity(1);
+    setSelectedUnitPrice('');
+    setIsCustomUnitPrice(false);
+  };
+
+  // Edit existing item
+  const handleEditItem = (index: number) => {
+    const item = procurementItems[index];
+
+    // Load product details
+    loadProductDetails(item.productId).then(() => {
+      // Set editing states
+      setEditingItemIndex(index);
+      setSelectedQuantity(item.quantity);
+      setSelectedUnitPrice(item.unitPrice);
+      setIsCustomUnitPrice(!!item.customUnitPrice);
+    });
   };
 
   // Remove item from procurement
@@ -541,25 +585,91 @@ export default function CreateProcurementPage() {
                     </div>
                   )}
 
-                  {/* Quantity selection */}
+                  {/* Quantity and price selection */}
                   {selectedVariant && (
-                    <div className="space-y-2">
-                      <Label htmlFor="quantity">Quantity</Label>
-                      <Input
-                        id="quantity"
-                        type="number"
-                        min="1"
-                        value={selectedQuantity}
-                        onChange={(e) => setSelectedQuantity(parseInt(e.target.value) || 1)}
-                      />
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="quantity">Quantity</Label>
+                        <Input
+                          id="quantity"
+                          type="number"
+                          min="1"
+                          value={selectedQuantity}
+                          onChange={(e) => setSelectedQuantity(parseInt(e.target.value) || 1)}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="unitPrice">Unit Price</Label>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id="customPrice"
+                              checked={isCustomUnitPrice}
+                              onChange={(e) => {
+                                setIsCustomUnitPrice(e.target.checked);
+                                if (e.target.checked && selectedUnitPrice === '') {
+                                  setSelectedUnitPrice(selectedVariant.mrp || 0);
+                                }
+                              }}
+                              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                            />
+                            <Label htmlFor="customPrice" className="text-xs font-normal">Custom price</Label>
+                          </div>
+                        </div>
+
+                        {isCustomUnitPrice ? (
+                          <Input
+                            id="unitPrice"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={selectedUnitPrice}
+                            onChange={(e) => setSelectedUnitPrice(e.target.value ? parseFloat(e.target.value) : '')}
+                            placeholder="Enter unit price"
+                          />
+                        ) : (
+                          <div className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground">
+                            ₹{selectedVariant.mrp?.toFixed(2) || '0.00'} (MRP)
+                          </div>
+                        )}
+                      </div>
+
+                      {selectedQuantity > 0 && (selectedVariant.mrp || isCustomUnitPrice) && (
+                        <div className="text-sm font-medium">
+                          Total: ₹{((isCustomUnitPrice && typeof selectedUnitPrice === 'number' ? selectedUnitPrice : selectedVariant.mrp || 0) * selectedQuantity).toFixed(2)}
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {/* Add button */}
+                  {/* Add/Update button */}
                   {selectedVariant && (
-                    <Button className="w-full" onClick={handleAddItem}>
-                      Add to Procurement
-                    </Button>
+                    <div className={editingItemIndex !== null ? "flex gap-2" : ""}>
+                      {editingItemIndex !== null && (
+                        <Button 
+                          variant="outline" 
+                          className="flex-1" 
+                          onClick={() => {
+                            setEditingItemIndex(null);
+                            setSelectedProductForDetails(null);
+                            setSelectedVariant(null);
+                            setSelectedQuantity(1);
+                            setSelectedUnitPrice('');
+                            setIsCustomUnitPrice(false);
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                      <Button 
+                        className={editingItemIndex !== null ? "flex-1" : "w-full"} 
+                        onClick={handleAddItem}
+                      >
+                        {editingItemIndex !== null ? 'Update Item' : 'Add to Procurement'}
+                      </Button>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -569,43 +679,113 @@ export default function CreateProcurementPage() {
             {procurementItems.length > 0 && (
               <div className="mt-6">
                 <h3 className="text-lg font-medium mb-2">Procurement Items</h3>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Product</TableHead>
-                      <TableHead>Variant</TableHead>
-                      <TableHead>Quantity</TableHead>
-                      <TableHead>Unit Price</TableHead>
-                      <TableHead>Total</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {procurementItems.map((item, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{item.productName}</TableCell>
-                        <TableCell>{item.variantName}</TableCell>
-                        <TableCell>{item.quantity}</TableCell>
-                        <TableCell>₹{item.unitPrice.toFixed(2)}</TableCell>
-                        <TableCell>₹{(item.quantity * item.unitPrice).toFixed(2)}</TableCell>
-                        <TableCell className="text-right">
+
+                {/* Mobile view with ItemList */}
+                <div className="block md:hidden">
+                  <ItemList
+                    items={procurementItems}
+                    renderItem={(item, index) => {
+                      const actions = (
+                        <div className="flex space-x-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEditItem(index)}
+                            className="hover:text-primary"
+                            disabled={editingItemIndex !== null}
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => handleRemoveItem(index)}
                             className="hover:text-destructive"
+                            disabled={editingItemIndex !== null}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
-                        </TableCell>
+                        </div>
+                      );
+
+                      return (
+                        <ItemListCard
+                          key={index}
+                          title={item.productName}
+                          subtitle={item.variantName}
+                          amount={`₹${(item.quantity * item.unitPrice).toFixed(2)}`}
+                          date={
+                            <div className="flex items-center justify-between w-full">
+                              <span className="text-sm">Qty: {item.quantity}</span>
+                              <span className="text-sm">₹{item.unitPrice.toFixed(2)} each</span>
+                            </div>
+                          }
+                          actions={actions}
+                        />
+                      );
+                    }}
+                  />
+                  <div className="mt-4 border-t pt-4 flex justify-between items-center">
+                    <span className="font-medium">Total Amount:</span>
+                    <span className="font-bold">₹{calculateTotalAmount().toFixed(2)}</span>
+                  </div>
+                </div>
+
+                {/* Desktop view with Table */}
+                <div className="hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Product</TableHead>
+                        <TableHead>Variant</TableHead>
+                        <TableHead>Quantity</TableHead>
+                        <TableHead>Unit Price</TableHead>
+                        <TableHead>Total</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    ))}
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-right font-medium">Total Amount:</TableCell>
-                      <TableCell colSpan={2} className="font-bold">₹{calculateTotalAmount().toFixed(2)}</TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {procurementItems.map((item, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{item.productName}</TableCell>
+                          <TableCell>{item.variantName}</TableCell>
+                          <TableCell>{item.quantity}</TableCell>
+                          <TableCell>
+                            ₹{item.unitPrice.toFixed(2)}
+                            {item.customUnitPrice && <span className="ml-1 text-xs text-muted-foreground">(custom)</span>}
+                          </TableCell>
+                          <TableCell>₹{(item.quantity * item.unitPrice).toFixed(2)}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end space-x-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleEditItem(index)}
+                                className="hover:text-primary"
+                                disabled={editingItemIndex !== null}
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleRemoveItem(index)}
+                                className="hover:text-destructive"
+                                disabled={editingItemIndex !== null}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-right font-medium">Total Amount:</TableCell>
+                        <TableCell colSpan={2} className="font-bold">₹{calculateTotalAmount().toFixed(2)}</TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             )}
           </CardContent>
@@ -673,7 +853,7 @@ export default function CreateProcurementPage() {
                     control={procurementForm.control}
                     name="invoiceDate"
                     render={({ field }) => (
-                      <Popover>
+                      <Popover open={invoiceDateOpen} onOpenChange={setInvoiceDateOpen}>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
@@ -687,7 +867,10 @@ export default function CreateProcurementPage() {
                           <Calendar
                             mode="single"
                             selected={field.value}
-                            onSelect={field.onChange}
+                            onSelect={(date) => {
+                              field.onChange(date);
+                              setInvoiceDateOpen(false);
+                            }}
                             initialFocus
                           />
                         </PopoverContent>
@@ -705,7 +888,7 @@ export default function CreateProcurementPage() {
                     control={procurementForm.control}
                     name="receiptDate"
                     render={({ field }) => (
-                      <Popover>
+                      <Popover open={receiptDateOpen} onOpenChange={setReceiptDateOpen}>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
@@ -719,7 +902,10 @@ export default function CreateProcurementPage() {
                           <Calendar
                             mode="single"
                             selected={field.value}
-                            onSelect={field.onChange}
+                            onSelect={(date) => {
+                              field.onChange(date);
+                              setReceiptDateOpen(false);
+                            }}
                             initialFocus
                           />
                         </PopoverContent>
