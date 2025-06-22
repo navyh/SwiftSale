@@ -242,38 +242,32 @@ export default function CreateProcurementPage() {
 
   // Handle form submission
   const handleSubmit = async (values: ProcurementFormValues) => {
-    if (procurementItems.length === 0) {
-      toast({
-        title: "Cannot create procurement",
-        description: "Please add at least one item to the procurement.",
-        variant: "destructive",
-      });
-      return;
-    }
 
     setIsSubmitting(true);
     try {
-      const items: ProcurementItemDto[] = procurementItems.map(item => ({
-        productId: item.productId,
-        productName: item.productName,
-        variantId: item.variantId,
-        variantName: item.variantName,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-      }));
-
+      // Items are optional, so only include them if there are any
       const procurementData: CreateProcurementRequest = {
-        procurementDto: {
-          businessProfileId: values.businessProfileId,
-          invoiceNumber: values.invoiceNumber,
-          invoiceAmount: values.invoiceAmount,
-          creditPeriod: values.creditPeriod,
-          invoiceDate: format(values.invoiceDate, 'yyyy-MM-dd'),
-          receiptDate: format(values.receiptDate, 'yyyy-MM-dd'),
-          notes: values.notes,
-          items: items,
-        },
+        businessProfileId: values.businessProfileId,
+        invoiceNumber: values.invoiceNumber,
+        invoiceAmount: values.invoiceAmount,
+        creditPeriod: values.creditPeriod,
+        invoiceDate: format(values.invoiceDate, 'yyyy-MM-dd'),
+        receiptDate: format(values.receiptDate, 'yyyy-MM-dd'),
+        notes: values.notes,
       };
+
+      // Only add items if there are any
+      if (procurementItems.length > 0) {
+        const items: ProcurementItemDto[] = procurementItems.map(item => ({
+          productId: item.productId,
+          productName: item.productName,
+          variantId: item.variantId,
+          variantName: item.variantName,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+        }));
+        procurementData.items = items;
+      }
 
       const result = await createProcurement(procurementData);
 
@@ -308,15 +302,6 @@ export default function CreateProcurementPage() {
       }
       setCurrentStep(2);
     } else if (currentStep === 2) {
-      // Validate items
-      if (procurementItems.length === 0) {
-        toast({
-          title: "Items required",
-          description: "Please add at least one item before proceeding.",
-          variant: "destructive",
-        });
-        return;
-      }
       setCurrentStep(3);
     }
   };
@@ -456,8 +441,8 @@ export default function CreateProcurementPage() {
       {currentStep === 2 && (
         <Card>
           <CardHeader>
-            <CardTitle>Add Items</CardTitle>
-            <CardDescription>Add products to this procurement.</CardDescription>
+            <CardTitle>Add Items (Optional)</CardTitle>
+            <CardDescription>Add products to this procurement if needed. Items are optional as we primarily want to track invoices and payments.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -628,7 +613,7 @@ export default function CreateProcurementPage() {
             <Button variant="outline" onClick={goToPreviousStep}>
               Previous Step
             </Button>
-            <Button onClick={goToNextStep} disabled={procurementItems.length === 0}>
+            <Button onClick={goToNextStep}>
               Next Step
             </Button>
           </CardFooter>

@@ -19,6 +19,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ItemList, ItemListCard } from "@/components/ui/item-list";
 import { format } from "date-fns";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Trash2, Search as SearchIcon, Loader2, X, CalendarIcon
@@ -28,12 +29,14 @@ import {
   updateProcurement,
   searchProductsFuzzy,
   fetchProductById,
+  fetchBusinessProfileById,
   type ProcurementDto,
   type UpdateProcurementRequest,
   type ProcurementItemDto,
   type ProductSearchResultDto,
   type ProductDto,
-  type ProductVariantDto
+  type ProductVariantDto,
+  type BusinessProfileDto
 } from "@/lib/apiClient";
 
 // Zod schema for procurement form
@@ -69,6 +72,8 @@ export default function EditProcurementPage({ params }: { params: { id: string }
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [procurement, setProcurement] = React.useState<ProcurementDto | null>(null);
+  const [vendorDetails, setVendorDetails] = React.useState<BusinessProfileDto | null>(null);
+  const [isLoadingVendor, setIsLoadingVendor] = React.useState(false);
 
   // Product search and selection
   const [productSearchQuery, setProductSearchQuery] = React.useState("");
@@ -98,7 +103,7 @@ export default function EditProcurementPage({ params }: { params: { id: string }
       try {
         const data = await fetchProcurementById(params.id);
         setProcurement(data);
-        
+
         // Set form values
         procurementForm.setValue("invoiceNumber", data.invoiceNumber);
         procurementForm.setValue("invoiceAmount", data.invoiceAmount);
@@ -140,6 +145,29 @@ export default function EditProcurementPage({ params }: { params: { id: string }
 
     loadProcurement();
   }, [params.id, procurementForm, router, toast]);
+
+  // Fetch vendor details
+  React.useEffect(() => {
+    if (procurement && procurement.businessProfileId) {
+      const loadVendorDetails = async () => {
+        setIsLoadingVendor(true);
+        try {
+          const data = await fetchBusinessProfileById(procurement.businessProfileId);
+          setVendorDetails(data);
+        } catch (error: any) {
+          toast({
+            title: "Error loading vendor details",
+            description: error.message || "Failed to load vendor details.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsLoadingVendor(false);
+        }
+      };
+
+      loadVendorDetails();
+    }
+  }, [procurement, toast]);
 
   // Search products
   const searchProducts = React.useCallback(async (query: string) => {
@@ -279,24 +307,22 @@ export default function EditProcurementPage({ params }: { params: { id: string }
       }));
 
       const procurementData: UpdateProcurementRequest = {
-        procurementDto: {
-          invoiceNumber: values.invoiceNumber,
-          invoiceAmount: values.invoiceAmount,
-          creditPeriod: values.creditPeriod,
-          invoiceDate: format(values.invoiceDate, 'yyyy-MM-dd'),
-          receiptDate: format(values.receiptDate, 'yyyy-MM-dd'),
-          notes: values.notes,
-          items: items,
-        },
+        invoiceNumber: values.invoiceNumber,
+        invoiceAmount: values.invoiceAmount,
+        creditPeriod: values.creditPeriod,
+        invoiceDate: format(values.invoiceDate, 'yyyy-MM-dd'),
+        receiptDate: format(values.receiptDate, 'yyyy-MM-dd'),
+        notes: values.notes,
+        items: items,
       };
 
       const result = await updateProcurement(params.id, procurementData);
-      
+
       toast({
         title: "Procurement updated",
         description: "The procurement has been successfully updated.",
       });
-      
+
       router.push(`/procurements/${params.id}`);
     } catch (error: any) {
       toast({
@@ -361,17 +387,29 @@ export default function EditProcurementPage({ params }: { params: { id: string }
               <CardDescription>Vendor information for this procurement.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
-                <p className="font-medium">{procurement.businessProfile?.name || "Unknown Vendor"}</p>
-                <p className="text-sm text-muted-foreground">GSTIN: {procurement.businessProfile?.gstin || "N/A"}</p>
-                {procurement.businessProfile?.addresses && procurement.businessProfile.addresses.length > 0 && (
-                  <div className="text-sm">
-                    <p>{procurement.businessProfile.addresses[0].line1}</p>
-                    {procurement.businessProfile.addresses[0].line2 && <p>{procurement.businessProfile.addresses[0].line2}</p>}
-                    <p>{procurement.businessProfile.addresses[0].city}, {procurement.businessProfile.addresses[0].state} {procurement.businessProfile.addresses[0].postalCode}</p>
-                  </div>
-                )}
-              </div>
+              {isLoadingVendor ? (
+                <div className="flex justify-center py-4">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="font-medium">{vendorDetails?.companyName || procurement.businessProfile?.companyName || "Unknown Vendor"}</p>
+                  <p className="text-sm text-muted-foreground">GSTIN: {vendorDetails?.gstin || procurement.businessProfile?.gstin || "N/A"}</p>
+                  {vendorDetails?.addresses && vendorDetails.addresses.length > 0 ? (
+                    <div className="text-sm">
+                      <p>{vendorDetails.addresses[0].line1}</p>
+                      {vendorDetails.addresses[0].line2 && <p>{vendorDetails.addresses[0].line2}</p>}
+                      <p>{vendorDetails.addresses[0].city}, {vendorDetails.addresses[0].state} {vendorDetails.addresses[0].postalCode}</p>
+                    </div>
+                  ) : procurement.businessProfile?.addresses && procurement.businessProfile.addresses.length > 0 && (
+                    <div className="text-sm">
+                      <p>{procurement.businessProfile.addresses[0].line1}</p>
+                      {procurement.businessProfile.addresses[0].line2 && <p>{procurement.businessProfile.addresses[0].line2}</p>}
+                      <p>{procurement.businessProfile.addresses[0].city}, {procurement.businessProfile.addresses[0].state} {procurement.businessProfile.addresses[0].postalCode}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -506,43 +544,90 @@ export default function EditProcurementPage({ params }: { params: { id: string }
               {procurementItems.length > 0 && (
                 <div className="mt-6">
                   <h3 className="text-lg font-medium mb-2">Current Items</h3>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Product</TableHead>
-                        <TableHead>Variant</TableHead>
-                        <TableHead>Quantity</TableHead>
-                        <TableHead>Unit Price</TableHead>
-                        <TableHead>Total</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {procurementItems.map((item, index) => (
-                        <TableRow key={item.id || index}>
-                          <TableCell>{item.productName}</TableCell>
-                          <TableCell>{item.variantName}</TableCell>
-                          <TableCell>{item.quantity}</TableCell>
-                          <TableCell>₹{item.unitPrice.toFixed(2)}</TableCell>
-                          <TableCell>₹{(item.quantity * item.unitPrice).toFixed(2)}</TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleRemoveItem(index)}
-                              className="hover:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
+                  {/* Mobile view with ItemList */}
+                  <div className="block md:hidden">
+                    <ItemList
+                      items={procurementItems}
+                      renderItem={(item, index) => {
+                        const removeButton = (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRemoveItem(index)}
+                            className="hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        );
+
+                        return (
+                          <ItemListCard
+                            key={item.id || index}
+                            title={item.productName}
+                            subtitle={item.variantName}
+                            amount={`₹${(item.quantity * item.unitPrice).toFixed(2)}`}
+                            date={
+                              <div className="flex items-center justify-between w-full">
+                                <span className="text-sm">Qty: {item.quantity}</span>
+                                <span className="text-sm">₹{item.unitPrice.toFixed(2)} each</span>
+                              </div>
+                            }
+                            actions={removeButton}
+                          />
+                        );
+                      }}
+                      emptyState={
+                        <div className="text-center py-4 text-muted-foreground">
+                          No items added yet. Search for products above to add them.
+                        </div>
+                      }
+                    />
+                    <div className="mt-4 border-t pt-4 flex justify-between items-center">
+                      <span className="font-medium">Total Amount:</span>
+                      <span className="font-bold">₹{calculateTotalAmount().toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  {/* Desktop view with Table */}
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Product</TableHead>
+                          <TableHead>Variant</TableHead>
+                          <TableHead>Quantity</TableHead>
+                          <TableHead>Unit Price</TableHead>
+                          <TableHead>Total</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
-                      ))}
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-right font-medium">Total Amount:</TableCell>
-                        <TableCell colSpan={2} className="font-bold">₹{calculateTotalAmount().toFixed(2)}</TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {procurementItems.map((item, index) => (
+                          <TableRow key={item.id || index}>
+                            <TableCell>{item.productName}</TableCell>
+                            <TableCell>{item.variantName}</TableCell>
+                            <TableCell>{item.quantity}</TableCell>
+                            <TableCell>₹{item.unitPrice.toFixed(2)}</TableCell>
+                            <TableCell>₹{(item.quantity * item.unitPrice).toFixed(2)}</TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleRemoveItem(index)}
+                                className="hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-right font-medium">Total Amount:</TableCell>
+                          <TableCell colSpan={2} className="font-bold">₹{calculateTotalAmount().toFixed(2)}</TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               )}
             </CardContent>

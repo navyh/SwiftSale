@@ -2,8 +2,8 @@
 // src/lib/apiClient.ts
 "use client"; // To be used in client components
 
-const API_BASE_URL = 'https://orca-app-k6zka.ondigitalocean.app/api/v2';
-// const API_BASE_URL = 'http://localhost:8080/api/v2';
+// const API_BASE_URL = 'https://orca-app-k6zka.ondigitalocean.app/api/v2';
+const API_BASE_URL = 'http://localhost:8080/api/v2';
 
 // Helper function for API calls
 async function fetchAPI<T>(endpoint: string, options?: RequestInit, expectJson = true): Promise<T> {
@@ -917,6 +917,23 @@ export interface ProcurementItemDto {
     unitPrice: number;
 }
 
+// This function is no longer needed as per the issue description
+// export async function fetchProcurementStatuses(): Promise<string[]> {
+//   return fetchAPI<string[]>('/meta/procurement/statuses');
+// }
+
+export interface ProcurementPaymentDto {
+    id?: string;
+    amount: number;
+    paymentDate: string;
+    paymentMethod: string;
+    referenceNumber?: string;
+    notes?: string;
+    cashDiscountApplied?: boolean;
+    cashDiscountAmount?: number;
+    createdAt?: string;
+}
+
 export interface ProcurementDto {
     id?: string;
     businessProfileId: string;
@@ -924,10 +941,17 @@ export interface ProcurementDto {
     invoiceNumber: string;
     invoiceAmount: number;
     creditPeriod: number;
+    cashDiscountPercentage?: number;
     invoiceDate: string;
     receiptDate: string;
+    dueDate?: string;
+    paymentStatus?: string;
+    totalPaidAmount?: number;
+    remainingAmount?: number;
+    payments?: ProcurementPaymentDto[];
     notes?: string;
     invoiceImage?: string;
+    invoiceImageUrl?: string;
     status?: string;
     items: ProcurementItemDto[];
     createdAt?: string;
@@ -935,12 +959,28 @@ export interface ProcurementDto {
 }
 
 export interface CreateProcurementRequest {
-    procurementDto: Omit<ProcurementDto, 'id' | 'businessProfile' | 'createdAt' | 'updatedAt'>;
+    businessProfileId: string;
+    invoiceNumber: string;
+    invoiceAmount: number;
+    creditPeriod: number;
+    cashDiscountPercentage?: number;
+    invoiceDate: string;
+    receiptDate: string;
+    notes?: string;
+    items?: ProcurementItemDto[];
     invoiceImage?: string;
 }
 
 export interface UpdateProcurementRequest {
-    procurementDto: Partial<Omit<ProcurementDto, 'id' | 'businessProfile' | 'createdAt' | 'updatedAt'>>;
+    businessProfileId?: string;
+    invoiceNumber?: string;
+    invoiceAmount?: number;
+    creditPeriod?: number;
+    cashDiscountPercentage?: number;
+    invoiceDate?: string;
+    receiptDate?: string;
+    notes?: string;
+    items?: ProcurementItemDto[];
     invoiceImage?: string;
 }
 
@@ -1019,9 +1059,31 @@ export async function deleteProcurement(procurementId: string): Promise<void> {
     }, false);
 }
 
-export async function fetchProcurementStatuses(): Promise<string[]> {
-    const data = await fetchAPI<string[] | undefined>('/meta/procurement/statuses');
-    return Array.isArray(data) ? data : [];
+export interface ProcurementPaymentRequest {
+    amount: number;
+    paymentDate: string;
+    paymentMethod: string;
+    referenceNumber?: string;
+    notes?: string;
+    applyCashDiscount?: boolean;
+}
+
+export interface ProcurementDashboardDto {
+    currentMonthTotal: number;
+    pendingAmount: number;
+    dueCount: number;
+    dueAmount: number;
+}
+
+export async function makeProcurementPayment(procurementId: string, paymentData: ProcurementPaymentRequest): Promise<ProcurementDto> {
+    return fetchAPI<ProcurementDto>(`/procurements/${procurementId}/payments`, {
+        method: 'POST',
+        body: JSON.stringify(paymentData),
+    });
+}
+
+export async function fetchProcurementDashboard(): Promise<ProcurementDashboardDto> {
+    return fetchAPI<ProcurementDashboardDto>('/procurements/dashboard');
 }
 
 
