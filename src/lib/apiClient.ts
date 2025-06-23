@@ -1075,6 +1075,112 @@ export interface ProcurementDashboardDto {
     dueAmount: number;
 }
 
+// === DASHBOARD INTERFACES ===
+export interface ProductTopSellingDto {
+    id: string;
+    name: string;
+    quantity: number;
+    revenue: number;
+    imageUrl?: string;
+}
+
+export interface ProductSummaryDto {
+    totalProducts: number;
+    activeProducts: number;
+    outOfStockProducts: number;
+    recentlyAddedCount: number;
+}
+
+export interface ProductCategoryBreakdownDto {
+    categoryName: string;
+    productCount: number;
+    percentage: number;
+}
+
+export interface ProcurementVendorBreakdownDto {
+    vendorName: string;
+    procurementCount: number;
+    totalAmount: number;
+    percentage: number;
+}
+
+export interface ProcurementSummaryDto {
+    totalProcurements: number;
+    pendingPayments: number;
+    totalSpent: number;
+    averageOrderValue: number;
+}
+
+export interface ProcurementRecentDto {
+    id: string;
+    invoiceNumber: string;
+    vendorName: string;
+    amount: number;
+    date: string;
+    status: string;
+}
+
+export interface ProcurementOutstandingDto {
+    id: string;
+    invoiceNumber: string;
+    vendorName: string;
+    amount: number;
+    dueDate: string;
+    daysOverdue: number;
+}
+
+export interface OrderTrendsDto {
+    period: string; // e.g., "Jan", "Feb", etc. or dates
+    orderCount: number;
+    revenue: number;
+}
+
+export interface OrderSummaryDto {
+    totalOrders: number;
+    pendingOrders: number;
+    totalRevenue: number;
+    averageOrderValue: number;
+}
+
+export interface OrderRecentDto {
+    id: string;
+    orderNumber: string;
+    customerName: string;
+    amount: number;
+    date: string;
+    status: string;
+}
+
+export interface InvoiceTrendsDto {
+    period: string;
+    invoiceCount: number;
+    amount: number;
+}
+
+export interface InvoiceSummaryDto {
+    totalInvoices: number;
+    paidInvoices: number;
+    totalAmount: number;
+    outstandingAmount: number;
+}
+
+export interface InvoiceOutstandingDto {
+    id: string;
+    invoiceNumber: string;
+    customerName: string;
+    amount: number;
+    dueDate: string;
+    daysOverdue: number;
+}
+
+export interface CustomerTopDto {
+    id: string;
+    name: string;
+    totalOrders: number;
+    totalSpent: number;
+    lastOrderDate: string;
+}
+
 export async function makeProcurementPayment(procurementId: string, paymentData: ProcurementPaymentRequest): Promise<ProcurementDto> {
     return fetchAPI<ProcurementDto>(`/procurements/${procurementId}/payments`, {
         method: 'POST',
@@ -1082,8 +1188,65 @@ export async function makeProcurementPayment(procurementId: string, paymentData:
     });
 }
 
+// === DASHBOARD API FUNCTIONS ===
 export async function fetchProcurementDashboard(): Promise<ProcurementDashboardDto> {
     return fetchAPI<ProcurementDashboardDto>('/procurements/dashboard');
+}
+
+export async function fetchProductsTopSelling(): Promise<ProductTopSellingDto[]> {
+    return fetchAPI<ProductTopSellingDto[]>('/dashboard/products/top-selling');
+}
+
+export async function fetchProductsSummary(): Promise<ProductSummaryDto> {
+    return fetchAPI<ProductSummaryDto>('/dashboard/products/summary');
+}
+
+export async function fetchProductsCategoryBreakdown(): Promise<ProductCategoryBreakdownDto[]> {
+    return fetchAPI<ProductCategoryBreakdownDto[]>('/dashboard/products/category-breakdown');
+}
+
+export async function fetchProcurementsVendorBreakdown(): Promise<ProcurementVendorBreakdownDto[]> {
+    return fetchAPI<ProcurementVendorBreakdownDto[]>('/dashboard/procurements/vendor-breakdown');
+}
+
+export async function fetchProcurementsSummary(): Promise<ProcurementSummaryDto> {
+    return fetchAPI<ProcurementSummaryDto>('/dashboard/procurements/summary');
+}
+
+export async function fetchProcurementsRecent(): Promise<ProcurementRecentDto[]> {
+    return fetchAPI<ProcurementRecentDto[]>('/dashboard/procurements/recent');
+}
+
+export async function fetchProcurementsOutstanding(): Promise<ProcurementOutstandingDto[]> {
+    return fetchAPI<ProcurementOutstandingDto[]>('/dashboard/procurements/outstanding');
+}
+
+export async function fetchOrdersTrends(): Promise<OrderTrendsDto[]> {
+    return fetchAPI<OrderTrendsDto[]>('/dashboard/orders/trends');
+}
+
+export async function fetchOrdersSummary(): Promise<OrderSummaryDto> {
+    return fetchAPI<OrderSummaryDto>('/dashboard/orders/summary');
+}
+
+export async function fetchOrdersRecent(): Promise<OrderRecentDto[]> {
+    return fetchAPI<OrderRecentDto[]>('/dashboard/orders/recent');
+}
+
+export async function fetchInvoicesTrends(): Promise<InvoiceTrendsDto[]> {
+    return fetchAPI<InvoiceTrendsDto[]>('/dashboard/invoices/trends');
+}
+
+export async function fetchInvoicesSummary(): Promise<InvoiceSummaryDto> {
+    return fetchAPI<InvoiceSummaryDto>('/dashboard/invoices/summary');
+}
+
+export async function fetchInvoicesOutstanding(): Promise<InvoiceOutstandingDto[]> {
+    return fetchAPI<InvoiceOutstandingDto[]>('/dashboard/invoices/outstanding');
+}
+
+export async function fetchCustomersTop(): Promise<CustomerTopDto[]> {
+    return fetchAPI<CustomerTopDto[]>('/dashboard/customers/top');
 }
 
 
