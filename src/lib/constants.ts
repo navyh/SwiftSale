@@ -39,11 +39,11 @@ export const navItems: NavItem[] = [
     href: '/business-profiles',
     icon: Building2,
   },
-  {
-    label: 'Staff',
-    href: '/staff',
-    icon: Briefcase,
-  },
+  // {
+  //   label: 'Staff',
+  //   href: '/staff',
+  //   icon: Briefcase,
+  // },
   {
     label: 'Settings',
     href: '/settings',

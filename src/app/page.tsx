@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { 
-  FileText, DollarSign, Package, Users, ShoppingCart, 
-  TrendingUp, AlertTriangle, Clock, BarChart3, Truck, 
-  CreditCard, Calendar, Award
+import {
+  FileText, DollarSign, Package, Users, ShoppingCart,
+  TrendingUp, AlertTriangle, Clock, BarChart3, Truck,
+  CreditCard, Calendar, Award, IndianRupee
 } from 'lucide-react';
 import {
   Chart,
@@ -17,6 +17,7 @@ import {
   ChartYAxis,
   ChartLegend
 } from "@/components/ui/chart";
+import { ComposedChart } from "recharts";
 import { 
   fetchOrdersSummary, 
   fetchProductsSummary, 
@@ -48,16 +49,24 @@ import {
 
 // Helper function to format currency
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('en-IN', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'INR',
     minimumFractionDigits: 2
   }).format(amount);
 };
 
 // Helper function to format date
-const formatDate = (dateString: string) => {
+const formatDate = (dateString: string | null | undefined) => {
+  if (!dateString) return 'N/A';
+
   const date = new Date(dateString);
+
+  // Check if date is valid
+  if (isNaN(date.getTime())) {
+    return 'Invalid date';
+  }
+
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
@@ -167,8 +176,8 @@ export default function DashboardPage() {
     { 
       title: "Total Revenue", 
       value: orderSummary ? formatCurrency(orderSummary.totalRevenue) : "Loading...", 
-      change: orderSummary ? `Avg. ${formatCurrency(orderSummary.averageOrderValue)} per order` : "", 
-      icon: DollarSign, 
+      change: orderSummary ? `Avg. ${formatCurrency(orderSummary.totalRevenue / orderSummary.totalOrders)} per order` : "",
+      icon: IndianRupee,
       dataAiHint: "money graph",
       isLoading
     },
@@ -232,6 +241,30 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {/* Quick Links */}
+      <Card className="shadow-sm mt-6">
+        <CardHeader>
+          <CardTitle>Quick Links</CardTitle>
+          <CardDescription>Navigate to key areas quickly</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-3 gap-4">
+          {[
+            { label: "Create New Product", href: "/products/new", icon: Package },
+            { label: "Create New Order", href: "/orders/new", icon: ShoppingCart },
+            { label: "Create Procurement", href: "/procurements/new", icon: Truck },
+          ].map(link => (
+            <a
+              key={link.label}
+              href={link.href}
+              className="flex flex-col items-center p-4 bg-secondary hover:bg-secondary/80 rounded-lg transition-colors text-center gap-2"
+            >
+              <link.icon className="h-5 w-5" />
+              <span className="font-medium text-sm">{link.label}</span>
+            </a>
+          ))}
+        </CardContent>
+      </Card>
+
       {/* Recent Orders and Top Products */}
       <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
         <Card className="shadow-sm">
@@ -260,20 +293,30 @@ export default function DashboardPage() {
             ) : recentOrders.length > 0 ? (
               <ul className="space-y-3">
                 {recentOrders.slice(0, 5).map((order) => (
-                  <li key={order.id} className="flex items-start justify-between space-x-3">
+                  <li key={order.orderId} className="flex items-start justify-between space-x-3">
                     <div className="flex items-start space-x-3">
                       <div className="p-2 bg-secondary rounded-full">
                         <ShoppingCart className="h-5 w-5 text-primary" />
                       </div>
                       <div>
                         <p className="text-sm font-medium">
-                          {order.orderNumber} - {order.customerName}
+                          {order.customerName}
                         </p>
-                        <p className="text-xs text-muted-foreground">{formatDate(order.date)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDate(order.orderDate)}
+                          {order.status && <span className={`ml-2 px-1.5 py-0.5 text-xs rounded-full ${
+                            order.status === "DELIVERED" ? "bg-green-100 text-green-700" :
+                            order.status === "SHIPPED" ? "bg-blue-100 text-blue-700" :
+                            order.status === "PROCESSING" ? "bg-yellow-100 text-yellow-700" :
+                            order.status === "PENDING" ? "bg-orange-100 text-orange-700" :
+                            order.status === "CANCELLED" ? "bg-red-100 text-red-700" :
+                            "bg-gray-100 text-gray-700"
+                          }`}>{order.status}</span>}
+                        </p>
                       </div>
                     </div>
                     <div className="text-sm font-medium">
-                      {formatCurrency(order.amount)}
+                      {formatCurrency(order.totalAmount)}
                     </div>
                   </li>
                 ))}
@@ -317,7 +360,7 @@ export default function DashboardPage() {
                       </div>
                       <div>
                         <p className="text-sm font-medium">{product.name}</p>
-                        <p className="text-xs text-muted-foreground">{product.quantity} units sold</p>
+                        <p className="text-xs text-muted-foreground">{product.quantitySold} units sold</p>
                       </div>
                     </div>
                     <div className="text-sm font-medium">
@@ -421,7 +464,7 @@ export default function DashboardPage() {
                       </div>
                       <div>
                         <p className="text-sm font-medium">
-                          {procurement.invoiceNumber} - {procurement.vendorName}
+                          {procurement.vendorName}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           Due: {formatDate(procurement.dueDate)}
@@ -430,7 +473,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <div className="text-sm font-medium">
-                      {formatCurrency(procurement.amount)}
+                      {formatCurrency(procurement.totalAmount)}
                     </div>
                   </li>
                 ))}
@@ -464,13 +507,13 @@ export default function DashboardPage() {
           ) : topCustomers.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {topCustomers.slice(0, 6).map((customer) => (
-                <div key={customer.id} className="p-4 border rounded-lg hover:bg-secondary/50 transition-colors">
+                <div key={customer.customerId} className="p-4 border rounded-lg hover:bg-secondary/50 transition-colors">
                   <h3 className="font-medium">{customer.name}</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {customer.totalOrders} orders · {formatCurrency(customer.totalSpent)}
+                    {customer.totalOrders} orders · {formatCurrency(customer.totalRevenue)}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Last order: {formatDate(customer.lastOrderDate)}
+                    {customer.phone}
                   </p>
                 </div>
               ))}
@@ -493,11 +536,11 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="h-64 bg-secondary/30 rounded-md animate-pulse flex items-center justify-center">
+              <div className="h-40 bg-secondary/30 rounded-md animate-pulse flex items-center justify-center">
                 <BarChart3 className="h-8 w-8 text-muted-foreground/50" />
               </div>
             ) : orderTrends.length > 0 ? (
-              <div className="h-64">
+              <div className="h-40 max-h-40 overflow-hidden">
                 <Chart
                   config={{
                     orderCount: {
@@ -510,34 +553,23 @@ export default function DashboardPage() {
                     }
                   }}
                 >
-                  <ChartBar
-                    dataKey="orderCount"
-                    fill="var(--color-orderCount)"
-                    radius={4}
-                  />
-                  <ChartLine
-                    dataKey="revenue"
-                    stroke="var(--color-revenue)"
-                    strokeWidth={2}
-                    dot={true}
-                  />
-                  <ChartXAxis dataKey="period" />
-                  <ChartYAxis />
-                  <ChartTooltip />
-                  <ChartLegend />
-                  {orderTrends.map((data, index) => (
-                    <g key={index}>
-                      <rect
-                        x={index * (100 / orderTrends.length) + "%"}
-                        y="0"
-                        width={(100 / orderTrends.length) + "%"}
-                        height="100%"
-                        fill="transparent"
-                        data-value={data.orderCount}
-                        data-revenue={formatCurrency(data.revenue)}
-                      />
-                    </g>
-                  ))}
+                  <ComposedChart data={orderTrends}>
+                    <ChartBar
+                      dataKey="orderCount"
+                      fill="var(--color-orderCount)"
+                      radius={4}
+                    />
+                    <ChartLine
+                      dataKey="revenue"
+                      stroke="var(--color-revenue)"
+                      strokeWidth={2}
+                      dot={true}
+                    />
+                    <ChartXAxis dataKey="period" />
+                    <ChartYAxis />
+                    <ChartTooltip />
+                    <ChartLegend />
+                  </ComposedChart>
                 </Chart>
               </div>
             ) : (
@@ -556,11 +588,11 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="h-64 bg-secondary/30 rounded-md animate-pulse flex items-center justify-center">
+              <div className="h-40 bg-secondary/30 rounded-md animate-pulse flex items-center justify-center">
                 <BarChart3 className="h-8 w-8 text-muted-foreground/50" />
               </div>
             ) : invoiceTrends.length > 0 ? (
-              <div className="h-64">
+              <div className="h-40 max-h-40 overflow-hidden">
                 <Chart
                   config={{
                     invoiceCount: {
@@ -573,34 +605,23 @@ export default function DashboardPage() {
                     }
                   }}
                 >
-                  <ChartBar
-                    dataKey="invoiceCount"
-                    fill="var(--color-invoiceCount)"
-                    radius={4}
-                  />
-                  <ChartLine
-                    dataKey="amount"
-                    stroke="var(--color-amount)"
-                    strokeWidth={2}
-                    dot={true}
-                  />
-                  <ChartXAxis dataKey="period" />
-                  <ChartYAxis />
-                  <ChartTooltip />
-                  <ChartLegend />
-                  {invoiceTrends.map((data, index) => (
-                    <g key={index}>
-                      <rect
-                        x={index * (100 / invoiceTrends.length) + "%"}
-                        y="0"
-                        width={(100 / invoiceTrends.length) + "%"}
-                        height="100%"
-                        fill="transparent"
-                        data-value={data.invoiceCount}
-                        data-amount={formatCurrency(data.amount)}
-                      />
-                    </g>
-                  ))}
+                  <ComposedChart data={invoiceTrends}>
+                    <ChartBar
+                      dataKey="invoiceCount"
+                      fill="var(--color-invoiceCount)"
+                      radius={4}
+                    />
+                    <ChartLine
+                      dataKey="amount"
+                      stroke="var(--color-amount)"
+                      strokeWidth={2}
+                      dot={true}
+                    />
+                    <ChartXAxis dataKey="period" />
+                    <ChartYAxis />
+                    <ChartTooltip />
+                    <ChartLegend />
+                  </ComposedChart>
                 </Chart>
               </div>
             ) : (
@@ -622,11 +643,11 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="h-64 bg-secondary/30 rounded-md animate-pulse flex items-center justify-center">
+              <div className="h-40 bg-secondary/30 rounded-md animate-pulse flex items-center justify-center">
                 <BarChart3 className="h-8 w-8 text-muted-foreground/50" />
               </div>
             ) : productCategories.length > 0 ? (
-              <div className="h-64">
+              <div className="h-40 max-h-40 overflow-hidden">
                 <Chart
                   config={
                     productCategories.reduce((acc, category) => {
@@ -638,16 +659,18 @@ export default function DashboardPage() {
                     }, {} as Record<string, { label: string; color: string }>)
                   }
                 >
-                  <ChartBar
-                    dataKey="productCount"
-                    fill={(data) => `var(--color-${data.categoryName})`}
-                    radius={4}
-                    stackId="a"
-                  />
-                  <ChartXAxis dataKey="categoryName" />
-                  <ChartYAxis />
-                  <ChartTooltip />
-                  <ChartLegend />
+                  <ComposedChart data={productCategories}>
+                    <ChartBar
+                      dataKey="productCount"
+                      fill="var(--color-categoryName)"
+                      radius={4}
+                      stackId="a"
+                    />
+                    <ChartXAxis dataKey="categoryName" />
+                    <ChartYAxis />
+                    <ChartTooltip />
+                    <ChartLegend />
+                  </ComposedChart>
                 </Chart>
               </div>
             ) : (
@@ -666,11 +689,11 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="h-64 bg-secondary/30 rounded-md animate-pulse flex items-center justify-center">
+              <div className="h-40 bg-secondary/30 rounded-md animate-pulse flex items-center justify-center">
                 <BarChart3 className="h-8 w-8 text-muted-foreground/50" />
               </div>
             ) : vendorBreakdown.length > 0 ? (
-              <div className="h-64">
+              <div className="h-40 max-h-40 overflow-hidden">
                 <Chart
                   config={
                     vendorBreakdown.reduce((acc, vendor) => {
@@ -682,15 +705,17 @@ export default function DashboardPage() {
                     }, {} as Record<string, { label: string; color: string }>)
                   }
                 >
-                  <ChartBar
-                    dataKey="totalAmount"
-                    fill={(data) => `var(--color-${data.vendorName})`}
-                    radius={4}
-                  />
-                  <ChartXAxis dataKey="vendorName" />
-                  <ChartYAxis />
-                  <ChartTooltip />
-                  <ChartLegend />
+                  <ComposedChart data={vendorBreakdown}>
+                    <ChartBar
+                      dataKey="totalAmount"
+                      fill="var(--color-vendorName)"
+                      radius={4}
+                    />
+                    <ChartXAxis dataKey="vendorName" />
+                    <ChartYAxis />
+                    <ChartTooltip />
+                    <ChartLegend />
+                  </ComposedChart>
                 </Chart>
               </div>
             ) : (
@@ -700,34 +725,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Quick Links */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle>Quick Links</CardTitle>
-          <CardDescription>Navigate to key areas quickly</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {[
-            { label: "Create New Product", href: "/products/new", icon: Package },
-            { label: "Create New Order", href: "/orders/new", icon: ShoppingCart },
-            { label: "View Procurements", href: "/procurements", icon: Truck },
-            { label: "Manage Staff", href: "/users/staff", icon: Users },
-            { label: "View Invoices", href: "/invoices", icon: FileText },
-            { label: "View Customers", href: "/users", icon: Users },
-            { label: "View Products", href: "/products", icon: Package },
-            { label: "View Orders", href: "/orders", icon: ShoppingCart },
-          ].map(link => (
-            <a
-              key={link.label}
-              href={link.href}
-              className="flex flex-col items-center p-4 bg-secondary hover:bg-secondary/80 rounded-lg transition-colors text-center gap-2"
-            >
-              <link.icon className="h-5 w-5" />
-              <span className="font-medium text-sm">{link.label}</span>
-            </a>
-          ))}
-        </CardContent>
-      </Card>
     </div>
   );
 }
