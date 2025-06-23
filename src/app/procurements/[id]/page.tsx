@@ -222,11 +222,18 @@ export default function ProcurementDetailsPage({ params }: { params: { id: strin
   };
 
   // Format date
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return 'N/A';
+
     try {
-      return format(new Date(dateString), 'PPP');
+      const date = new Date(dateString);
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return 'Invalid date';
+      }
+      return format(date, 'PPP');
     } catch (error) {
-      return dateString;
+      return 'Invalid date';
     }
   };
 

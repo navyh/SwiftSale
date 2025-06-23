@@ -1079,7 +1079,7 @@ export interface ProcurementDashboardDto {
 export interface ProductTopSellingDto {
     id: string;
     name: string;
-    quantity: number;
+    quantitySold: number;
     revenue: number;
     imageUrl?: string;
 }
@@ -1124,7 +1124,7 @@ export interface ProcurementOutstandingDto {
     id: string;
     invoiceNumber: string;
     vendorName: string;
-    amount: number;
+    totalAmount: number;
     dueDate: string;
     daysOverdue: number;
 }
@@ -1143,11 +1143,11 @@ export interface OrderSummaryDto {
 }
 
 export interface OrderRecentDto {
-    id: string;
+    orderId: string;
     orderNumber: string;
     customerName: string;
-    amount: number;
-    date: string;
+    totalAmount: number;
+    orderDate: string;
     status: string;
 }
 
@@ -1174,11 +1174,11 @@ export interface InvoiceOutstandingDto {
 }
 
 export interface CustomerTopDto {
-    id: string;
+    customerId: string;
     name: string;
+    phone: string;
     totalOrders: number;
-    totalSpent: number;
-    lastOrderDate: string;
+    totalRevenue: number;
 }
 
 export async function makeProcurementPayment(procurementId: string, paymentData: ProcurementPaymentRequest): Promise<ProcurementDto> {

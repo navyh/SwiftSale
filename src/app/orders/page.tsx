@@ -263,11 +263,18 @@ export default function OrdersPage() {
 
 
   // Format date for display
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return 'N/A';
+
     try {
-      return format(new Date(dateString), "MMM dd, yyyy");
+      const date = new Date(dateString);
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return 'Invalid date';
+      }
+      return format(date, "MMM dd, yyyy");
     } catch (error) {
-      return dateString;
+      return 'Invalid date';
     }
   };
 
