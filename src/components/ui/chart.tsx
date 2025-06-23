@@ -67,6 +67,9 @@ const ChartContainer = React.forwardRef<
 })
 ChartContainer.displayName = "Chart"
 
+// Export the ChartContainer as Chart for external use
+export const Chart = ChartContainer
+
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   const colorConfig = Object.entries(config).filter(
     ([, config]) => config.theme || config.color
@@ -354,6 +357,13 @@ function getPayloadConfigFromPayload(
     ? config[configLabelKey]
     : config[key as keyof typeof config]
 }
+
+// Export Recharts components with our naming convention
+export const ChartArea = RechartsPrimitive.Area
+export const ChartBar = RechartsPrimitive.Bar
+export const ChartLine = RechartsPrimitive.Line
+export const ChartXAxis = RechartsPrimitive.XAxis
+export const ChartYAxis = RechartsPrimitive.YAxis
 
 export {
   ChartContainer,

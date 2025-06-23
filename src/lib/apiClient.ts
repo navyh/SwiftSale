@@ -2,8 +2,8 @@
 // src/lib/apiClient.ts
 "use client"; // To be used in client components
 
-const API_BASE_URL = 'https://orca-app-k6zka.ondigitalocean.app/api/v2';
-// const API_BASE_URL = 'http://localhost:8080/api/v2';
+// const API_BASE_URL = 'https://orca-app-k6zka.ondigitalocean.app/api/v2';
+const API_BASE_URL = 'http://localhost:8080/api/v2';
 
 // Helper function for API calls
 async function fetchAPI<T>(endpoint: string, options?: RequestInit, expectJson = true): Promise<T> {
@@ -902,6 +902,351 @@ export async function updateOrderStatus(orderId: string, newStatus: string): Pro
         method: 'PATCH',
         body: JSON.stringify({ newStatus }),
     });
+}
+
+
+// === PROCUREMENT MANAGEMENT ===
+
+export interface ProcurementItemDto {
+    id?: string;
+    productId: string;
+    productName: string;
+    variantId: string;
+    variantName: string;
+    quantity: number;
+    unitPrice: number;
+}
+
+// This function is no longer needed as per the issue description
+// export async function fetchProcurementStatuses(): Promise<string[]> {
+//   return fetchAPI<string[]>('/meta/procurement/statuses');
+// }
+
+export interface ProcurementPaymentDto {
+    id?: string;
+    amount: number;
+    paymentDate: string;
+    paymentMethod: string;
+    referenceNumber?: string;
+    notes?: string;
+    cashDiscountApplied?: boolean;
+    cashDiscountAmount?: number;
+    createdAt?: string;
+}
+
+export interface ProcurementDto {
+    id?: string;
+    businessProfileId: string;
+    businessProfile?: BusinessProfileDto;
+    invoiceNumber: string;
+    invoiceAmount: number;
+    creditPeriod: number;
+    cashDiscountPercentage?: number;
+    invoiceDate: string;
+    receiptDate: string;
+    dueDate?: string;
+    paymentStatus?: string;
+    totalPaidAmount?: number;
+    remainingAmount?: number;
+    payments?: ProcurementPaymentDto[];
+    notes?: string;
+    invoiceImage?: string;
+    invoiceImageUrl?: string;
+    status?: string;
+    items: ProcurementItemDto[];
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface CreateProcurementRequest {
+    businessProfileId: string;
+    invoiceNumber: string;
+    invoiceAmount: number;
+    creditPeriod: number;
+    cashDiscountPercentage?: number;
+    invoiceDate: string;
+    receiptDate: string;
+    notes?: string;
+    items?: ProcurementItemDto[];
+    invoiceImage?: string;
+}
+
+export interface UpdateProcurementRequest {
+    businessProfileId?: string;
+    invoiceNumber?: string;
+    invoiceAmount?: number;
+    creditPeriod?: number;
+    cashDiscountPercentage?: number;
+    invoiceDate?: string;
+    receiptDate?: string;
+    notes?: string;
+    items?: ProcurementItemDto[];
+    invoiceImage?: string;
+}
+
+export async function createProcurement(data: CreateProcurementRequest): Promise<ProcurementDto> {
+    return fetchAPI<ProcurementDto>('/procurements', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function fetchProcurements(params?: { 
+    sortBy?: string; 
+    sortDir?: 'asc' | 'desc'; 
+    status?: string; 
+    createdFrom?: string; 
+    createdTo?: string; 
+    businessProfileId?: string;
+    page?: number; 
+    size?: number;
+}): Promise<Page<ProcurementDto>> {
+    const queryParams = new URLSearchParams();
+    if (params?.sortBy) queryParams.append('sortBy', params.sortBy);
+    if (params?.sortDir) queryParams.append('sortDir', params.sortDir);
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.createdFrom) queryParams.append('createdFrom', params.createdFrom);
+    if (params?.createdTo) queryParams.append('createdTo', params.createdTo);
+    if (params?.businessProfileId) queryParams.append('businessProfileId', params.businessProfileId);
+    if (params?.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+
+    const queryString = queryParams.toString();
+    const endpoint = queryString ? `/procurements?${queryString}` : '/procurements';
+
+    const data = await fetchAPI<Page<ProcurementDto> | undefined>(endpoint);
+    return data ?? { content: [], totalPages: 0, totalElements: 0, size: params?.size || 10, number: params?.page || 0, first: true, last: true, empty: true };
+}
+
+export async function searchProcurements(
+    keyword: string,
+    page: number = 0,
+    size: number = 20,
+    sort: string = 'createdAt,desc'
+): Promise<Page<ProcurementDto>> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('keyword', keyword);
+    queryParams.append('page', page.toString());
+    queryParams.append('size', size.toString());
+    queryParams.append('sort', sort);
+
+    const queryString = queryParams.toString();
+    const data = await fetchAPI<Page<ProcurementDto> | undefined>(`/procurements/search?${queryString}`);
+    return data ?? { content: [], totalPages: 0, totalElements: 0, size: size, number: page, first: true, last: true, empty: true };
+}
+
+export async function fetchProcurementById(procurementId: string): Promise<ProcurementDto> {
+    return fetchAPI<ProcurementDto>(`/procurements/${procurementId}`);
+}
+
+export async function updateProcurement(procurementId: string, data: UpdateProcurementRequest): Promise<ProcurementDto> {
+    return fetchAPI<ProcurementDto>(`/procurements/${procurementId}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function updateProcurementStatus(procurementId: string, newStatus: string): Promise<ProcurementDto> {
+    return fetchAPI<ProcurementDto>(`/procurements/${procurementId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ newStatus }),
+    });
+}
+
+export async function deleteProcurement(procurementId: string): Promise<void> {
+    return fetchAPI<void>(`/procurements/${procurementId}`, {
+        method: 'DELETE',
+    }, false);
+}
+
+export interface ProcurementPaymentRequest {
+    amount: number;
+    paymentDate: string;
+    paymentMethod: string;
+    referenceNumber?: string;
+    notes?: string;
+    applyCashDiscount?: boolean;
+}
+
+export interface ProcurementDashboardDto {
+    currentMonthTotal: number;
+    pendingAmount: number;
+    dueCount: number;
+    dueAmount: number;
+}
+
+// === DASHBOARD INTERFACES ===
+export interface ProductTopSellingDto {
+    id: string;
+    name: string;
+    quantity: number;
+    revenue: number;
+    imageUrl?: string;
+}
+
+export interface ProductSummaryDto {
+    totalProducts: number;
+    activeProducts: number;
+    outOfStockProducts: number;
+    recentlyAddedCount: number;
+}
+
+export interface ProductCategoryBreakdownDto {
+    categoryName: string;
+    productCount: number;
+    percentage: number;
+}
+
+export interface ProcurementVendorBreakdownDto {
+    vendorName: string;
+    procurementCount: number;
+    totalAmount: number;
+    percentage: number;
+}
+
+export interface ProcurementSummaryDto {
+    totalProcurements: number;
+    pendingPayments: number;
+    totalSpent: number;
+    averageOrderValue: number;
+}
+
+export interface ProcurementRecentDto {
+    id: string;
+    invoiceNumber: string;
+    vendorName: string;
+    amount: number;
+    date: string;
+    status: string;
+}
+
+export interface ProcurementOutstandingDto {
+    id: string;
+    invoiceNumber: string;
+    vendorName: string;
+    amount: number;
+    dueDate: string;
+    daysOverdue: number;
+}
+
+export interface OrderTrendsDto {
+    period: string; // e.g., "Jan", "Feb", etc. or dates
+    orderCount: number;
+    revenue: number;
+}
+
+export interface OrderSummaryDto {
+    totalOrders: number;
+    pendingOrders: number;
+    totalRevenue: number;
+    averageOrderValue: number;
+}
+
+export interface OrderRecentDto {
+    id: string;
+    orderNumber: string;
+    customerName: string;
+    amount: number;
+    date: string;
+    status: string;
+}
+
+export interface InvoiceTrendsDto {
+    period: string;
+    invoiceCount: number;
+    amount: number;
+}
+
+export interface InvoiceSummaryDto {
+    totalInvoices: number;
+    paidInvoices: number;
+    totalAmount: number;
+    outstandingAmount: number;
+}
+
+export interface InvoiceOutstandingDto {
+    id: string;
+    invoiceNumber: string;
+    customerName: string;
+    amount: number;
+    dueDate: string;
+    daysOverdue: number;
+}
+
+export interface CustomerTopDto {
+    id: string;
+    name: string;
+    totalOrders: number;
+    totalSpent: number;
+    lastOrderDate: string;
+}
+
+export async function makeProcurementPayment(procurementId: string, paymentData: ProcurementPaymentRequest): Promise<ProcurementDto> {
+    return fetchAPI<ProcurementDto>(`/procurements/${procurementId}/payments`, {
+        method: 'POST',
+        body: JSON.stringify(paymentData),
+    });
+}
+
+// === DASHBOARD API FUNCTIONS ===
+export async function fetchProcurementDashboard(): Promise<ProcurementDashboardDto> {
+    return fetchAPI<ProcurementDashboardDto>('/procurements/dashboard');
+}
+
+export async function fetchProductsTopSelling(): Promise<ProductTopSellingDto[]> {
+    return fetchAPI<ProductTopSellingDto[]>('/dashboard/products/top-selling');
+}
+
+export async function fetchProductsSummary(): Promise<ProductSummaryDto> {
+    return fetchAPI<ProductSummaryDto>('/dashboard/products/summary');
+}
+
+export async function fetchProductsCategoryBreakdown(): Promise<ProductCategoryBreakdownDto[]> {
+    return fetchAPI<ProductCategoryBreakdownDto[]>('/dashboard/products/category-breakdown');
+}
+
+export async function fetchProcurementsVendorBreakdown(): Promise<ProcurementVendorBreakdownDto[]> {
+    return fetchAPI<ProcurementVendorBreakdownDto[]>('/dashboard/procurements/vendor-breakdown');
+}
+
+export async function fetchProcurementsSummary(): Promise<ProcurementSummaryDto> {
+    return fetchAPI<ProcurementSummaryDto>('/dashboard/procurements/summary');
+}
+
+export async function fetchProcurementsRecent(): Promise<ProcurementRecentDto[]> {
+    return fetchAPI<ProcurementRecentDto[]>('/dashboard/procurements/recent');
+}
+
+export async function fetchProcurementsOutstanding(): Promise<ProcurementOutstandingDto[]> {
+    return fetchAPI<ProcurementOutstandingDto[]>('/dashboard/procurements/outstanding');
+}
+
+export async function fetchOrdersTrends(): Promise<OrderTrendsDto[]> {
+    return fetchAPI<OrderTrendsDto[]>('/dashboard/orders/trends');
+}
+
+export async function fetchOrdersSummary(): Promise<OrderSummaryDto> {
+    return fetchAPI<OrderSummaryDto>('/dashboard/orders/summary');
+}
+
+export async function fetchOrdersRecent(): Promise<OrderRecentDto[]> {
+    return fetchAPI<OrderRecentDto[]>('/dashboard/orders/recent');
+}
+
+export async function fetchInvoicesTrends(): Promise<InvoiceTrendsDto[]> {
+    return fetchAPI<InvoiceTrendsDto[]>('/dashboard/invoices/trends');
+}
+
+export async function fetchInvoicesSummary(): Promise<InvoiceSummaryDto> {
+    return fetchAPI<InvoiceSummaryDto>('/dashboard/invoices/summary');
+}
+
+export async function fetchInvoicesOutstanding(): Promise<InvoiceOutstandingDto[]> {
+    return fetchAPI<InvoiceOutstandingDto[]>('/dashboard/invoices/outstanding');
+}
+
+export async function fetchCustomersTop(): Promise<CustomerTopDto[]> {
+    return fetchAPI<CustomerTopDto[]>('/dashboard/customers/top');
 }
 
 
